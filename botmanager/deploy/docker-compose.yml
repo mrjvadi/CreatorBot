@@ -1,0 +1,25 @@
+version: "3.9"
+services:
+  botmanager:
+    build:
+      context: ../..
+      dockerfile: botmanager/deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    depends_on: [postgres, redis]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: botmanager
+      POSTGRES_USER: botmanager
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes: [pg_data:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redis_data:/data]
+
+volumes: {pg_data: {}, redis_data: {}}

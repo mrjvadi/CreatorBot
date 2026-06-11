@@ -1,0 +1,10 @@
+**/.env
+!**/.env.example
+**/vendor/
+go.work.sum
+**/bin/
+**/*.exe
+**/sessions/
+.idea/
+.vscode/
+.DS_Store

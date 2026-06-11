@@ -1,0 +1,15 @@
+go 1.22
+
+use (
+	./shared
+	./shared-core
+	./botmanager
+	./apimanager
+	./agentmanager
+	./uploader-bot
+	./vpn-bot
+	./archive-bot
+	./member-bot
+	./source-service
+	botpay
+)

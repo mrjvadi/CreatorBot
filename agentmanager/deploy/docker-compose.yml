@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  agentmanager:
+    build:
+      context: ../..
+      dockerfile: agentmanager/deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    # Mount Docker socket so the agent can manage containers
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes: {}

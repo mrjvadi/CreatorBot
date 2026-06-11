@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  service:
+    build:
+      context: ../..
+      dockerfile: source-service/deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    ports: ["${API_PORT:-8082}:${API_PORT:-8082}"]
+    volumes: [sessions:/app/sessions]
+    depends_on: [postgres, redis]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sourceservice
+      POSTGRES_USER: sourceservice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes: [pg_data:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redis_data:/data]
+
+volumes: {pg_data: {}, redis_data: {}, sessions: {}}

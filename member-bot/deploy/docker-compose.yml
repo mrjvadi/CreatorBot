@@ -1,0 +1,26 @@
+version: "3.9"
+services:
+  bot:
+    build:
+      context: ../..
+      dockerfile: member-bot/deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    ports: ["${LOCK_API_PORT:-8081}:${LOCK_API_PORT:-8081}"]
+    depends_on: [postgres, redis]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: memberbot
+      POSTGRES_USER: memberbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes: [pg_data:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redis_data:/data]
+
+volumes: {pg_data: {}, redis_data: {}}
