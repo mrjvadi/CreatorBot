@@ -131,13 +131,55 @@ func (b *BotInstance) SchemaName() string {
 
 type Plan struct {
 	Base
-	TemplateID  uuid.UUID `gorm:"not null;index"`
+	// TemplateID deprecated — پلن دیگر به یک تمپلیت وابسته نیست.
+	// محدودیت‌ها در PlanBotLimit به تفکیک نوع ربات تعریف می‌شود.
+	TemplateID  *uuid.UUID `gorm:"index;default:null"`
 	Name        string
-	DurationDay int       // 0 = ابدی
-	Price       float64   // قیمت به TON
-	MaxBots     int       `gorm:"default:1"` // حداکثر تعداد ربات
-	IsFree      bool      `gorm:"default:false"` // پلن رایگان
-	IsActive    bool      `gorm:"default:true"`
+	DurationDay int     // 0 = ابدی
+	Price       float64 // قیمت به TON
+	// MaxBots مجموع کل ربات‌ها (fallback اگر PlanBotLimit نبود)
+	MaxBots     int  `gorm:"default:1"`
+	IsFree      bool `gorm:"default:false"`
+	IsActive    bool `gorm:"default:true"`
+
+	// Limits محدودیت به تفکیک نوع ربات
+	Limits []PlanBotLimit `gorm:"foreignKey:PlanID"`
+}
+
+// PlanBotLimit حداکثر تعداد instance برای هر نوع ربات در یک پلن.
+// مثال: پلن Pro → VPN=5, Uploader=3
+type PlanBotLimit struct {
+	Base
+	PlanID  uuid.UUID `gorm:"not null;index;uniqueIndex:idx_plan_bottype"`
+	BotType string    `gorm:"not null;uniqueIndex:idx_plan_bottype"` // uploader | vpn | archive | member
+	MaxBots int       `gorm:"not null;default:1"`
+}
+
+// LimitFor حداکثر تعداد ربات از نوع داده‌شده.
+// اگر limit صریح تعریف نشده باشد، صفر برمی‌گردد (مجاز نیست).
+// اگر هیچ limit ای تعریف نشده باشد (لیست خالی)، MaxBots کلی fallback است.
+func (p *Plan) LimitFor(botType string) int {
+	if len(p.Limits) == 0 {
+		return p.MaxBots // fallback — پلن قدیمی
+	}
+	for _, l := range p.Limits {
+		if l.BotType == botType {
+			return l.MaxBots
+		}
+	}
+	return 0
+}
+
+// TotalLimit مجموع همه limit ها.
+func (p *Plan) TotalLimit() int {
+	if len(p.Limits) == 0 {
+		return p.MaxBots
+	}
+	total := 0
+	for _, l := range p.Limits {
+		total += l.MaxBots
+	}
+	return total
 }
 
 // Subscription اشتراک فعال یک کاربر.
@@ -191,6 +233,7 @@ func AllModels() []any {
 		&BotTemplate{},
 		&BotInstance{},
 		&Plan{},
+		&PlanBotLimit{},
 		&Payment{},
 		&Subscription{},
 		&DeployJob{},

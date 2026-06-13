@@ -1,6 +1,9 @@
 package models
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -87,4 +90,18 @@ type Payment struct {
 type Setting struct {
 	Key   string `gorm:"primaryKey"`
 	Value string
+}
+
+// BotIDFromToken استخراج Bot ID از توکن تلگرام.
+// فرمت توکن: <bot_id>:<random_string>
+func BotIDFromToken(token string) (int64, error) {
+	parts := strings.SplitN(token, ":", 2)
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("invalid token format")
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid bot id: %w", err)
+	}
+	return id, nil
 }

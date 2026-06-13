@@ -3,7 +3,10 @@ package tgbot
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/google/uuid"
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
@@ -66,41 +69,97 @@ func (h *Handler) adminPlanStepName(ctx context.Context, c tele.Context, tmplID 
 
 func (h *Handler) adminPlanAdd(ctx context.Context, c tele.Context, tmplID, name string, days int, price float64) error {
 	uid := c.Sender().ID
-	h.clearState(ctx, uid)
 
 	tmpl, _ := h.store.FindTemplate(ctx, tmplID)
 	if tmpl == nil {
+		h.clearState(ctx, uid)
 		return h.sendMain(c, h.t(ctx, uid, i18n.KeyNotFound))
 	}
 
 	isFree := price == 0
-	maxBots := 1
-	if price > 0 {
-		maxBots = 3
-	}
-
 	plan := &models.Plan{
-		TemplateID:  tmpl.ID,
+		TemplateID:  &tmpl.ID,
 		Name:        name,
 		DurationDay: days,
 		Price:       price,
 		IsFree:      isFree,
-		MaxBots:     maxBots,
+		MaxBots:     1,
 		IsActive:    true,
 	}
 	if err := h.store.CreatePlan(ctx, plan); err != nil {
+		h.clearState(ctx, uid)
 		h.log.Error("adminPlanAdd", h.F("err", err))
 		return h.sendMain(c, h.t(ctx, uid, i18n.KeyPlanAddError))
 	}
 
-	free := ""
-	if isFree {
-		free = h.t(ctx, uid, i18n.KeyAdminPlanFree)
+	// مرحله بعد: limit به تفکیک نوع ربات
+	h.setStep(ctx, uid, stepPlanLimits, "plan_id", plan.ID.String())
+	return c.Send(
+		"حالا محدودیت هر نوع ربات را وارد کنید.\n\n"+
+			"فرمت: <code>نوع=تعداد</code> جداشده با کاما\n"+
+			"مثال: <code>uploader=2,vpn=1</code>\n\n"+
+			"انواع: uploader, vpn, archive, member\n"+
+			"یا فقط یک عدد بفرستید تا برای همه انواع اعمال شود.",
+		tele.ModeHTML, h.kbBackCancel(ctx, uid),
+	)
+}
+
+// adminPlanSetLimits ورودی limit ها را پردازش می‌کند.
+func (h *Handler) adminPlanSetLimits(ctx context.Context, c tele.Context, planIDStr, text string) error {
+	uid := c.Sender().ID
+	h.clearState(ctx, uid)
+
+	planID, err := uuid.Parse(planIDStr)
+	if err != nil {
+		return h.sendMain(c, h.t(ctx, uid, i18n.KeyError))
+	}
+
+	validTypes := map[string]bool{"uploader": true, "vpn": true, "archive": true, "member": true}
+	limits := map[string]int{}
+
+	text = strings.TrimSpace(text)
+	if n, err := strconv.Atoi(text); err == nil && n >= 0 {
+		// یک عدد → همه انواع
+		for t := range validTypes {
+			limits[t] = n
+		}
+	} else {
+		// فرمت type=N,type=N
+		for _, part := range strings.Split(text, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			bt := strings.ToLower(strings.TrimSpace(kv[0]))
+			n, err := strconv.Atoi(strings.TrimSpace(kv[1]))
+			if err != nil || !validTypes[bt] || n < 0 {
+				continue
+			}
+			limits[bt] = n
+		}
+	}
+
+	if len(limits) == 0 {
+		return c.Send("فرمت نامعتبر. مثال: <code>uploader=2,vpn=1</code>",
+			tele.ModeHTML, h.kbBackCancel(ctx, uid))
+	}
+
+	total := 0
+	var lines []string
+	for bt, n := range limits {
+		if err := h.store.SetPlanLimit(ctx, planID, bt, n); err != nil {
+			h.log.Error("SetPlanLimit", h.F("err", err))
+			continue
+		}
+		if n > 0 {
+			lines = append(lines, fmt.Sprintf("  %s %s: %d", botTypeEmoji(models.BotType(bt)), bt, n))
+			total += n
+		}
 	}
 
 	return c.Send(
-		h.t(ctx, uid, i18n.KeyAdminPlanAdded,
-			plan.Name, free, tmpl.Name, plan.DurationDay, plan.Price, plan.MaxBots, plan.ID),
+		fmt.Sprintf("✅ <b>محدودیت‌ها ثبت شد</b>\n\n%s\n\nمجموع: %d ربات",
+			strings.Join(lines, "\n"), total),
 		tele.ModeHTML, h.kbAdmin(ctx, uid),
 	)
 }

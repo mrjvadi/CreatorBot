@@ -50,13 +50,13 @@ func (h *Handler) wizardFinish(ctx context.Context, c tele.Context, inviteToken,
 		return h.sendMain(c, h.t(ctx, uid, i18n.KeyWizardInvalidLink))
 	}
 
-	// ── بررسی ظرفیت (پلن) ───────────────────────────────────
-	hasCapacity, err := h.checkBuildCapacity(ctx, c)
+	// ── بررسی ظرفیت per-type (Capacity Engine) ──────────────
+	hasCapacity, err := h.checkBuildCapacityForType(ctx, c, string(link.BotType))
 	if err != nil {
 		return err
 	}
 	if !hasCapacity {
-		return nil // checkBuildCapacity پیام فرستاده
+		return nil // پیام فرستاده شده
 	}
 
 	botID, err := models.BotIDFromToken(botToken)

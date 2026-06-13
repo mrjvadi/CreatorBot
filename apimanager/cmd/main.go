@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -12,27 +10,30 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mrjvadi/creatorbot/apimanager/internal/handler"
-	"github.com/mrjvadi/creatorbot/shared-core/models"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
-	"github.com/mrjvadi/creatorbot/shared-core/store"
+	"github.com/mrjvadi/creatorbot/apimanager/internal/middleware"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/models"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
+	"github.com/mrjvadi/creatorbot/shared-core/store"
+	"encoding/json"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type Config struct {
-	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
-	APIPort     int    `mapstructure:"API_PORT"`
-
-	NatsURL  string `mapstructure:"NATS_URL"`
-	NatsUser string `mapstructure:"NATS_USERNAME"`
-	NatsPass string `mapstructure:"NATS_PASSWORD"`
-
+	PostgresDSN   string `mapstructure:"POSTGRES_DSN"`
+	NatsURL       string `mapstructure:"NATS_URL"`
+	NatsUser      string `mapstructure:"NATS_USERNAME"`
+	NatsPass      string `mapstructure:"NATS_PASSWORD"`
+	Port          string `mapstructure:"PORT"`
 	AccessSecret  string `mapstructure:"JWT_ACCESS_SECRET"`
 	RefreshSecret string `mapstructure:"JWT_REFRESH_SECRET"`
-	EncryptKey    string `mapstructure:"ENCRYPTION_KEY"`
+	EncryptionKey string `mapstructure:"ENCRYPTION_KEY"`
 	AgentAPIKey   string `mapstructure:"AGENT_API_KEY"`
 }
 
@@ -41,14 +42,21 @@ func main() {
 	config.MustLoad(&cfg)
 	log := logger.MustNew(false)
 
-	// ── PostgreSQL ────────────────────────────────────────────
-	db, err := postgres.New(postgres.Config{DSN: cfg.PostgresDSN})
+	if cfg.Port == "" {
+		cfg.Port = "8080"
+	}
+
+	// ── PostgreSQL ─────────────────────────────────────────
+	db, err := gorm.Open(postgres.Open(cfg.PostgresDSN))
 	if err != nil {
 		log.Fatal("postgres", ports.F("err", err))
 	}
-	db.Migrate(models.AllModels()...)
+	if err := models.AutoMigrate(db); err != nil {
+		log.Fatal("migrate", ports.F("err", err))
+	}
+	st := store.New(store.NewGormDB(db))
 
-	// ── NATS ──────────────────────────────────────────────────
+	// ── NATS ───────────────────────────────────────────────
 	nc, err := natsclient.New(natsclient.Config{
 		URL:      cfg.NatsURL,
 		Username: cfg.NatsUser,
@@ -59,81 +67,80 @@ func main() {
 	}
 	defer nc.Close()
 
-	st := store.New(db)
+	// ── Docker Manager (NATS-based) ────────────────────────
+	dockerManager := sharedocker.NewManager(nc)
 
-	// ── NATS Listeners ────────────────────────────────────────
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	// ── Handler ────────────────────────────────────────────
+	h := handler.New(
+		st, dockerManager, nc, log,
+		cfg.AccessSecret, cfg.RefreshSecret,
+		cfg.EncryptionKey, cfg.AgentAPIKey,
+	)
 
-	// heartbeat از همه agentmanager ها
-	nc.QueueSubscribe("agent.*.heartbeat", "apimanager", func(data []byte) {
-		var msg protocol.HeartbeatMsg
-		if err := json.Unmarshal(data, &msg); err != nil {
-			return
-		}
-		st.MarkServerOnlineByServerID(ctx, msg.ServerID)
-		for _, c := range msg.Containers {
-			switch c.State {
-			case "running":
-				st.UpdateInstanceStatusByContainerName(ctx, c.Name, models.StatusRunning)
-			case "exited", "dead":
-				st.UpdateInstanceStatusByContainerName(ctx, c.Name, models.StatusStopped)
-			}
-		}
-		log.Info("heartbeat",
-			ports.F("server", msg.ServerID),
-			ports.F("containers", len(msg.Containers)))
+	// ── NATS Listeners ─────────────────────────────────────
+	// Heartbeat از agentmanager
+	nc.Subscribe("agent.*.heartbeat", func(data []byte) {
+		handleHeartbeat(data, st, log)
 	})
 
-	// نتیجه دستورات Docker
-	nc.QueueSubscribe("agent.*.result", "apimanager", func(data []byte) {
-		var msg protocol.ResultMsg
-		if err := json.Unmarshal(data, &msg); err != nil {
-			return
-		}
-		if msg.Success {
-			st.UpdateInstanceStatusByContainerName(ctx, msg.ContainerName, models.StatusRunning)
-		} else {
-			st.UpdateInstanceStatusByContainerName(ctx, msg.ContainerName, models.StatusError)
-		}
-		log.Info("command result",
-			ports.F("cmd", msg.CommandType),
-			ports.F("success", msg.Success),
-			ports.F("container", msg.ContainerName))
-	})
-
-	// رویدادهای پرداخت از bot ها
-	nc.Subscribe("event.payment.*", func(data []byte) {
-		var event protocol.PaymentConfirmedEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			return
-		}
-		log.Info("payment confirmed",
-			ports.F("bot_id", event.BotID),
-			ports.F("amount", event.Amount))
-		// TODO: ثبت پرداخت در PostgreSQL و تمدید اشتراک
+	// نتیجه deploy/stop/remove از agentmanager
+	nc.Subscribe("agent.*.result", func(data []byte) {
+		handleResult(data, st, log)
 	})
 
 	log.Info("NATS listeners started")
 
-	// ── HTTP API ──────────────────────────────────────────────
-	h := handler.New(st, nil, log,
-		cfg.AccessSecret, cfg.RefreshSecret, cfg.EncryptKey,
-		cfg.AgentAPIKey)
-
+	// ── Routes ────────────────────────────────────────────
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
 
+	// Health
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true, "service": "apimanager"})
+	})
+
 	v1 := r.Group("/api/v1")
+
+	// Public
 	v1.POST("/auth/telegram", h.TelegramAuth)
 	v1.POST("/auth/refresh", h.RefreshToken)
 	v1.POST("/agent/auth", h.AgentAuth)
-	v1.POST("/bot/deploy", deployHandler(nc, st, cfg.EncryptKey, log))
-	v1.POST("/bot/stop", stopHandler(nc, st, log))
-	v1.POST("/bot/remove", removeHandler(nc, st, log))
 
-	addr := fmt.Sprintf(":%d", cfg.APIPort)
+	// Agent webhook (با AgentAPIKey)
+	agent := v1.Group("/agent", middleware.AgentKeyAuth(cfg.AgentAPIKey))
+	agent.POST("/heartbeat", h.AgentHeartbeat)
+	agent.POST("/result", h.AgentResult)
+
+	// User (JWT)
+	user := v1.Group("", middleware.JWTAuth(cfg.AccessSecret))
+	user.GET("/me", h.Me)
+	user.GET("/instances", h.ListInstances)
+	user.POST("/instances", h.CreateInstance)
+	user.POST("/instances/:id/start", h.StartInstance)
+	user.POST("/instances/:id/stop", h.StopInstance)
+	user.POST("/instances/:id/restart", h.RestartInstance)
+	user.DELETE("/instances/:id", h.DeleteInstance)
+	user.GET("/instances/:id/logs", h.GetInstanceLogs)
+	user.GET("/plans", h.ListPlans)
+
+	// Admin (JWT + Admin role)
+	admin := v1.Group("/admin",
+		middleware.JWTAuth(cfg.AccessSecret),
+		middleware.RequireRole("admin", "owner"))
+	admin.GET("/stats", h.AdminStats)
+	admin.GET("/servers", h.ListServers)
+	admin.POST("/servers", h.CreateServer)
+	admin.DELETE("/servers/:id", h.DeleteServer)
+	admin.GET("/templates", h.ListTemplates)
+	admin.POST("/templates", h.CreateTemplate)
+
+	// ── Start server ───────────────────────────────────────
+	addr := ":" + cfg.Port
 	srv := &http.Server{Addr: addr, Handler: r}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	go func() {
 		log.Info("apimanager started", ports.F("addr", addr))
@@ -143,90 +150,54 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	log.Info("apimanager stopping...")
-	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	log.Info("shutting down...")
+	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	srv.Shutdown(shutCtx)
 }
 
-// deployHandler دستور deploy را به agentmanager ارسال می‌کند.
-func deployHandler(nc *natsclient.Client, st *store.Store, encryptKey string, log ports.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req struct {
-			InstanceID string `json:"instance_id" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"ok": false, "message": err.Error()})
-			return
-		}
+// ── NATS event handlers ───────────────────────────────────
 
-		ctx := c.Request.Context()
-		inst, err := st.FindInstance(ctx, req.InstanceID)
-		if err != nil || inst == nil {
-			c.JSON(404, gin.H{"ok": false, "message": "instance not found"})
-			return
-		}
+func handleHeartbeat(data []byte, st *store.Store, log ports.Logger) {
+	// agentmanager heartbeat رو handle کن — server را آنلاین نشان بده
+	var hb protocol.HeartbeatMsg
+	if err := parseJSON(data, &hb); err != nil {
+		return
+	}
+	ctx := context.Background()
+	st.MarkServerOnlineByServerID(ctx, hb.ServerID)
+}
 
-		server, err := st.ListServers(ctx)
-		if err != nil || len(server) == 0 {
-			c.JSON(500, gin.H{"ok": false, "message": "no server available"})
-			return
-		}
-		// پیدا کردن سرور instance
-		var targetServer *models.Server
-		for _, s := range server {
-			if s.ID == inst.ServerID {
-				targetServer = &s
-				break
-			}
-		}
-		if targetServer == nil {
-			c.JSON(404, gin.H{"ok": false, "message": "server not found"})
-			return
-		}
+func handleResult(data []byte, st *store.Store, log ports.Logger) {
+	var result protocol.ResultMsg
+	if err := parseJSON(data, &result); err != nil {
+		return
+	}
 
-		tmpl, _ := st.FindTemplate(ctx, inst.TemplateID.String())
-		if tmpl == nil {
-			c.JSON(404, gin.H{"ok": false, "message": "template not found"})
-			return
-		}
+	ctx := context.Background()
+	inst, err := st.FindInstanceByContainerName(ctx, result.ContainerName)
+	if err != nil || inst == nil {
+		return
+	}
 
-		// decrypt توکن
-		// botToken, _ := auth.Decrypt(inst.BotToken, encryptKey)
-
-		cmd := protocol.DeployCommand{
-			Type:          protocol.MsgDeploy,
-			ServerID:      targetServer.ID.String(),
-			ContainerName: inst.ContainerName,
-			ImageName:     tmpl.ImageName,
-			ImageTag:      tmpl.ImageTag,
-			EnvVars: map[string]string{
-				"BOT_TOKEN": inst.BotToken, // TODO: decrypt
-			},
-		}
-
-		pubCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		if err := nc.Publish(pubCtx, protocol.DeploySubject(targetServer.ID.String()), cmd); err != nil {
-			c.JSON(500, gin.H{"ok": false, "message": "publish failed"})
-			return
-		}
-
-		st.UpdateInstanceStatus(ctx, inst.ID, models.StatusPending)
-		c.JSON(200, gin.H{"ok": true, "message": "deploy command sent"})
+	switch {
+	case result.Success && result.CommandType == string(protocol.MsgDeploy):
+		st.UpdateInstanceStatus(ctx, inst.ID, models.StatusRunning)
+		log.Info("instance running",
+			ports.F("instance", inst.ID),
+			ports.F("container", result.ContainerName))
+	case !result.Success:
+		st.UpdateInstanceStatus(ctx, inst.ID, models.StatusError)
+		log.Error("instance failed",
+			ports.F("instance", inst.ID),
+			ports.F("err", result.Error))
+	case result.CommandType == string(protocol.MsgStop):
+		st.UpdateInstanceStatus(ctx, inst.ID, models.StatusStopped)
+	case result.CommandType == string(protocol.MsgRemove):
+		st.DeleteInstance(ctx, inst.ID)
 	}
 }
 
-func stopHandler(nc *natsclient.Client, st *store.Store, log ports.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// TODO: مشابه deployHandler
-		c.JSON(200, gin.H{"ok": true})
-	}
-}
-
-func removeHandler(nc *natsclient.Client, st *store.Store, log ports.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// TODO: مشابه deployHandler
-		c.JSON(200, gin.H{"ok": true})
-	}
+func parseJSON(data []byte, v any) error {
+	return json.Unmarshal(data, v)
 }

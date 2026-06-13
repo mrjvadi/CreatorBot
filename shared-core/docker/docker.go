@@ -88,3 +88,12 @@ func ServerChannel(serverID string) string {
 
 // suppress unused
 var _ = json.Marshal
+
+// Logs آخرین N خط log container را برمی‌گرداند.
+// از NATS publish می‌کند — agentmanager اجرا می‌کند و نتیجه می‌فرستد.
+func (m *Manager) Logs(ctx context.Context, serverID, containerName string, lines int) (string, error) {
+	// در این پیاده‌سازی، فعلاً از طریق Docker مستقیم روی سرور نمی‌توان لاگ گرفت.
+	// agentmanager باید یه subject برای logs داشته باشه — آینده.
+	// فعلاً یه پیام می‌فرستیم که نشان دهد feature در دسترس است.
+	return fmt.Sprintf("[logs not yet available for %s — use SSH to server]", containerName), nil
+}

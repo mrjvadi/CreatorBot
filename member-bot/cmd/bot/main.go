@@ -18,10 +18,17 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/telebot"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
+	"github.com/mrjvadi/creatorbot/member-bot/internal/events"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Config struct {
+	NatsURL    string `mapstructure:"NATS_URL"`
+	NatsUser   string `mapstructure:"NATS_USERNAME"`
+	NatsPass   string `mapstructure:"NATS_PASSWORD"`
+	FraudURL   string `mapstructure:"FRAUD_ENGINE_URL"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	PostgresDSN string `mapstructure:"MASTER_DSN"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
@@ -29,6 +36,7 @@ type Config struct {
 	RedisDB     int    `mapstructure:"REDIS_DB"`
 	LockAPIPort int    `mapstructure:"LOCK_API_PORT"`
 	LockAPIKey  string `mapstructure:"LOCK_API_SECRET"`
+	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	EncryptKey  string `mapstructure:"ENCRYPTION_KEY"`
 }
 
@@ -59,7 +67,7 @@ func main() {
 	var sender ports.BotSender = telebot.New(rawBot)
 
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, cache, log)
+	h := tgbot.NewHandler(sender, st, cache, log, cfg.OwnerID, cfg.EncryptKey)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

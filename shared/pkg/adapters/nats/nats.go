@@ -32,7 +32,7 @@ func New(cfg Config) (*Client, error) {
 		nats.ReconnectWait(2 * time.Second),
 		nats.MaxReconnects(-1),
 	}
-	if cfg.Username != "" {
+	if cfg.Username != "" && cfg.Password != "" {
 		opts = append(opts, nats.UserInfo(cfg.Username, cfg.Password))
 	}
 
@@ -105,3 +105,46 @@ func (c *Client) NC() *nats.Conn { return c.nc }
 
 // Close اتصال را می‌بندد.
 func (c *Client) Close() { c.nc.Close() }
+
+// ── Dead Letter Queue ──────────────────────────────────────
+
+const DLQSubject = "errors.dlq"
+
+// DLQMessage پیامی که به DLQ رفته.
+type DLQMessage struct {
+	OriginalSubject string `json:"original_subject"`
+	Payload         []byte `json:"payload"`
+	Error           string `json:"error"`
+	Attempts        int    `json:"attempts"`
+	Timestamp       int64  `json:"timestamp"`
+}
+
+// PublishToDLQ پیام fail شده را به DLQ ارسال می‌کند.
+func (c *Client) PublishToDLQ(subject string, payload []byte, err error, attempts int) {
+	msg := DLQMessage{
+		OriginalSubject: subject,
+		Payload:         payload,
+		Error:           err.Error(),
+		Attempts:        attempts,
+		Timestamp:       time.Now().Unix(),
+	}
+	c.PublishCore(DLQSubject, msg)
+}
+
+// SubscribeWithRetry با retry و DLQ subscribe می‌کند.
+// maxRetries: تعداد تلاش مجدد قبل از ارسال به DLQ
+func (c *Client) SubscribeWithRetry(subject string, maxRetries int, handler func([]byte) error) error {
+	return c.Subscribe(subject, func(data []byte) {
+		var lastErr error
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			if lastErr = handler(data); lastErr == nil {
+				return // موفق
+			}
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+			}
+		}
+		// همه تلاش‌ها ناموفق → DLQ
+		c.PublishToDLQ(subject, data, lastErr, maxRetries)
+	})
+}

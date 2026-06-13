@@ -98,7 +98,7 @@ func main() {
 	}
 
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, panel, gateway, cache, log, cfg.ChannelID)
+	h := tgbot.NewHandler(sender, st, panel, gateway, cache, log, cfg.ChannelID, cfg.AdminID, cfg.EncryptKey)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

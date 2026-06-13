@@ -81,7 +81,8 @@ func kbMain() *tele.ReplyMarkup {
 	kb.Reply(
 		kb.Row(kb.Text(btnWallet)),
 		kb.Row(kb.Text(btnDeposit), kb.Text(btnWithdraw)),
-		kb.Row(kb.Text(btnHistory), kb.Text(btnHelp)),
+		kb.Row(kb.Text(btnTransfer), kb.Text(btnHistory)),
+		kb.Row(kb.Text(btnHelp)),
 	)
 	return kb
 }
@@ -97,6 +98,10 @@ func kbCancelOnly() *tele.ReplyMarkup {
 type withdrawState struct{ step, addr string }
 
 var wStates = map[int64]*withdrawState{}
+
+type transferState struct{ step string; toID int64 }
+
+var tStates = map[int64]*transferState{}
 
 // ── /start ────────────────────────────────────────────────
 
@@ -289,11 +294,16 @@ func (h *Handler) onText(c tele.Context) error {
 	if st, ok := wStates[uid]; ok {
 		return h.handleWithdrawState(ctx, c, st, text)
 	}
+	// state انتقال
+	if st, ok := tStates[uid]; ok {
+		return h.handleTransferState(ctx, c, st, text)
+	}
 
 	switch text {
 	case btnWallet:   return h.onWallet(c)
 	case btnDeposit:  return h.onDeposit(c)
 	case btnWithdraw: return h.onWithdraw(c)
+	case btnTransfer: return h.onTransfer(c)
 	case btnHistory:  return h.onHistory(c)
 	case btnHelp:     return h.onHelp(c)
 	}
@@ -556,10 +566,89 @@ func (h *Handler) onAddCredit(c tele.Context) error {
 }
 
 // ── helpers ───────────────────────────────────────────────
-
-func parseUUID(s string) (interface{ String() string }, error) {
+, error) {
 	// از github.com/google/uuid استفاده کن
 	type uuidResult = interface{ String() string }
 	_ = time.Now()
-	return nil, fmt.Errorf("TODO: import uuid")
+	return uuid.Parse(s)
+}
+
+// ── 💸 انتقال داخلی ──────────────────────────────────────
+
+func (h *Handler) onTransfer(c tele.Context) error {
+	ctx := context.Background()
+	w, _ := h.wallet.GetOrCreate(ctx, c.Sender().ID)
+	if w.TotalTON() <= 0 {
+		return c.Send("❌ موجودی شما برای انتقال کافی نیست.", kbMain())
+	}
+
+	tStates[c.Sender().ID] = &transferState{step: "to_id"}
+	return c.Send(
+		"<b>💸 انتقال داخلی</b>\n\n"+
+			"Telegram ID کاربر مقصد را وارد کنید:\n"+
+			"(عدد شناسه تلگرام — مثال: <code>123456789</code>)",
+		tele.ModeHTML, kbCancelOnly(),
+	)
+}
+
+func (h *Handler) handleTransferState(ctx context.Context, c tele.Context, st *transferState, text string) error {
+	uid := c.Sender().ID
+
+	if text == btnCancel || text == "/cancel" {
+		delete(tStates, uid)
+		return c.Send("لغو شد.", kbMain())
+	}
+
+	switch st.step {
+	case "to_id":
+		var toID int64
+		fmt.Sscanf(strings.TrimSpace(text), "%d", &toID)
+		if toID <= 0 || toID == uid {
+			return c.Send("❌ ID نامعتبر یا نمی‌توانید به خودتان انتقال دهید.")
+		}
+
+		// بررسی وجود گیرنده
+		toWallet, err := h.wallet.Store().GetWallet(ctx, toID)
+		if err != nil || toWallet == nil {
+			return c.Send("❌ کاربر مقصد در سیستم ثبت نشده است.")
+		}
+
+		st.toID = toID
+		st.step = "amount"
+
+		fromWallet, _ := h.wallet.GetOrCreate(ctx, uid)
+		return c.Send(
+			fmt.Sprintf(
+				"گیرنده: <code>%d</code>\n\n"+
+					"موجودی شما: <b>%.4f TON</b>\n"+
+					"مبلغ انتقال را وارد کنید:",
+				toID, fromWallet.TotalTON(),
+			),
+			tele.ModeHTML, kbCancelOnly(),
+		)
+
+	case "amount":
+		amt, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+		if err != nil || amt <= 0 {
+			return c.Send("❌ عدد معتبر وارد کنید.")
+		}
+
+		toID := st.toID
+		delete(tStates, uid)
+
+		amountNano := wallet.TONToNano(amt)
+		if err := h.wallet.Transfer(ctx, uid, toID, amountNano, fmt.Sprintf("%d→%d", uid, toID)); err != nil {
+			return c.Send("❌ " + err.Error())
+		}
+
+		return c.Send(
+			fmt.Sprintf(
+				"✅ <b>انتقال انجام شد</b>\n\n"+
+					"💸 %.4f TON به <code>%d</code> ارسال شد.",
+				amt, toID,
+			),
+			tele.ModeHTML, kbMain(),
+		)
+	}
+	return nil
 }

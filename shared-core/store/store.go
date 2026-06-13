@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 	"errors"
 
 	"github.com/google/uuid"
@@ -393,3 +394,110 @@ func (s *Store) FindPlan(ctx context.Context, id string) (*models.Plan, error) {
 	return &plan, err
 }
 
+
+// ---- Capacity Engine ----
+
+// CountInstancesByOwnerAndType تعداد ربات‌های فعال یک کاربر از یک نوع.
+func (s *Store) CountInstancesByOwnerAndType(ctx context.Context, ownerID uuid.UUID, botType string) (int, error) {
+	var count int64
+	err := s.db.Conn().WithContext(ctx).
+		Model(&models.BotInstance{}).
+		Joins("JOIN bot_templates ON bot_templates.id = bot_instances.template_id").
+		Where("bot_instances.owner_id = ? AND bot_templates.type = ?", ownerID, botType).
+		Count(&count).Error
+	return int(count), err
+}
+
+// FindPlanWithLimits پلن را با limit هایش بارگذاری می‌کند.
+func (s *Store) FindPlanWithLimits(ctx context.Context, id string) (*models.Plan, error) {
+	var plan models.Plan
+	err := s.db.Conn().WithContext(ctx).
+		Preload("Limits").
+		Where("id = ?", id).First(&plan).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &plan, err
+}
+
+// SetPlanLimit محدودیت یک نوع ربات را برای پلن تنظیم می‌کند (upsert).
+func (s *Store) SetPlanLimit(ctx context.Context, planID uuid.UUID, botType string, maxBots int) error {
+	var existing models.PlanBotLimit
+	err := s.db.Conn().WithContext(ctx).
+		Where("plan_id = ? AND bot_type = ?", planID, botType).
+		First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.db.Conn().WithContext(ctx).Create(&models.PlanBotLimit{
+			PlanID:  planID,
+			BotType: botType,
+			MaxBots: maxBots,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	return s.db.Conn().WithContext(ctx).
+		Model(&existing).Update("max_bots", maxBots).Error
+}
+
+// CanCreateInstance بررسی کامل ظرفیت — قلب Capacity Engine.
+// خروجی: (مجاز است؟, تعداد فعلی, حداکثر مجاز, خطا)
+func (s *Store) CanCreateInstance(ctx context.Context, userID uuid.UUID, botType string) (bool, int, int, error) {
+	sub, err := s.GetActiveSubscription(ctx, userID)
+	if err != nil {
+		return false, 0, 0, err
+	}
+	if sub == nil {
+		return false, 0, 0, nil // اشتراکی ندارد
+	}
+	// انقضا
+	if sub.ExpiresAt != nil && timeNow().After(*sub.ExpiresAt) {
+		return false, 0, 0, nil
+	}
+
+	plan, err := s.FindPlanWithLimits(ctx, sub.PlanID.String())
+	if err != nil || plan == nil {
+		return false, 0, 0, err
+	}
+
+	limit := plan.LimitFor(botType)
+	if limit <= 0 {
+		return false, 0, limit, nil // این نوع ربات در پلن مجاز نیست
+	}
+
+	current, err := s.CountInstancesByOwnerAndType(ctx, userID, botType)
+	if err != nil {
+		return false, current, limit, err
+	}
+
+	return current < limit, current, limit, nil
+}
+
+func timeNow() time.Time { return time.Now() }
+
+func (s *Store) FindUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	var u models.User
+	err := s.db.Conn().WithContext(ctx).Where("id = ?", id).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &u, err
+}
+
+func (s *Store) FindServerByID(ctx context.Context, id string) (*models.Server, error) {
+	var s2 models.Server
+	err := s.db.Conn().WithContext(ctx).Where("id = ?", id).First(&s2).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &s2, err
+}
+
+func (s *Store) FindInstanceByContainerName(ctx context.Context, name string) (*models.BotInstance, error) {
+	var inst models.BotInstance
+	err := s.db.Conn().WithContext(ctx).Where("container_name = ?", name).First(&inst).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &inst, err
+}

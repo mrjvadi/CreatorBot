@@ -10,6 +10,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
+	"github.com/mrjvadi/creatorbot/shared-core/models"
 )
 
 // AgentAuthRequest درخواست احراز هویت agentmanager.
@@ -110,4 +113,43 @@ func (h *Handler) BotAuth(c *gin.Context) {
 		"api_key":   apiKey,
 		"expires_at": expiresAt.Unix(),
 	})
+}
+
+// AgentHeartbeat heartbeat از agent را پردازش می‌کند.
+func (h *Handler) AgentHeartbeat(c *gin.Context) {
+	var hb protocol.HeartbeatMsg
+	if err := c.ShouldBindJSON(&hb); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.store.MarkServerOnlineByServerID(c.Request.Context(), hb.ServerID)
+	ok(c, nil)
+}
+
+// AgentResult نتیجه یک command از agent را پردازش می‌کند.
+func (h *Handler) AgentResult(c *gin.Context) {
+	var result protocol.ResultMsg
+	if err := c.ShouldBindJSON(&result); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+	inst, _ := h.store.FindInstanceByContainerName(ctx, result.ContainerName)
+	if inst == nil {
+		ok(c, nil)
+		return
+	}
+
+	switch {
+	case result.Success && result.CommandType == string(protocol.MsgDeploy):
+		h.store.UpdateInstanceStatus(ctx, inst.ID, models.StatusRunning)
+	case !result.Success:
+		h.store.UpdateInstanceStatus(ctx, inst.ID, models.StatusError)
+		h.log.Error("agent reported failure",
+			ports.F("container", result.ContainerName),
+			ports.F("err", result.Error))
+	}
+
+	ok(c, nil)
 }

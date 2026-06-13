@@ -70,3 +70,53 @@ func (s *Store) AddBotMembership(ctx context.Context, m *models.BotChannelMember
 		Assign(models.BotChannelMembership{JoinedAt: m.JoinedAt, LastVerified: time.Now()}).
 		FirstOrCreate(m).Error
 }
+
+func (s *Store) FindLocksByOwnerID(ctx context.Context, ownerID uuid.UUID) ([]models.Lock, error) {
+	var locks []models.Lock
+	err := s.db.Conn().WithContext(ctx).
+		Where("owner_id = ?", ownerID).
+		Order("created_at DESC").Find(&locks).Error
+	return locks, err
+}
+
+func (s *Store) DeleteLock(ctx context.Context, lockID uuid.UUID) error {
+	return s.db.Conn().WithContext(ctx).Delete(&models.Lock{}, "id = ?", lockID).Error
+}
+
+func (s *Store) ListOwners(ctx context.Context) ([]models.Owner, error) {
+	var owners []models.Owner
+	err := s.db.Conn().WithContext(ctx).Order("created_at DESC").Find(&owners).Error
+	return owners, err
+}
+
+func (s *Store) ListAllLocks(ctx context.Context) ([]models.Lock, error) {
+	var locks []models.Lock
+	err := s.db.Conn().WithContext(ctx).Order("created_at DESC").Find(&locks).Error
+	return locks, err
+}
+
+func (s *Store) ApprovePayment(ctx context.Context, payID uuid.UUID) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.Payment{}).Where("id = ?", payID).
+		Update("status", "confirmed").Error
+}
+
+func (s *Store) CreatePayment(ctx context.Context, p *models.Payment) error {
+	return s.db.Conn().WithContext(ctx).Create(p).Error
+}
+
+func (s *Store) ApprovePayment(ctx context.Context, id uuid.UUID) error {
+	return s.db.Conn().WithContext(ctx).Model(&models.Payment{}).
+		Where("id = ?", id).Update("status", "confirmed").Error
+}
+
+func (s *Store) FindPendingPayments(ctx context.Context) ([]models.Payment, error) {
+	var list []models.Payment
+	return list, s.db.Conn().WithContext(ctx).Where("status = 'pending'").Find(&list).Error
+}
+
+func (s *Store) UpdateBalance(ctx context.Context, ownerID uuid.UUID, amount float64) error {
+	return s.db.Conn().WithContext(ctx).Model(&models.Owner{}).
+		Where("id = ?", ownerID).
+		UpdateColumn("balance", gorm.Expr("balance + ?", amount)).Error
+}

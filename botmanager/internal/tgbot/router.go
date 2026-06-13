@@ -264,6 +264,9 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st userState, 
 		days, _ := strconv.Atoi(st.Data["days"])
 		return h.adminPlanAdd(ctx, c, st.Data["tmpl_id"], st.Data["name"], days, price)
 
+	case stepPlanLimits:
+		return h.adminPlanSetLimits(ctx, c, st.Data["plan_id"], text)
+
 	// ══ کاربر ═════════════════════════════════════════════
 	case stepUserAction:
 		return h.adminUserHandleAction(ctx, c, st.Data["user_id"], text)

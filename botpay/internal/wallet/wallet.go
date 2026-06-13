@@ -288,3 +288,46 @@ func (s *Service) Store() *store.Store { return s.store }
 
 // suppress
 var _ = uuid.New
+
+// Transfer انتقال داخلی بین دو کاربر (P2P).
+func (s *Service) Transfer(ctx context.Context, fromTelegramID, toTelegramID int64, amountNano int64, desc string) error {
+	if fromTelegramID == toTelegramID {
+		return fmt.Errorf("cannot transfer to yourself")
+	}
+
+	fromWallet, err := s.store.GetWallet(ctx, fromTelegramID)
+	if err != nil || fromWallet == nil {
+		return fmt.Errorf("sender wallet not found")
+	}
+	toWallet, err := s.store.GetWallet(ctx, toTelegramID)
+	if err != nil || toWallet == nil {
+		return fmt.Errorf("recipient wallet not found")
+	}
+
+	if !fromWallet.HasEnough(amountNano) {
+		return fmt.Errorf("insufficient balance")
+	}
+
+	_, _, err = s.store.Transfer(ctx, fromWallet.ID, toWallet.ID, amountNano, desc)
+	if err != nil {
+		return fmt.Errorf("transfer: %w", err)
+	}
+
+	// اعلان به گیرنده
+	if s.notify != nil {
+		msg := fmt.Sprintf(
+			"💸 <b>انتقال دریافت شد</b>\n\n"+
+				"💰 مبلغ: <b>%.4f TON</b>\n"+
+				"👤 از: <code>%d</code>",
+			NanoToTON(amountNano), fromTelegramID,
+		)
+		s.notify.SendHTML(ctx, toTelegramID, msg)
+	}
+
+	s.log.Info("transfer done",
+		ports.F("from", fromTelegramID),
+		ports.F("to", toTelegramID),
+		ports.F("amount_ton", NanoToTON(amountNano)))
+
+	return nil
+}

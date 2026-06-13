@@ -322,3 +322,73 @@ func (s *Store) GetStats(ctx context.Context) (*Stats, error) {
 	stats.TotalPayments = float64(payments.Sum) / 1e9
 	return &stats, nil
 }
+
+// ── Internal Transfer ──────────────────────────────────────
+
+// Transfer مبلغ را از wallet کاربر A به wallet کاربر B منتقل می‌کند.
+// atomic — هر دو آپدیت در یک transaction انجام می‌شود.
+func (s *Store) Transfer(ctx context.Context, fromID, toID uuid.UUID, amountNano int64, desc string) (*Transaction, *Transaction, error) {
+	var fromTx, toTx *Transaction
+
+	err := s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		// قفل هر دو wallet
+		var from, to Wallet
+		if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", fromID).First(&from).Error; err != nil {
+			return fmt.Errorf("from wallet: %w", err)
+		}
+		if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", toID).First(&to).Error; err != nil {
+			return fmt.Errorf("to wallet: %w", err)
+		}
+
+		// بررسی موجودی
+		if !from.HasEnough(amountNano) {
+			return fmt.Errorf("insufficient balance")
+		}
+
+		// کسر از فرستنده (اول از credit، بعد TON)
+		fromUpdates := map[string]any{}
+		var creditUsed, tonUsed int64
+		if from.Credit >= amountNano {
+			creditUsed = amountNano
+		} else {
+			creditUsed = from.Credit
+			tonUsed = amountNano - creditUsed
+		}
+		if creditUsed > 0 {
+			fromUpdates["credit"] = gorm.Expr("credit - ?", creditUsed)
+		}
+		if tonUsed > 0 {
+			fromUpdates["ton_balance"] = gorm.Expr("ton_balance - ?", tonUsed)
+		}
+		db.Model(&Wallet{}).Where("id = ?", fromID).Updates(fromUpdates)
+
+		// افزایش به گیرنده (به TON)
+		db.Model(&Wallet{}).Where("id = ?", toID).
+			UpdateColumn("ton_balance", gorm.Expr("ton_balance + ?", amountNano))
+
+		now := time.Now()
+		fromTx = &Transaction{
+			WalletID:    fromID,
+			Type:        TxPayment,
+			Status:      TxConfirmed,
+			Amount:      -amountNano,
+			Description: "انتقال به کاربر: " + desc,
+			ConfirmedAt: &now,
+		}
+		toTx = &Transaction{
+			WalletID:    toID,
+			Type:        TxDeposit,
+			Status:      TxConfirmed,
+			Amount:      amountNano,
+			Description: "دریافت از انتقال: " + desc,
+			ConfirmedAt: &now,
+		}
+		if err := db.Create(fromTx).Error; err != nil {
+			return err
+		}
+		return db.Create(toTx).Error
+	})
+	return fromTx, toTx, err
+}

@@ -33,7 +33,8 @@ const (
 	stepPlanTmpl  step = "plan:tmpl"
 	stepPlanName  step = "plan:name"
 	stepPlanDays  step = "plan:days"
-	stepPlanPrice step = "plan:price"
+	stepPlanPrice  step = "plan:price"
+	stepPlanLimits step = "plan:limits" // ورود limit ها: vpn=5,uploader=3
 
 	// مدیریت کاربر
 	stepUserAction step = "user:action"

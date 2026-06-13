@@ -20,6 +20,7 @@ import (
 )
 
 type Config struct {
+	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	ChannelID   int64  `mapstructure:"CHANNEL_ID"`
 	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
@@ -60,7 +61,7 @@ func main() {
 	var sender ports.BotSender = telebot.New(rawBot)
 
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, db, cache, log)
+	h := tgbot.NewHandler(sender, st, db, cache, log, cfg.OwnerID)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

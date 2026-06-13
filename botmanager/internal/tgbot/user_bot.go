@@ -522,3 +522,52 @@ func (h *Handler) kbUserFull(ctx context.Context, uid int64, sub *models.Subscri
 	}
 	return kb
 }
+
+// checkBuildCapacityForType بررسی ظرفیت به تفکیک نوع ربات (Capacity Engine).
+func (h *Handler) checkBuildCapacityForType(ctx context.Context, c tele.Context, botType string) (bool, error) {
+	uid := c.Sender().ID
+	u, _ := h.getOrCreateUser(ctx, c)
+	if u == nil {
+		return false, c.Send(h.t(ctx, uid, i18n.KeyError))
+	}
+
+	ok, current, limit, err := h.store.CanCreateInstance(ctx, u.ID, botType)
+	if err != nil {
+		h.log.Error("capacity check", ports.F("err", err))
+		return false, c.Send(h.t(ctx, uid, i18n.KeyError))
+	}
+
+	if ok {
+		return true, nil
+	}
+
+	// دلیل رد را تشخیص بده
+	sub, _ := h.store.GetActiveSubscription(ctx, u.ID)
+	if sub == nil {
+		// اشتراکی ندارد → پیشنهاد پلن
+		kb := &tele.ReplyMarkup{}
+		kb.Inline(
+			kb.Row(kb.Data("🆓 شروع رایگان", "start_free")),
+			kb.Row(kb.Data("💎 مشاهده پلن‌ها", "show_plans")),
+		)
+		return false, c.Send(h.t(ctx, uid, i18n.KeyNoPlan), kb)
+	}
+
+	if limit <= 0 {
+		// این نوع ربات در پلن مجاز نیست
+		kb := &tele.ReplyMarkup{}
+		kb.Inline(kb.Row(kb.Data("💎 ارتقای پلن", "show_plans")))
+		return false, c.Send(fmt.Sprintf(
+			"❌ پلن فعلی شما اجازه ساخت ربات <b>%s</b> را نمی‌دهد.\n\nبرای دسترسی، پلن خود را ارتقا دهید.",
+			botType,
+		), tele.ModeHTML, kb)
+	}
+
+	// به سقف رسیده
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(kb.Row(kb.Data("💎 ارتقای پلن", "show_plans")))
+	return false, c.Send(fmt.Sprintf(
+		"❌ به حداکثر ربات <b>%s</b> رسیده‌اید (%d از %d).\n\nبرای ساخت بیشتر، پلن خود را ارتقا دهید.",
+		botType, current, limit,
+	), tele.ModeHTML, kb)
+}

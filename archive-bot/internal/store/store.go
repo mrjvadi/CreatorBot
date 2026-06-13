@@ -48,3 +48,32 @@ func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) { return "", nil }
 	return s2.Value, err
 }
+
+func (s *Store) UpsertUserByID(ctx context.Context, telegramID int64, username, firstName string) {
+	u := &models.User{TelegramID: telegramID, Username: username, FirstName: firstName}
+	s.db.Conn().WithContext(ctx).
+		Where(models.User{TelegramID: telegramID}).
+		Assign(*u).FirstOrCreate(u)
+}
+
+func (s *Store) FindFilesByCategory(ctx context.Context, catIDStr string) ([]models.File, error) {
+	var files []models.File
+	err := s.db.Conn().WithContext(ctx).
+		Where("category_id = ?", catIDStr).
+		Order("created_at DESC").
+		Find(&files).Error
+	return files, err
+}
+
+func (s *Store) FindCategoryByID(ctx context.Context, idStr string) (*models.Category, error) {
+	var cat models.Category
+	err := s.db.Conn().WithContext(ctx).Where("id = ?", idStr).First(&cat).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &cat, err
+}
+
+func (s *Store) DeleteFile(ctx context.Context, idStr string) error {
+	return s.db.Conn().WithContext(ctx).Delete(&models.File{}, "id = ?", idStr).Error
+}

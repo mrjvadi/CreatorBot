@@ -47,6 +47,10 @@ func New(cfg Config) (*Store, error) {
 	}, nil
 }
 
+// Database raw *mongo.Database را برمی‌گرداند.
+// برای configstore و سایر کدهایی که مستقیماً به driver نیاز دارند.
+func (s *Store) Database() *mongo.Database { return s.db }
+
 func (s *Store) Ping(ctx context.Context) error {
 	return s.client.Ping(ctx, nil)
 }

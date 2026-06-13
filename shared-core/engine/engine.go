@@ -70,6 +70,9 @@ type Engine struct {
 	// NATS
 	Nats *natsclient.Client
 
+	// Config — در-حافظه config از MongoDB
+	Config *configstore.Store
+
 	Log ports.Logger
 }
 
@@ -122,6 +125,9 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 	stats    := docstore.NewStatStore(ds, instanceID)
 	users    := docstore.NewBotUserStore(ds, instanceID)
 
+	// ── Config از MongoDB ────────────────────────────────────
+	cfgStore := configstore.New(ds, instanceID)
+
 	e := &Engine{
 		cfg:        cfg,
 		BotID:      botID,
@@ -132,6 +138,7 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 		Settings:   settings,
 		Stats:      stats,
 		Users:      users,
+		Config:     cfgStore,
 		Log:        log,
 	}
 
@@ -156,6 +163,20 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 
 // Start heartbeat را شروع می‌کند (اگه NATS وصل باشد).
 func (e *Engine) Start(ctx context.Context) {
+	// ── بارگذاری config از MongoDB ────────────────────────────
+	if _, err := e.Config.Load(ctx); err != nil {
+		e.Log.Error("config load failed", ports.F("err", err))
+	} else {
+		e.Log.Info("config loaded", ports.F("bot_id", e.BotID))
+	}
+
+	// ── subscribe به config.updated از NATS ──────────────────
+	if e.Nats != nil {
+		configstore.RegisterNATSHandler(e.Config, e.Nats, e.Log)
+		// fallback poller در صورت قطع NATS
+		go e.Config.RunFallbackPoller(ctx)
+	}
+
 	if e.Nats == nil || e.cfg.ServerID == "" {
 		return
 	}

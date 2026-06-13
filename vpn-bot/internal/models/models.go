@@ -32,7 +32,6 @@ type User struct {
 	Discount   float64    `gorm:"default:0"` // reseller discount %
 }
 
-// Panel stores connection info for a VPN panel instance.
 // Type must match a registered ports.VPNPanel adapter name.
 type Panel struct {
 	Base

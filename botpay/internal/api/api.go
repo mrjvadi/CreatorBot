@@ -11,6 +11,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -47,6 +48,7 @@ func (h *Handler) Register(r *gin.Engine) {
 	api.POST("/invoice/create",  h.createInvoice)
 	api.POST("/invoice/status",  h.invoiceStatus)
 	api.POST("/credit/add",      h.addCredit)   // فقط admin
+	api.POST("/transfer",        h.transfer)
 }
 
 // ── Auth middleware ────────────────────────────────────────
@@ -185,8 +187,17 @@ func (h *Handler) invoiceStatus(c *gin.Context) {
 		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	// TODO: از store بخوان
-	ok(c, gin.H{"code": req.Code, "status": "pending"})
+	ctx := c.Request.Context()
+	inv, err := h.wallet.Store().FindInvoiceByCode(ctx, req.Code)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if inv == nil {
+		ok(c, gin.H{"code": req.Code, "status": "not_found"})
+		return
+	}
+	ok(c, gin.H{"code": inv.Code, "status": inv.Status, "paid_at": inv.PaidAt})
 }
 
 // POST /credit/add — افزایش اعتبار (فقط ادمین)
@@ -220,6 +231,38 @@ func (h *Handler) addCredit(c *gin.Context) {
 	}
 
 	ok(c, gin.H{"added_ton": req.AmountTON})
+}
+
+// POST /transfer — انتقال داخلی
+// Body: { "from_telegram_id": 123, "to_telegram_id": 456, "amount_ton": 1.0 }
+func (h *Handler) transfer(c *gin.Context) {
+	serviceID := c.GetString("service_id")
+
+	var req struct {
+		FromTelegramID int64   `json:"from_telegram_id" binding:"required"`
+		ToTelegramID   int64   `json:"to_telegram_id" binding:"required"`
+		AmountTON      float64 `json:"amount_ton" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	_ = serviceID
+	amountNano := wallet.TONToNano(req.AmountTON)
+	ctx := c.Request.Context()
+
+	if err := h.wallet.Transfer(ctx, req.FromTelegramID, req.ToTelegramID, amountNano,
+		fmt.Sprintf("api-transfer-%s", serviceID)); err != nil {
+		if strings.Contains(err.Error(), "insufficient") {
+			fail(c, http.StatusPaymentRequired, err.Error())
+			return
+		}
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	ok(c, gin.H{"transferred_ton": req.AmountTON})
 }
 
 // ── helpers ────────────────────────────────────────────────
