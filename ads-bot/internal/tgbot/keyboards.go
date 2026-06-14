@@ -93,7 +93,7 @@ func fmtCampaign(c store.Campaign) string {
 			"🆔 <code>%s</code>",
 		statusLabel(c.Status), c.Name,
 		c.Budget, c.Spent,
-		c.JoinCount, c.CPJ,
+		c.TotalJoins, c.CPJ,
 		c.ID,
 	)
 }

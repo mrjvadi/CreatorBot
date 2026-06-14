@@ -165,6 +165,18 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 		ports.F("amount_ton", event.AmountTON),
 		ports.F("tx", event.TxHash))
 
+	// ── publish wallet.deposit برای سرویس‌های دیگر ──────────
+	if s.nc != nil {
+		s.nc.PublishCore("wallet.deposit", map[string]any{
+			"telegram_id":  w.TelegramID,
+			"wallet_id":    w.ID,
+			"amount_nano":  event.AmountNano,
+			"amount_ton":   event.AmountTON,
+			"tx_hash":      event.TxHash,
+			"invoice_code": event.InvoiceCode,
+		})
+	}
+
 	// ── اعلان فوری به کاربر ─────────────────────────────────
 	if s.notify != nil {
 		// موجودی جدید

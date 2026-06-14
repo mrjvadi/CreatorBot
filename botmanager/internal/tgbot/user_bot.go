@@ -31,12 +31,12 @@ func (h *Handler) userBotsList(ctx context.Context, c tele.Context) error {
 	instances, _ := h.store.ListInstancesByOwner(ctx, u.ID)
 	sub, _ := h.store.GetActiveSubscription(ctx, u.ID)
 
-	// کاربر هیچ ربات و هیچ اشتراکی ندارد
+	// بدون ربات و اشتراک
 	if len(instances) == 0 && sub == nil {
 		return h.userShowWelcome(ctx, c, u)
 	}
 
-	// کاربر اشتراک دارد ولی ربات ندارد
+	// اشتراک دارد ولی ربات ندارد
 	if len(instances) == 0 {
 		plan, _ := h.store.FindPlan(ctx, sub.PlanID.String())
 		planName := ""
@@ -44,70 +44,107 @@ func (h *Handler) userBotsList(ctx context.Context, c tele.Context) error {
 			planName = plan.Name
 		}
 		kb := &tele.ReplyMarkup{}
-		kb.Inline(kb.Row(kb.Data(h.t(ctx, c.Sender().ID, i18n.KeyBuildWithLink), "how_to_build")))
+		kb.Inline(kb.Row(kb.Data("➕ ایجاد سرویس", "svc_create")))
 		return c.Send(
-			h.t(ctx, c.Sender().ID, i18n.KeySubActiveNoBot, planName),
+			h.t(ctx, uid, i18n.KeySubActiveNoBot, planName),
 			tele.ModeHTML, kb,
 		)
 	}
 
-	// نمایش ربات‌ها
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("<b>🤖 ربات‌های شما</b> (%d عدد)\n\n", len(instances)))
+	// ── ارسال هر سرویس به صورت جداگانه ───────────────────
+	// اول خلاصه
+	header := fmt.Sprintf("<b>🤖 سرویس‌های من</b> (%d سرویس)\n", len(instances))
+	c.Send(header, tele.ModeHTML)
 
-	for i, inst := range instances {
+	for _, inst := range instances {
+		// نوع سرویس از template
+		serviceType := "سرویس"
+		serviceIcon := "🤖"
+		if tmpl, _ := h.store.FindTemplate(ctx, inst.TemplateID); tmpl != nil {
+			switch tmpl.Type {
+			case "vpn":
+				serviceType = "VPN"
+				serviceIcon = "🌐"
+			case "uploader":
+				serviceType = "آپلودر"
+				serviceIcon = "📤"
+			case "member":
+				serviceType = "قفل ممبرشیپ"
+				serviceIcon = "🔒"
+			case "archive":
+				serviceType = "آرشیو"
+				serviceIcon = "📦"
+			}
+		}
+
 		icon := statusIcon(inst.Status)
-		statusLabel := statusLabel(inst.Status)
-		sb.WriteString(fmt.Sprintf(
-			"%s <b>%s</b>\n"+
-				"   وضعیت: %s\n",
-			icon, inst.ContainerName, statusLabel,
-		))
+		statusLbl := statusLabel(inst.Status)
+
+		// متن کارت سرویس
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("%s <b>%s</b>\n", serviceIcon, serviceType))
+		sb.WriteString(fmt.Sprintf("📛 نام: <code>%s</code>\n", inst.ContainerName))
+		sb.WriteString(fmt.Sprintf("%s وضعیت: <b>%s</b>\n", icon, statusLbl))
 		if inst.ExpiresAt != nil {
 			rem := time.Until(*inst.ExpiresAt)
 			if rem < 0 {
-				sb.WriteString("   ⏰ منقضی شده\n")
+				sb.WriteString("⏰ <b>منقضی شده</b>\n")
 			} else if rem < 72*time.Hour {
-				sb.WriteString(fmt.Sprintf("   ⚠️ %d ساعت تا انقضا\n", int(rem.Hours())))
+				sb.WriteString(fmt.Sprintf("⚠️ %d ساعت تا انقضا\n", int(rem.Hours())))
 			} else {
-				sb.WriteString(fmt.Sprintf("   ⏰ %d روز مانده\n", int(rem.Hours()/24)))
+				sb.WriteString(fmt.Sprintf("⏰ %d روز مانده\n", int(rem.Hours()/24)))
 			}
 		}
-		if i < len(instances)-1 {
-			sb.WriteString("\n")
+
+		// دکمه‌های مخصوص این سرویس
+		id := inst.ID.String()
+		kb := &tele.ReplyMarkup{}
+
+		switch inst.Status {
+		case "running":
+			kb.Inline(
+				kb.Row(
+					kb.Data("📊 آمار", "svc_stats:"+id),
+					kb.Data("⚙️ تنظیمات", "svc_settings:"+id),
+				),
+				kb.Row(
+					kb.Data("🔄 ری‌استارت", "bot_restart:"+id),
+					kb.Data("⏸ توقف", "bot_stop:"+id),
+				),
+				kb.Row(kb.Data("🗑 حذف سرویس", "bot_delete:"+id)),
+			)
+		case "stopped":
+			kb.Inline(
+				kb.Row(
+					kb.Data("▶️ شروع", "bot_start:"+id),
+					kb.Data("🗑 حذف", "bot_delete:"+id),
+				),
+			)
+		case "pending", "provisioning":
+			kb.Inline(
+				kb.Row(kb.Data("🔄 بررسی وضعیت", "svc_status:"+id)),
+			)
+		case "failed":
+			kb.Inline(
+				kb.Row(
+					kb.Data("🔄 تلاش مجدد", "bot_restart:"+id),
+					kb.Data("🗑 حذف", "bot_delete:"+id),
+				),
+			)
+		default:
+			kb.Inline(kb.Row(kb.Data("🗑 حذف", "bot_delete:"+id)))
 		}
+
+		c.Send(sb.String(), tele.ModeHTML, kb)
 	}
 
-	// نمایش وضعیت اشتراک
-	if sub != nil {
-		plan, _ := h.store.FindPlan(ctx, sub.PlanID.String())
-		if plan != nil {
-			sb.WriteString("\n──────────────\n")
-			remaining := "♾ ابدی"
-			if sub.ExpiresAt != nil {
-				rem := time.Until(*sub.ExpiresAt)
-				if rem < 0 {
-					remaining = "❌ منقضی شده"
-				} else {
-					remaining = fmt.Sprintf("⏰ %d روز مانده", int(rem.Hours()/24))
-				}
-			}
-			sb.WriteString(fmt.Sprintf(
-				"📋 پلن: <b>%s</b>\n🤖 %d از %d ربات\n%s",
-				plan.Name, sub.BotCount, plan.MaxBots, remaining,
-			))
-		}
-	}
-
-	// نمایش موجودی از botpay
-	if h.pay != nil {
-		bal, err := h.pay.Balance(ctx, u.TelegramID)
-		if err == nil && bal.Total > 0 {
-			sb.WriteString(fmt.Sprintf("\n💳 موجودی کیف پول: <b>%.4f TON</b>", bal.Total))
-		}
-	}
-
-	return c.Send(sb.String(), tele.ModeHTML, h.kbUserFull(ctx, uid, sub))
+	// دکمه ایجاد سرویس جدید در آخر
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("➕ ایجاد سرویس جدید", "svc_create")),
+		kb.Row(kb.Data("🔙 بازگشت", "back_main")),
+	)
+	return c.Send("━━━━━━━━━━━━━━━━━━━━", kb)
 }
 
 // userShowWelcome برای کاربرانی که هیچ چیز ندارند.
@@ -365,10 +402,23 @@ func (h *Handler) executePlanPurchase(ctx context.Context, c tele.Context, planI
 		t := time.Now().AddDate(0, 0, plan.DurationDay)
 		expiresAt = &t
 	}
-	h.store.CreateSubscription(ctx, &models.Subscription{
+	newSub := &models.Subscription{
 		UserID: u.ID, PlanID: plan.ID,
 		StartedAt: time.Now(), ExpiresAt: expiresAt, IsActive: true,
-	})
+	}
+	h.store.CreateSubscription(ctx, newSub)
+
+	// ── reset quota cache ─────────────────────────────────
+	// plan.upgraded → سرویس‌ها quota را ریست می‌کنند
+	if h.nc != nil {
+		h.nc.PublishCore("plan.upgraded", map[string]any{
+			"user_id":     u.ID,
+			"telegram_id": u.TelegramID,
+			"plan_id":     plan.ID,
+			"plan_name":   plan.Name,
+			"max_bots":    plan.MaxBots,
+		})
+	}
 
 	h.log.Info("plan purchased", ports.F("user", u.TelegramID), ports.F("plan", plan.Name))
 
@@ -386,7 +436,7 @@ func (h *Handler) executePlanPurchase(ctx context.Context, c tele.Context, planI
 
 func (h *Handler) checkPlanAfterDeposit(ctx context.Context, c tele.Context, planID, invoiceCode string) error {
 	defer c.Respond()
-	
+
 	plan, _ := h.store.FindPlan(ctx, planID)
 	if plan == nil {
 		return c.Edit("❌ پلن یافت نشد.")
@@ -505,24 +555,6 @@ func (h *Handler) userSupport(c tele.Context) error {
 	return c.Send(h.t(ctx, uid, i18n.KeySupportText), tele.ModeHTML, h.kbUser(ctx, uid))
 }
 
-func (h *Handler) kbUserFull(ctx context.Context, uid int64, sub *models.Subscription) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	hasSub := sub != nil && sub.IsActive
-	if hasSub {
-		kb.Reply(
-			kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyMenuMyBots))),
-			kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyMenuHelp)), kb.Text(h.btn(ctx, uid, i18n.KeyMenuSupport))),
-		)
-	} else {
-		kb.Reply(
-			kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyMenuMyBots))),
-			kb.Row(kb.Text("💎 خرید پلن")),
-			kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyMenuHelp)), kb.Text(h.btn(ctx, uid, i18n.KeyMenuSupport))),
-		)
-	}
-	return kb
-}
-
 // checkBuildCapacityForType بررسی ظرفیت به تفکیک نوع ربات (Capacity Engine).
 func (h *Handler) checkBuildCapacityForType(ctx context.Context, c tele.Context, botType string) (bool, error) {
 	uid := c.Sender().ID
@@ -570,4 +602,94 @@ func (h *Handler) checkBuildCapacityForType(ctx context.Context, c tele.Context,
 		"❌ به حداکثر ربات <b>%s</b> رسیده‌اید (%d از %d).\n\nبرای ساخت بیشتر، پلن خود را ارتقا دهید.",
 		botType, current, limit,
 	), tele.ModeHTML, kb)
+}
+
+// instanceAction Stop/Start/Restart/Delete یک instance را از طریق apimanager انجام می‌دهد.
+func (h *Handler) instanceAction(ctx context.Context, c tele.Context, instIDStr, action string) error {
+	defer c.Respond()
+	uid := c.Sender().ID
+
+	inst, err := h.store.FindInstance(ctx, instIDStr)
+	if err != nil || inst == nil {
+		return c.Edit("❌ ربات یافت نشد.")
+	}
+
+	// بررسی owner بودن
+	u, _ := h.getOrCreateUser(ctx, c)
+	if u == nil || inst.OwnerID != u.ID {
+		return c.Edit("❌ دسترسی ندارید.")
+	}
+
+	// publish command به apimanager از طریق NATS
+	subject := fmt.Sprintf("instance.%s", action)
+	if h.nc != nil {
+		h.nc.PublishCore(subject, map[string]any{
+			"instance_id":    inst.ID,
+			"container_name": inst.ContainerName,
+			"server_id":      inst.ServerID,
+			"action":         action,
+		})
+	}
+
+	labels := map[string]string{
+		"stop":    "⏹ دستور توقف ارسال شد",
+		"start":   "▶️ دستور شروع ارسال شد",
+		"restart": "🔄 دستور ری‌استارت ارسال شد",
+		"delete":  "🗑 دستور حذف ارسال شد",
+	}
+
+	h.log.Info("instance action",
+		ports.F("instance", inst.ID),
+		ports.F("action", action),
+		ports.F("user", uid))
+
+	return c.Edit(labels[action] + "\n\n" + inst.ContainerName)
+}
+
+// bot_stop referenced in router.go
+
+// ── Wallet Handlers ──────────────────────────────────────
+
+// ── Communities Handlers ─────────────────────────────────
+
+// ── Ads Handlers ─────────────────────────────────────────
+
+// ── Settings Handlers ─────────────────────────────────────
+
+// sendWalletHome نمایش صفحه کیف پول با موجودی.
+
+// instanceStatus وضعیت فعلی سرویس را نمایش می‌دهد.
+func (h *Handler) instanceStatus(ctx context.Context, c tele.Context, idStr string) error {
+	defer c.Respond()
+	inst, err := h.store.FindInstance(ctx, idStr)
+	if err != nil || inst == nil {
+		return c.Edit("❌ سرویس یافت نشد.")
+	}
+	icon := statusIcon(inst.Status)
+	lbl := statusLabel(inst.Status)
+	return c.Edit(fmt.Sprintf("%s وضعیت سرویس: <b>%s</b>", icon, lbl), tele.ModeHTML)
+}
+
+// instanceStats آمار ساده یک سرویس.
+func (h *Handler) instanceStats(ctx context.Context, c tele.Context, idStr string) error {
+	defer c.Respond()
+	inst, err := h.store.FindInstance(ctx, idStr)
+	if err != nil || inst == nil {
+		return c.Edit("❌ سرویس یافت نشد.")
+	}
+	msg := fmt.Sprintf(
+		"📊 <b>آمار سرویس</b>\n\n"+
+			"📛 نام: <code>%s</code>\n"+
+			"%s وضعیت: <b>%s</b>",
+		inst.ContainerName,
+		statusIcon(inst.Status),
+		statusLabel(inst.Status),
+	)
+	return c.Edit(msg, tele.ModeHTML)
+}
+
+// adminUserAction اعمال action روی کاربر.
+func (h *Handler) adminUserAction(ctx context.Context, c tele.Context, idStr, action string) error {
+	defer c.Respond()
+	return h.adminUserHandleAction(ctx, c, idStr, action)
 }

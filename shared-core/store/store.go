@@ -8,10 +8,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
-	"errors"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -229,7 +229,7 @@ func (s *Store) UpdateInstanceStatusByContainerName(ctx context.Context, contain
 func (s *Store) MarkServerOnlineByServerID(ctx context.Context, serverID string) error {
 	return s.db.Conn().WithContext(ctx).
 		Model(&models.Server{}).
-		Where("id::text = ?", serverID).
+		Where("id = ?::uuid", serverID).
 		Updates(map[string]any{"is_online": true, "last_seen": gorm.Expr("NOW()")}).Error
 }
 
@@ -394,17 +394,20 @@ func (s *Store) FindPlan(ctx context.Context, id string) (*models.Plan, error) {
 	return &plan, err
 }
 
-
 // ---- Capacity Engine ----
 
 // CountInstancesByOwnerAndType تعداد ربات‌های فعال یک کاربر از یک نوع.
 func (s *Store) CountInstancesByOwnerAndType(ctx context.Context, ownerID uuid.UUID, botType string) (int, error) {
 	var count int64
-	err := s.db.Conn().WithContext(ctx).
-		Model(&models.BotInstance{}).
-		Joins("JOIN bot_templates ON bot_templates.id = bot_instances.template_id").
-		Where("bot_instances.owner_id = ? AND bot_templates.type = ?", ownerID, botType).
-		Count(&count).Error
+	// raw SQL - از JOIN uuid مستقیم استفاده می‌کند
+	err := s.db.Conn().WithContext(ctx).Raw(`
+		SELECT COUNT(*)
+		FROM bot_instances bi
+		INNER JOIN bot_templates bt ON bt.id = bi.template_id
+		WHERE bi.owner_id = ?::uuid
+		  AND bt.type = ?
+		  AND bi.deleted_at IS NULL
+	`, ownerID.String(), botType).Scan(&count).Error
 	return int(count), err
 }
 
@@ -500,4 +503,25 @@ func (s *Store) FindInstanceByContainerName(ctx context.Context, name string) (*
 		return nil, nil
 	}
 	return &inst, err
+}
+
+func (s *Store) ListPlansByType(ctx context.Context, serviceType string) ([]models.Plan, error) {
+	var plans []models.Plan
+	err := s.db.Conn().WithContext(ctx).
+		Joins("JOIN bot_templates ON bot_templates.id = plans.template_id").
+		Where("bot_templates.type = ? AND plans.is_active = true", serviceType).
+		Order("plans.price ASC").Find(&plans).Error
+	return plans, err
+}
+
+func (s *Store) SelectLeastLoadedServer(ctx context.Context) (*models.Server, error) {
+	var server models.Server
+	err := s.db.Conn().WithContext(ctx).
+		Where("is_online = true").
+		Order("(SELECT COUNT(*) FROM bot_instances WHERE bot_instances.server_id = servers.id AND bot_instances.status != 'deleted') ASC").
+		First(&server).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &server, err
 }

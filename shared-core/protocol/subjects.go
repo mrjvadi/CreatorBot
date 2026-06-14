@@ -140,3 +140,31 @@ type InstanceUpdatedEvent struct {
 	Data       map[string]any    `json:"data,omitempty"`
 	Timestamp  int64             `json:"ts"`
 }
+
+// ── Service Provisioning Events ─────────────────────────────
+
+const (
+	// ServiceCreationRequested کاربر درخواست ایجاد سرویس داد.
+	ServiceCreationRequested = "service.creation.requested"
+	// ServiceCreationStarted agentmanager شروع به deploy کرد.
+	ServiceCreationStarted = "service.creation.started"
+	// ServiceCreationCompleted deploy موفق.
+	ServiceCreationCompleted = "service.creation.completed"
+	// ServiceCreationFailed deploy ناموفق → refund باید صورت گیرد.
+	ServiceCreationFailed = "service.creation.failed"
+	// ServiceStatusChanged تغییر وضعیت سرویس.
+	ServiceStatusChanged = "service.status.changed"
+)
+
+// ServiceProvisionPayload payload رویداد provisioning.
+type ServiceProvisionPayload struct {
+	InstanceID  string `json:"instance_id"`
+	OwnerID     string `json:"owner_id"`
+	ServiceType string `json:"service_type"`
+	PlanID      string `json:"plan_id"`
+	BotToken    string `json:"bot_token,omitempty"`
+	ServerID    string `json:"server_id,omitempty"`
+	InvoiceCode string `json:"invoice_code,omitempty"`
+	AmountNano  int64  `json:"amount_nano,omitempty"`
+	Error       string `json:"error,omitempty"`
+}

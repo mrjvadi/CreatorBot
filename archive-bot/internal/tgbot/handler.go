@@ -6,21 +6,21 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
-	"github.com/mrjvadi/creatorbot/archive-bot/internal/search"
 	"github.com/mrjvadi/creatorbot/archive-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Handler struct {
-	sender  ports.BotSender
-	store   *store.Store
-	db      ports.DB
-	cache   ports.Cache
-	log     ports.Logger
-	ownerID int64
+	sender      ports.BotSender
+	store       *store.Store
+	db          ports.DB
+	cache       ports.Cache
+	log         ports.Logger
+	ownerID     int64
+	botUsername string
 }
 
-func NewHandler(sender ports.BotSender, st *store.Store, db ports.DB, cache ports.Cache, log ports.Logger, ownerID int64) *Handler {
+func NewHandler(sender ports.BotSender, st *store.Store, db ports.DB, cache ports.Cache, log ports.Logger, ownerID int64, botUsername string) *Handler {
 	return &Handler{sender: sender, store: st, db: db, cache: cache, log: log, ownerID: ownerID}
 }
 
@@ -46,13 +46,13 @@ func (h *Handler) onStart(c tele.Context) error {
 	ctx := context.Background()
 	h.store.UpsertUserByID(ctx, c.Sender().ID, c.Sender().Username, c.Sender().FirstName)
 	return c.Send(
-		"<b>📚 آرشیو</b>\n\n🔍 برای جستجو متن بنویسید\n📂 /categories\n🔎 @"+c.Bot().Me.Username+" <query>",
+		"<b>📚 آرشیو</b>\n\n🔍 برای جستجو متن بنویسید\n📂 /categories\n🔎 @"+h.botUsername+" &lt;query&gt;",
 		tele.ModeHTML, kbMain(h.isAdmin(c)),
 	)
 }
 
 func (h *Handler) onHelp(c tele.Context) error {
-	msg := "<b>❓ راهنما</b>\n\nجستجو: متن بنویسید\nInline: @bot <query>\nدسته‌بندی: /categories"
+	msg := "<b>❓ راهنما</b>\n\nجستجو: متن بنویسید\nInline: @bot &lt;query&gt;\nدسته‌بندی: /categories"
 	if h.isAdmin(c) {
 		msg += "\n\n<b>ادمین:</b>\n/add — آپلود\n/newcat — دسته جدید"
 	}
@@ -62,6 +62,24 @@ func (h *Handler) onHelp(c tele.Context) error {
 func (h *Handler) onCancel(c tele.Context) error {
 	h.clearState(context.Background(), c.Sender().ID)
 	return c.Send("لغو شد.", kbMain(h.isAdmin(c)))
+}
+
+// onFileCommand ارسال فایل از طریق inline query.
+// وقتی کاربر نتیجه inline رو انتخاب می‌کند این command ارسال می‌شود.
+func (h *Handler) onFileCommand(c tele.Context) error {
+	ctx := context.Background()
+	// متن: /file_<uuid>
+	text := strings.TrimSpace(c.Text())
+	if !strings.HasPrefix(text, "/file_") {
+		return nil
+	}
+	fileID := strings.TrimPrefix(text, "/file_")
+	f, err := h.store.FindFileByID(ctx, fileID)
+	if err != nil || f == nil {
+		return c.Send("❌ فایل یافت نشد.")
+	}
+	sendArchiveFile(c, *f, h.isAdmin(c))
+	return nil
 }
 
 func (h *Handler) onText(c tele.Context) error {
@@ -140,6 +158,12 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st wizardState
 	case stepUploadDesc:     return h.handleDesc(ctx, c, st, text)
 	case stepUploadCategory: return h.handleCategory(ctx, c, st, text)
 	case stepNewCategory:    return h.createCategory(ctx, c, text)
+	case stepUploadConfirm:
+		if text == btnConfirm {
+			return h.confirmUpload(ctx, c, st)
+		}
+		h.clearState(ctx, c.Sender().ID)
+		return c.Send("لغو شد.", kbMain(h.isAdmin(c)))
 	}
 	return nil
 }
@@ -192,4 +216,3 @@ func (h *Handler) deleteFile(ctx context.Context, c tele.Context, fileIDStr stri
 	return c.Edit("🗑 فایل حذف شد.")
 }
 
-var _ = search.Normalize

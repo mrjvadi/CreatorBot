@@ -18,23 +18,30 @@ func New(db *gorm.DB) *Store { return &Store{db: db} }
 // ── Wallet ─────────────────────────────────────────────────
 
 func (s *Store) GetOrCreateWallet(ctx context.Context, telegramID int64, tonAddress string) (*Wallet, error) {
+	// همه کاربرها یک masterAddr مشترک دارند — فقط telegram_id unique است
 	var w Wallet
-	err := s.db.WithContext(ctx).
-		Where("telegram_id = ?", telegramID).
-		First(&w).Error
+	result := s.db.WithContext(ctx).
+		Where(Wallet{TelegramID: telegramID}).
+		Attrs(Wallet{TONAddress: tonAddress, IsActive: true}).
+		FirstOrCreate(&w)
+	return &w, result.Error
+}
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		w = Wallet{
-			TelegramID: telegramID,
-			TONAddress: tonAddress,
-			IsActive:   true,
-		}
-		if err := s.db.WithContext(ctx).Create(&w).Error; err != nil {
-			return nil, err
-		}
-		return &w, nil
+func isUniqueViolation(err error) bool {
+	if err == nil { return false }
+	s := err.Error()
+	return contains(s, "23505") || contains(s, "duplicate key") || contains(s, "Duplicate entry")
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsStr(s, sub))
+}
+
+func containsStr(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub { return true }
 	}
-	return &w, err
+	return false
 }
 
 func (s *Store) GetWallet(ctx context.Context, telegramID int64) (*Wallet, error) {
@@ -144,7 +151,8 @@ func (s *Store) Deduct(ctx context.Context, walletID uuid.UUID, amountNano int64
 			Amount:      -amountNano,
 			ServiceID:   serviceID,
 			Ref:         ref,
-			Description: desc,
+			TxHash:      "int-" + uuid.New().String(),
+						Description: desc,
 			ConfirmedAt: &now,
 		}
 		return db.Create(tx).Error
@@ -165,7 +173,8 @@ func (s *Store) AddCredit(ctx context.Context, walletID uuid.UUID, amountNano in
 			Type:        TxCreditAdd,
 			Status:      TxConfirmed,
 			Amount:      amountNano,
-			Description: desc,
+			TxHash:      "int-" + uuid.New().String(),
+						Description: desc,
 			ConfirmedAt: &now,
 		}).Error
 	})
@@ -369,11 +378,14 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID uuid.UUID, amountNano
 			UpdateColumn("ton_balance", gorm.Expr("ton_balance + ?", amountNano))
 
 		now := time.Now()
+		// TxHash یکتا برای internal transactions — جلوگیری از duplicate key
+		internalID := "int-" + uuid.New().String()
 		fromTx = &Transaction{
 			WalletID:    fromID,
 			Type:        TxPayment,
 			Status:      TxConfirmed,
 			Amount:      -amountNano,
+			TxHash:      internalID + "-from",
 			Description: "انتقال به کاربر: " + desc,
 			ConfirmedAt: &now,
 		}
@@ -382,6 +394,7 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID uuid.UUID, amountNano
 			Type:        TxDeposit,
 			Status:      TxConfirmed,
 			Amount:      amountNano,
+			TxHash:      internalID + "-to",
 			Description: "دریافت از انتقال: " + desc,
 			ConfirmedAt: &now,
 		}

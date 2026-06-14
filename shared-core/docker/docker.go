@@ -20,6 +20,9 @@ const (
 	CmdStart   = protocol.MsgStart
 	CmdStop    = protocol.MsgStop
 	CmdRemove  = protocol.MsgRemove
+	CmdRestart = protocol.MsgRestart
+	CmdLogs    CommandType = "logs"
+	CmdInspect CommandType = "inspect"
 )
 
 // Command — برای backward compat

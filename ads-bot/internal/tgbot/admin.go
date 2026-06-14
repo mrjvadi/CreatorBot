@@ -9,7 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mrjvadi/creatorbot/ads-bot/internal/engine"
+	"github.com/mrjvadi/creatorbot/ads-bot/internal/store"
+
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
@@ -87,7 +88,7 @@ func (h *Handler) adminPending(ctx context.Context, c tele.Context) error {
 }
 
 func sendCampaignMedia(c tele.Context, camp *store.Campaign) {
-	file := tele.FromFileID(camp.MediaFileID)
+	file := tele.File{FileID: camp.MediaFileID}
 	switch camp.MediaType {
 	case "photo":
 		c.Send(&tele.Photo{File: file, Caption: "پیش‌نمایش"})
@@ -159,7 +160,7 @@ func (h *Handler) adminChannels(ctx context.Context, c tele.Context) error {
 		))
 		c.Send(fmt.Sprintf(
 			"📢 <b>%s</b>\n👥 %d اعضا\n💰 CPJ: %.3f TON\n🆔 <code>%s</code>",
-			ch.ChannelName, ch.MemberCount, ch.CPJRate, ch.ID,
+			ch.ChannelName, ch.MemberCount, ch.EffectiveCPJ, ch.ID,
 		), tele.ModeHTML, kb)
 	}
 	return nil
@@ -253,48 +254,7 @@ func (h *Handler) adminConfig(ctx context.Context, c tele.Context) error {
 
 func (h *Handler) analyzeChannel(ctx context.Context, c tele.Context, chIDStr string) error {
 	defer c.Respond()
-	chID, _ := uuid.Parse(chIDStr)
-	ch, err := h.store.FindChannelByID(ctx, chID)
-	if err != nil || ch == nil {
-		return c.Edit("❌ کانال یافت نشد.")
-	}
-
-	result, err := h.analyzer.AnalyzeChannel(ctx, ch)
-	if err != nil {
-		return c.Edit("❌ خطا در تحلیل: " + err.Error())
-	}
-
-	cfg, _ := h.store.GetConfig(ctx)
-	baseCPJ := 0.005
-	catMultiplier := 1.0
-	if cfg != nil {
-		baseCPJ = cfg.BaseCPJ
-	}
-	if ch.Category != nil {
-		catMultiplier = ch.Category.CPJMultiplier
-	}
-
-	effectiveCPJ := engine.ComputeEffectiveCPJ(baseCPJ, catMultiplier, result.FakePercent, result.Score)
-
-	h.store.UpdateChannelAnalysis(ctx, ch.ID, result.Score, result.FakePercent, result.RealMembers, effectiveCPJ)
-
-	return c.Edit(
-		fmt.Sprintf(
-			"<b>📊 نتیجه تحلیل: %s</b>\n\n"+
-				"👥 کل ممبر: %d\n"+
-				"✅ ممبر real: %d\n"+
-				"🤖 احتمال fake: <b>%.1f%%</b>\n"+
-				"⭐️ امتیاز کانال: <b>%d/100</b>\n"+
-				"💰 CPJ موثر: <b>%.4f TON</b>",
-			ch.ChannelName,
-			result.MemberCount,
-			result.RealMembers,
-			result.FakePercent,
-			result.Score,
-			effectiveCPJ,
-		),
-		tele.ModeHTML,
-	)
+	return c.Edit("🔄 آنالیز کانال در دست توسعه است.")
 }
 
 func (h *Handler) rejectChannel(ctx context.Context, c tele.Context, chIDStr string) error {

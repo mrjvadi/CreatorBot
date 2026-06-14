@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -16,6 +17,13 @@ import (
 type Store struct{ db ports.DB }
 
 func New(db ports.DB) *Store { return &Store{db: db} }
+
+func (s *Store) FindOwnerByID(ctx context.Context, id uuid.UUID) (*models.Owner, error) {
+	var o models.Owner
+	err := s.db.Conn().WithContext(ctx).Where("id = ?", id).First(&o).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	return &o, err
+}
 
 func (s *Store) FindOwnerByTelegramID(ctx context.Context, id int64) (*models.Owner, error) {
 	var o models.Owner
@@ -47,7 +55,7 @@ func (s *Store) ExpireLock(ctx context.Context, lockID any) error {
 
 func (s *Store) FindExpiredLocks(ctx context.Context) ([]models.Lock, error) {
 	var locks []models.Lock
-	err := s.db.Conn().WithContext(ctx).Preload("Owner").
+	err := s.db.Conn().WithContext(ctx).
 		Where("status = ? AND (expires_at < ? OR (max_members > 0 AND current_count >= max_members))",
 			models.LockActive, time.Now()).Find(&locks).Error
 	return locks, err
@@ -105,10 +113,6 @@ func (s *Store) CreatePayment(ctx context.Context, p *models.Payment) error {
 	return s.db.Conn().WithContext(ctx).Create(p).Error
 }
 
-func (s *Store) ApprovePayment(ctx context.Context, id uuid.UUID) error {
-	return s.db.Conn().WithContext(ctx).Model(&models.Payment{}).
-		Where("id = ?", id).Update("status", "confirmed").Error
-}
 
 func (s *Store) FindPendingPayments(ctx context.Context) ([]models.Payment, error) {
 	var list []models.Payment
@@ -119,4 +123,16 @@ func (s *Store) UpdateBalance(ctx context.Context, ownerID uuid.UUID, amount flo
 	return s.db.Conn().WithContext(ctx).Model(&models.Owner{}).
 		Where("id = ?", ownerID).
 		UpdateColumn("balance", gorm.Expr("balance + ?", amount)).Error
+}
+
+func (s *Store) ClearBotMemberships(ctx context.Context) error {
+	return s.db.Conn().WithContext(ctx).
+		Where("1 = 1").Delete(&models.BotChannelMembership{}).Error
+}
+
+func (s *Store) DeactivateBotByID(ctx context.Context, botIDStr string) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.CheckBot{}).
+		Where("id::text = ?", botIDStr).
+		Update("is_active", false).Error
 }

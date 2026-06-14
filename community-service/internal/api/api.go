@@ -77,13 +77,12 @@ func (h *Handler) registerCommunity(c *gin.Context) {
 	}
 
 	comm := &store.Community{
-		OwnerTelegramID: req.OwnerTelegramID,
-		ChatID:          req.ChatID,
+		TelegramID: req.ChatID,
 		Type:            store.CommunityType(req.Type),
 		Name:            req.Name,
 		Username:        req.Username,
 		InviteLink:      req.InviteLink,
-		Status:          store.StatusPending,
+		Status:          store.CommunityPending,
 		QualityScore:    50, // default تا fraud-engine محاسبه کنه
 	}
 
@@ -107,7 +106,10 @@ func (h *Handler) getCommunity(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"ok": false})
 		return
 	}
-	ownerPct, memberPct, platformPct := comm.RevenuePercents()
+	ownerPct, memberPct, platformPct := func() (float64, float64, float64) {
+		if comm.Type == store.CommunityGroup { return 50, 40, 10 }
+		return 90, 0, 10
+	}()
 	c.JSON(http.StatusOK, gin.H{
 		"ok":           true,
 		"community":    comm,
@@ -138,7 +140,7 @@ func (h *Handler) setValidationWindow(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false})
 		return
 	}
-	h.store.SetValidationWindow(c.Request.Context(), id, req.Hours)
+	h.store.UpdateValidationWindow(c.Request.Context(), id, req.Hours*3600)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "hours": req.Hours})
 }
 
@@ -158,13 +160,13 @@ func (h *Handler) listPendingCommunities(c *gin.Context) {
 
 func (h *Handler) approveCommunity(c *gin.Context) {
 	id, _ := uuid.Parse(c.Param("id"))
-	h.store.UpdateCommunityStatus(c.Request.Context(), id, store.StatusActive)
+	h.store.UpdateCommunityStatus(c.Request.Context(), id, store.CommunityActive)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) rejectCommunity(c *gin.Context) {
 	id, _ := uuid.Parse(c.Param("id"))
-	h.store.UpdateCommunityStatus(c.Request.Context(), id, store.StatusRejected)
+	h.store.UpdateCommunityStatus(c.Request.Context(), id, store.CommunityRejected)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -180,7 +182,7 @@ func (h *Handler) triggerDistribute(c *gin.Context) {
 		return
 	}
 	id, _ := uuid.Parse(req.CommunityID)
-	go h.engine.DistributeRevenue(c.Request.Context(), id, req.CampaignID, req.RevenueTON, req.ValidJoins)
+	go h.engine.DistributeRevenue(c.Request.Context(), id)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "status": "queued"})
 }
 

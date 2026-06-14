@@ -259,7 +259,7 @@ func (e *Engine) SubscribeInstanceEvents(handler func(protocol.InstanceUpdatedEv
 	if e.Nats == nil {
 		return nil
 	}
-	_, err := e.Nats.Subscribe(
+	err := e.Nats.Subscribe(
 		protocol.InstanceEventSubject(e.BotID),
 		func(data []byte) {
 			var event protocol.InstanceUpdatedEvent

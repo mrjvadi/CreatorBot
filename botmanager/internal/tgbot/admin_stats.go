@@ -54,3 +54,63 @@ func (h *Handler) adminStats(ctx context.Context, c tele.Context) error {
 
 	return c.Send(text, tele.ModeHTML, h.kbAdmin(ctx, uid))
 }
+
+// ── Admin Menu Section Handlers (spec) ───────────────────
+
+func (h *Handler) adminCommunitiesList(ctx context.Context, c tele.Context) error {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("🔍 جستجو", "admin_comm_search"),
+			   kb.Data("📋 لیست",  "admin_comm_list")),
+		kb.Row(kb.Data("📈 آمار",  "admin_comm_stats"),
+			   kb.Data("🚨 مشکوک","admin_comm_suspicious")),
+	)
+	return c.Send("🏘 کامیونیتی‌ها",
+		tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminCampaignsList(ctx context.Context, c tele.Context) error {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("🔍 جستجو",   "admin_camp_search"),
+			   kb.Data("📋 فعال",    "admin_camp_active")),
+		kb.Row(kb.Data("📋 تمام‌شده","admin_camp_done"),
+			   kb.Data("📊 آمار",    "admin_camp_stats")),
+	)
+	return c.Send("📢 کمپین‌ها", tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminFinance(ctx context.Context, c tele.Context) error {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("💰 درآمد",   "admin_fin_revenue"),
+			   kb.Data("📤 برداشت‌ها","admin_fin_withdraw")),
+		kb.Row(kb.Data("📊 گزارش‌ها","admin_fin_reports"),
+			   kb.Data("💳 کیف‌پول‌ها","admin_fin_wallets")),
+	)
+	return c.Send("💰 مالی", tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminFraud(ctx context.Context, c tele.Context) error {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("🚩 رویدادها",    "admin_fraud_events"),
+			   kb.Data("👤 امتیاز کاربران","admin_fraud_users")),
+		kb.Row(kb.Data("🏘 امتیاز کامیونیتی","admin_fraud_comm"),
+			   kb.Data("🔍 تحقیقات",     "admin_fraud_inv")),
+	)
+	return c.Send("🚨 تقلب", tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminSystem(ctx context.Context, c tele.Context) error {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("📦 پلن‌ها",    "admin_sys_plans"),
+			   kb.Data("🖥 سرورها",    "admin_sys_servers")),
+		kb.Row(kb.Data("🔌 ربات‌های ممبر","admin_sys_member"),
+			   kb.Data("📡 NATS",     "admin_sys_nats")),
+		kb.Row(kb.Data("🗄 دیتابیس",  "admin_sys_db"),
+			   kb.Data("📈 متریک‌ها", "admin_sys_metrics")),
+	)
+	return c.Send("⚙️ سیستم", tele.ModeHTML, kb)
+}

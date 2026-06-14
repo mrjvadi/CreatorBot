@@ -29,6 +29,7 @@ import (
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared-core/ton"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
+	natsadapter "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
@@ -44,6 +45,7 @@ type Handler struct {
 	ton         *ton.Client
 	pay         *payclient.Client
 	tr          *i18n.Translator
+	nc          *natsadapter.Client
 }
 
 func NewHandler(
@@ -56,6 +58,7 @@ func NewHandler(
 	encryptKey string,
 	tonClient *ton.Client,
 	payClient *payclient.Client,
+	nc *natsadapter.Client,
 ) *Handler {
 	return &Handler{
 		store:       st,
@@ -68,6 +71,7 @@ func NewHandler(
 		ton:         tonClient,
 		pay:         payClient,
 		tr:          i18n.New(cache),
+		nc:          nc,
 	}
 }
 
@@ -146,7 +150,7 @@ func (h *Handler) onLang(c tele.Context) error {
 	ctx := context.Background()
 	uid := c.Sender().ID
 	h.setStep(ctx, uid, stepLangSelect)
-	return c.Send(h.t(ctx, uid, i18n.KeySelectLang), kbLangSelect())
+	return c.Send(h.t(ctx, uid, i18n.KeySelectLang), kbLanguage())
 }
 
 func adminHelpText(ctx context.Context, h *Handler, uid int64) string {
@@ -163,113 +167,6 @@ func (h *Handler) t(ctx context.Context, uid int64, key i18n.Key, args ...any) s
 // btn دکمه ترجمه‌شده.
 func (h *Handler) btn(ctx context.Context, uid int64, key i18n.Key) string {
 	return h.tr.Btn(ctx, uid, key)
-}
-
-// ── keyboard builders ─────────────────────────────────────
-
-func (h *Handler) kbAdmin(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	b := func(k i18n.Key) tele.Btn {
-		kb := &tele.ReplyMarkup{}
-		return kb.Text(h.btn(ctx, uid, k))
-	}
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(b(i18n.KeyMenuBots), b(i18n.KeyMenuLinks)),
-		kb.Row(b(i18n.KeyMenuServers), b(i18n.KeyMenuTemplates)),
-		kb.Row(b(i18n.KeyMenuPlans), b(i18n.KeyMenuUsers)),
-		kb.Row(b(i18n.KeyMenuStats)),
-	)
-	return kb
-}
-
-func (h *Handler) kbUser(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	b := func(k i18n.Key) tele.Btn {
-		kb := &tele.ReplyMarkup{}
-		return kb.Text(h.btn(ctx, uid, k))
-	}
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(b(i18n.KeyMenuMyBots)),
-		kb.Row(b(i18n.KeyMenuHelp), b(i18n.KeyMenuSupport)),
-	)
-	return kb
-}
-
-func (h *Handler) kbBackCancel(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(kb.Row(
-		kb.Text(h.btn(ctx, uid, i18n.KeyBtnBack)),
-		kb.Text(h.btn(ctx, uid, i18n.KeyBtnCancel)),
-	))
-	return kb
-}
-
-func (h *Handler) kbBack(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnBack))))
-	return kb
-}
-
-func (h *Handler) kbBotType(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(
-			kb.Text(h.btn(ctx, uid, i18n.KeyBotTypeUploader)),
-			kb.Text(h.btn(ctx, uid, i18n.KeyBotTypeVPN)),
-		),
-		kb.Row(
-			kb.Text(h.btn(ctx, uid, i18n.KeyBotTypeArchive)),
-			kb.Text(h.btn(ctx, uid, i18n.KeyBotTypeMember)),
-		),
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnCancel))),
-	)
-	return kb
-}
-
-func (h *Handler) kbLinkLimit(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnLimit1)), kb.Text(h.btn(ctx, uid, i18n.KeyBtnLimit3))),
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnLimit5)), kb.Text(h.btn(ctx, uid, i18n.KeyBtnLimit10))),
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnLimitNo))),
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnCancel))),
-	)
-	return kb
-}
-
-func (h *Handler) kbUserActions(ctx context.Context, uid int64, u models.User) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	blockKey := i18n.KeyBtnBlock
-	if u.IsBlocked {
-		blockKey = i18n.KeyBtnUnblock
-	}
-	roleKey := i18n.KeyBtnMakeAdmin
-	if u.Role == models.RoleAdmin {
-		roleKey = i18n.KeyBtnMakeUser
-	}
-	kb.Reply(
-		kb.Row(kb.Text(h.btn(ctx, uid, blockKey)), kb.Text(h.btn(ctx, uid, roleKey))),
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnBack))),
-	)
-	return kb
-}
-
-func (h *Handler) kbWizardConfirm(ctx context.Context, uid int64) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnYesBuild))),
-		kb.Row(kb.Text(h.btn(ctx, uid, i18n.KeyBtnCancel))),
-	)
-	return kb
-}
-
-// kbLangSelect keyboard انتخاب زبان (بدون ترجمه — قبل از تنظیم زبان نمایش داده می‌شود).
-func kbLangSelect() *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(kb.Text("🇮🇷 فارسی"), kb.Text("🇬🇧 English")),
-	)
-	return kb
 }
 
 // ── helpers ───────────────────────────────────────────────

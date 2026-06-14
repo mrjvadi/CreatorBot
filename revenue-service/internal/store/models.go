@@ -19,7 +19,10 @@ const (
 	RevLockRental   RevenueType = "lock_rental"     // اجاره lock
 	RevAdIncome     RevenueType = "ad_income"       // درآمد تبلیغات
 	RevReward       RevenueType = "reward"          // جایزه
-	RevCommission   RevenueType = "commission"      // کمیسیون
+	RevCommission      RevenueType = "commission"         // کمیسیون
+	RevChannelRevenue  RevenueType = "channel_revenue"   // درآمد کانال — 90% به owner
+	RevGroupRevenue    RevenueType = "group_revenue"      // درآمد گروه — 50% owner / 40% members
+	RevMemberReward    RevenueType = "member_reward"      // پاداش عضو فعال گروه
 )
 
 // RevenueRule قانون تقسیم درآمد برای هر نوع.

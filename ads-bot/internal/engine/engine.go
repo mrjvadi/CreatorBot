@@ -133,6 +133,14 @@ func (e *Engine) RecordJoin(ctx context.Context, campaignID uuid.UUID, channelTe
 
 	e.store.AddJoinCount(ctx, campaignID, 1, cost)
 
+	// ── اطلاع به community-service برای attribution ─────────
+	e.nc.PublishCore("campaign.revenue.generated", map[string]any{
+		"campaign_id":  campaignID.String(),
+		"community_id": channelTelegramID, // channel telegram id
+		"revenue_ton":  cost,
+		"valid_joins":  1,
+	})
+
 	// پرداخت به صاحب کانال
 	e.nc.PublishCore("earning.created", map[string]any{
 		"type":              "ad_income",
@@ -203,7 +211,7 @@ func (b *TelegramBroadcaster) SendToChannel(ctx context.Context, channelID int64
 	switch campaign.MediaType {
 	case "photo":
 		photo := &tele.Photo{
-			File:    tele.FromFileID(campaign.MediaFileID),
+			File:    tele.File{FileID: campaign.MediaFileID},
 			Caption: campaign.Caption,
 		}
 		if kb != nil {
@@ -213,7 +221,7 @@ func (b *TelegramBroadcaster) SendToChannel(ctx context.Context, channelID int64
 		}
 	case "video":
 		video := &tele.Video{
-			File:    tele.FromFileID(campaign.MediaFileID),
+			File:    tele.File{FileID: campaign.MediaFileID},
 			Caption: campaign.Caption,
 		}
 		if kb != nil {

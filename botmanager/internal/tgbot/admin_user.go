@@ -60,7 +60,7 @@ func (h *Handler) adminUserDetail(ctx context.Context, c tele.Context, telegramI
 	)
 
 	h.setStep(ctx, uid, stepUserAction, "user_id", u.ID.String())
-	return c.Send(text, tele.ModeHTML, h.kbUserActions(ctx, uid, *u))
+	return c.Send(text, tele.ModeHTML, h.kbUserActions(ctx, uid, u.TelegramID))
 }
 
 func (h *Handler) adminUserHandleAction(ctx context.Context, c tele.Context, userID, action string) error {

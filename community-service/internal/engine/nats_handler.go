@@ -3,63 +3,89 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/community-service/internal/store"
+	"github.com/google/uuid"
 )
 
 // RegisterNATSListeners همه NATS subscriptions را ثبت می‌کند.
 func (e *Engine) RegisterNATSListeners(nc *natsclient.Client) {
-	// ── membership events از member-bot ───────────────────
+
+	// ── membership.joined ─────────────────────────────────
 	nc.Subscribe("membership.joined", func(data []byte) {
 		var event struct {
-			TelegramID  int64  `json:"telegram_id"`
-			ChatID      int64  `json:"community_id"`
-			CampaignID  string `json:"campaign_id"`
-			InviteLink  string `json:"invite_link"`
+			TelegramID int64  `json:"telegram_id"`
+			ChatID     int64  `json:"community_id"`
+			CampaignID string `json:"campaign_id"`
+			InviteLink string `json:"invite_link"`
 		}
 		if err := json.Unmarshal(data, &event); err != nil {
 			return
 		}
 		ctx := context.Background()
-		e.HandleJoin(ctx, event.TelegramID, event.ChatID, event.CampaignID, event.InviteLink)
+
+		// community رو از chatID پیدا کن
+		comm, _ := e.store.FindCommunityByChatID(ctx, event.ChatID)
+		if comm == nil {
+			return
+		}
+		// campaignID رو parse کن اگه UUID هست
+		var campID uuid.UUID
+		var err error
+		if event.CampaignID != "" {
+			campID, err = uuid.Parse(event.CampaignID)
+		}
+		if err != nil || event.CampaignID == "" {
+			campID = uuid.Nil
+		}
+		// campID رو به string تبدیل کن
+		campStr := ""
+		if campID != uuid.Nil { campStr = campID.String() }
+		e.HandleJoin(ctx, event.TelegramID, comm.ID, campStr)
 	})
 
+	// ── membership.left ───────────────────────────────────
 	nc.Subscribe("membership.left", func(data []byte) {
 		var event struct {
-			TelegramID  int64 `json:"telegram_id"`
-			ChatID      int64 `json:"community_id"`
+			TelegramID int64 `json:"telegram_id"`
+			ChatID     int64 `json:"community_id"`
 		}
 		if err := json.Unmarshal(data, &event); err != nil {
 			return
 		}
 		ctx := context.Background()
-		e.HandleLeave(ctx, event.TelegramID, event.ChatID)
+		comm, _ := e.store.FindCommunityByChatID(ctx, event.ChatID)
+		if comm == nil {
+			return
+		}
+		e.HandleLeave(ctx, event.TelegramID, comm.TelegramID)
 	})
 
-	// ── activity events از member-bot ────────────────────
+	// ── activity ──────────────────────────────────────────
 	nc.Subscribe("community.activity.updated", func(data []byte) {
 		var event struct {
-			TelegramID  int64 `json:"telegram_id"`
-			ChatID      int64 `json:"community_id"`
-			Messages    int   `json:"messages"`
-			Replies     int   `json:"replies"`
-			Reactions   int   `json:"reactions"`
+			TelegramID int64 `json:"telegram_id"`
+			ChatID     int64 `json:"community_id"`
+			Messages   int   `json:"messages"`
+			Replies    int   `json:"replies"`
+			Reactions  int   `json:"reactions"`
 		}
 		if err := json.Unmarshal(data, &event); err != nil {
 			return
 		}
 		ctx := context.Background()
-		community, _ := e.store.FindCommunityByChatID(ctx, event.ChatID)
-		if community == nil || community.Type != store.TypeGroup {
+		comm, _ := e.store.FindCommunityByChatID(ctx, event.ChatID)
+		if comm == nil || comm.Type != store.CommunityGroup {
 			return
 		}
-		e.store.IncrementMemberActivity(ctx, community.ID, event.TelegramID,
+		e.store.UpdateMemberActivity(ctx, event.TelegramID, event.ChatID,
 			event.Messages, event.Replies, event.Reactions)
 	})
 
-	// ── revenue event از ads-bot ──────────────────────────
+	// ── campaign.revenue.generated ────────────────────────
 	nc.Subscribe("campaign.revenue.generated", func(data []byte) {
 		var event struct {
 			CommunityID string  `json:"community_id"`
@@ -72,35 +98,37 @@ func (e *Engine) RegisterNATSListeners(nc *natsclient.Client) {
 		}
 		ctx := context.Background()
 
-		// community_id می‌تواند chat_id عددی باشد
-		var communityID interface{}
-		var chatID int64
-		var err error
-
-		// اگه عددی بود → chat_id، اگه UUID بود → community UUID
-		if err = json.Unmarshal([]byte(`"`+event.CommunityID+`"`), &chatID); err == nil {
-			community, _ := e.store.FindCommunityByChatID(ctx, chatID)
-			if community != nil {
-				communityID = community.ID
-			}
-		} else {
-			communityID = event.CommunityID
+		// community_id ممکنه UUID یا chat_id عددی باشه
+		var comm *store.Community
+		if commID, err := uuid.Parse(event.CommunityID); err == nil {
+			comm, _ = e.store.FindCommunityByID(ctx, commID)
+		} else if chatID, err := strconv.ParseInt(event.CommunityID, 10, 64); err == nil {
+			comm, _ = e.store.FindCommunityByChatID(ctx, chatID)
 		}
-		_ = communityID
-		_ = err
-
-		community, _ := e.store.FindCommunityByChatID(ctx, chatID)
-		if community == nil {
+		if comm == nil {
 			return
 		}
-		e.DistributeRevenue(ctx, community.ID, event.CampaignID, event.RevenueTON, event.ValidJoins)
+
+		// ساخت CommunityRevenue و توزیع
+		// CampaignID parse کن
+		campUUID, _ := uuid.Parse(event.CampaignID)
+		rev := &store.CommunityRevenue{
+			CommunityID: comm.ID,
+			CampaignID:  campUUID,
+			TotalAmount: event.RevenueTON,
+			ValidJoins:  event.ValidJoins,
+		}
+		if err := e.store.CreateRevenue(ctx, rev); err != nil {
+			return
+		}
+		e.DistributeRevenue(ctx, rev.ID)
 	})
 
-	// ── fraud score updates ────────────────────────────────
+	// ── fraud score update ────────────────────────────────
 	nc.Subscribe("community.score.updated", func(data []byte) {
 		var event struct {
-			CommunityID int64   `json:"community_id"` // chat_id
-			Score       int     `json:"score"`
+			CommunityID int64 `json:"community_id"`
+			Score       int   `json:"score"`
 		}
 		if err := json.Unmarshal(data, &event); err != nil {
 			return
@@ -112,7 +140,4 @@ func (e *Engine) RegisterNATSListeners(nc *natsclient.Client) {
 	e.log.Info("community-service NATS listeners registered")
 }
 
-// ── helper ─────────────────────────────────────────────────
-
-func logF(key string, val any) ports.Field { return ports.F(key, val) }
-var _ = logF // suppress
+var _ = ports.F // suppress unused

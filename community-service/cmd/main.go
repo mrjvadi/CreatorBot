@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"bytes"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -20,7 +18,6 @@ import (
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
-	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
@@ -31,9 +28,6 @@ type Config struct {
 	NatsPass    string `mapstructure:"NATS_PASSWORD"`
 	Port        int    `mapstructure:"PORT"`
 	AdminKey    string `mapstructure:"ADMIN_KEY"`
-	BotpayURL   string `mapstructure:"BOTPAY_URL"`
-	BotpayKey   string `mapstructure:"BOTPAY_API_KEY"`
-	FraudURL    string `mapstructure:"FRAUD_ENGINE_URL"`
 }
 
 func main() {
@@ -41,7 +35,9 @@ func main() {
 	config.MustLoad(&cfg)
 	log := logger.MustNew(false)
 
-	if cfg.Port == 0 { cfg.Port = 8093 }
+	if cfg.Port == 0 {
+		cfg.Port = 8093
+	}
 
 	// ── PostgreSQL ─────────────────────────────────────────
 	db, err := gorm.Open(postgres.Open(cfg.PostgresDSN))
@@ -51,7 +47,8 @@ func main() {
 	if err := store.AutoMigrate(db); err != nil {
 		log.Fatal("migrate", ports.F("err", err))
 	}
-	st := store.New(db)
+	// community-service فعلاً فقط PostgreSQL دارد
+	st := store.New(db, nil)
 
 	// ── NATS ──────────────────────────────────────────────
 	nc, err := natsclient.New(natsclient.Config{
@@ -64,16 +61,13 @@ func main() {
 	}
 	defer nc.Close()
 
-	// ── External clients ───────────────────────────────────
-	payClient := newBotpayClient(cfg.BotpayURL, cfg.BotpayKey)
-	fc := fraudclient.New(nc)
-
 	// ── Engine ────────────────────────────────────────────
-	eng := engine.New(st, nc, payClient, fc, log)
+	// engine.New(st, nc, log) — بدون payClient و fraudclient در این نسخه
+	eng := engine.New(st, nc, log)
 	eng.RegisterNATSListeners(nc)
 
 	// ── API ───────────────────────────────────────────────
-	apiHandler := api.New(st, eng, cfg.AdminKey)
+	apiHandler := api.New(st, eng, nc, cfg.AdminKey)
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -83,7 +77,8 @@ func main() {
 	shutCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go eng.RunValidationChecker(shutCtx)
+	// RunValidationWorker (نام صحیح در engine.go)
+	go eng.RunValidationWorker(shutCtx)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	srv := &http.Server{Addr: addr, Handler: r}
@@ -101,29 +96,3 @@ func main() {
 	defer cancel()
 	srv.Shutdown(timeout)
 }
-
-// ── botpay client ─────────────────────────────────────────
-
-type botpayClient struct{ baseURL, apiKey string; http *http.Client }
-
-func newBotpayClient(url, key string) engine.PayClient {
-	if url == "" { return &noopPayClient{} }
-	return &botpayClient{baseURL: url, apiKey: key, http: &http.Client{Timeout: 10 * time.Second}}
-}
-
-func (b *botpayClient) AddCredit(ctx context.Context, telegramID int64, amountTON float64, desc string) error {
-	body, _ := json.Marshal(map[string]any{
-		"telegram_id": telegramID, "amount_ton": amountTON, "description": desc,
-	})
-	req, _ := http.NewRequestWithContext(ctx, "POST", b.baseURL+"/api/v1/pay/credit/add",
-		bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", b.apiKey)
-	resp, err := b.http.Do(req)
-	if err != nil { return err }
-	defer resp.Body.Close()
-	return nil
-}
-
-
-

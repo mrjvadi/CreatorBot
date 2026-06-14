@@ -5,10 +5,10 @@ version: "3.9"
 # Run: docker compose --env-file .env up -d
 # ============================================================
 
-#x-build: &build
-#  context: ..
-#  args:
-#    BUILDKIT_INLINE_CACHE: "1"
+x-build: &build
+  context: ..
+  args:
+    BUILDKIT_INLINE_CACHE: "1"
 
 x-restart: &restart
   restart: unless-stopped
@@ -125,8 +125,8 @@ services:
       - "--certificatesresolvers.le.acme.storage=/certs/acme.json"
       - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
     ports:
-      - "880:80"
-      - "8443:443"
+      - "80:80"
+      - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_certs:/certs
@@ -138,7 +138,7 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "127.0.0.1:9091:9090"
+      - "127.0.0.1:9090:9090"
     networks: [backend]
 
   grafana:
@@ -160,111 +160,111 @@ services:
 
   # ── Managers ───────────────────────────────────────────────
 
-#  botmanager:
-#    build:
-#      <<: *build
-#      dockerfile: botmanager/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    networks: [backend]
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
-#      nats:     {condition: service_healthy}
-#
-#  apimanager:
-#    build:
-#      <<: *build
-#      dockerfile: apimanager/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    networks: [backend, web]
-#    labels:
-#      - "traefik.enable=true"
-#      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN:-localhost}`)"
-#      - "traefik.http.routers.api.tls.certresolver=le"
-#      - "traefik.http.services.api.loadbalancer.server.port=${API_PORT:-8086}"
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      nats:     {condition: service_healthy}
-#
-#  agentmanager:
-#    build:
-#      <<: *build
-#      dockerfile: agentmanager/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock
-#    networks: [backend]
-#    depends_on:
-#      nats: {condition: service_healthy}
-#
-#  # ── Bots ───────────────────────────────────────────────────
-#
-#  uploader-bot:
-#    build:
-#      <<: *build
-#      dockerfile: uploader-bot/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    networks: [backend]
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
-#      nats:     {condition: service_healthy}
-#
-#  vpn-bot:
-#    build:
-#      <<: *build
-#      dockerfile: vpn-bot/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    networks: [backend]
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
-#      nats:     {condition: service_healthy}
-#
-#  archive-bot:
-#    build:
-#      <<: *build
-#      dockerfile: archive-bot/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    networks: [backend]
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
-#      nats:     {condition: service_healthy}
-#
-#  member-bot:
-#    build:
-#      <<: *build
-#      dockerfile: member-bot/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    ports:
-#      - "127.0.0.1:${LOCK_API_PORT:-8082}:8082"
-#    networks: [backend]
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
-#      nats:     {condition: service_healthy}
-#
-#  source-service:
-#    build:
-#      <<: *build
-#      dockerfile: source-service/deploy/Dockerfile
-#    <<: [*restart, *log]
-#    env_file: .env
-#    volumes:
-#      - sessions_data:/app/sessions
-#    networks: [backend]
-#    depends_on:
-#      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
+  botmanager:
+    build:
+      <<: *build
+      dockerfile: botmanager/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}
+      nats:     {condition: service_healthy}
+
+  apimanager:
+    build:
+      <<: *build
+      dockerfile: apimanager/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    networks: [backend, web]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.api.tls.certresolver=le"
+      - "traefik.http.services.api.loadbalancer.server.port=${API_PORT:-8086}"
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats:     {condition: service_healthy}
+
+  agentmanager:
+    build:
+      <<: *build
+      dockerfile: agentmanager/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [backend]
+    depends_on:
+      nats: {condition: service_healthy}
+
+  # ── Bots ───────────────────────────────────────────────────
+
+  uploader-bot:
+    build:
+      <<: *build
+      dockerfile: uploader-bot/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}
+      mongodb:  {condition: service_healthy}
+      nats:     {condition: service_healthy}
+
+  vpn-bot:
+    build:
+      <<: *build
+      dockerfile: vpn-bot/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}
+      mongodb:  {condition: service_healthy}
+      nats:     {condition: service_healthy}
+
+  archive-bot:
+    build:
+      <<: *build
+      dockerfile: archive-bot/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}
+      mongodb:  {condition: service_healthy}
+      nats:     {condition: service_healthy}
+
+  member-bot:
+    build:
+      <<: *build
+      dockerfile: member-bot/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    ports:
+      - "127.0.0.1:${LOCK_API_PORT:-8082}:8082"
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}
+      mongodb:  {condition: service_healthy}
+      nats:     {condition: service_healthy}
+
+  source-service:
+    build:
+      <<: *build
+      dockerfile: source-service/deploy/Dockerfile
+    <<: [*restart, *log]
+    env_file: .env
+    volumes:
+      - sessions_data:/app/sessions
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}

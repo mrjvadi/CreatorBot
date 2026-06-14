@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	tele "gopkg.in/telebot.v4"
 
@@ -72,6 +71,7 @@ const (
 	btnWithdraw = "📤 برداشت"
 	btnHistory  = "📋 تاریخچه"
 	btnHelp     = "❓ راهنما"
+	btnTransfer = "🔄 انتقال"
 	btnCancel   = "❌ انصراف"
 	btnCheck    = "🔄 بررسی مجدد"
 )
@@ -566,10 +566,8 @@ func (h *Handler) onAddCredit(c tele.Context) error {
 }
 
 // ── helpers ───────────────────────────────────────────────
-, error) {
-	// از github.com/google/uuid استفاده کن
-	type uuidResult = interface{ String() string }
-	_ = time.Now()
+
+func parseUUID(s string) (interface{ String() string }, error) {
 	return uuid.Parse(s)
 }
 

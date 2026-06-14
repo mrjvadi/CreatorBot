@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os/exec"
 	"os/signal"
-	"sync"
 	"strings"
 	"syscall"
 	"time"
@@ -50,10 +49,6 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	// ── Graceful Shutdown tracker ─────────────────────────────
-	// هر goroutine در حال کار خود را register می‌کند
-	var wg sync.WaitGroup
 
 	// ── Deploy Worker Pool (concurrent limit) ───────────────
 	worker := queue.New(cfg.ServerID, nc, func(ctx context.Context, cmd protocol.DeployCommand) error {

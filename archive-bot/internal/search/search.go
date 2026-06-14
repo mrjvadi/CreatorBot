@@ -52,14 +52,13 @@ func Search(ctx context.Context, db *gorm.DB, query string, limit int) ([]models
 	}
 
 	var files []models.File
+	col := "title || ' ' || tags || ' ' || description"
 	err := db.WithContext(ctx).
 		Preload("Category").
-		Where(`
-			similarity(title || ' ' || tags || ' ' || description, ?) > 0.1
-		`, normalized).
-		Order(`similarity(title || ' ' || tags || ' ' || description, ?) DESC`).
+		Where("similarity("+col+", ?) > 0.1", normalized).
+		Order(gorm.Expr("similarity("+col+", ?) DESC", normalized)).
 		Limit(limit).
-		Find(&files, normalized).Error
+		Find(&files).Error
 
 	return files, err
 }

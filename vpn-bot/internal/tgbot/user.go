@@ -393,3 +393,4 @@ func (h *Handler) activateSubscription(ctx context.Context, c tele.Context, user
 
 	return c.Send(sb.String(), tele.ModeHTML, kbSubscription(sub.ID.String()))
 }
+}

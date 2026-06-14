@@ -127,7 +127,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	accessToken, _ := auth.GenerateJWT(claims.UserID, claims.Role, h.accessSecret, 15*time.Minute)
+	accessToken, _ := auth.GenerateAccessToken(claims.UserID, claims.Role, auth.JWTConfig{AccessSecret: h.accessSecret, AccessTTL: 15*time.Minute})
 	ok(c, gin.H{"access_token": accessToken})
 }
 
@@ -546,7 +546,7 @@ func (h *Handler) publishDeploy(ctx context.Context, inst *models.BotInstance, t
 	return h.nc.Publish(pubCtx, protocol.DeploySubject(server.ID.String()), cmd)
 }
 
-func (h *Handler) publishCommand(ctx context.Context, inst *models.BotInstance, msgType protocol.MessageType) error {
+func (h *Handler) publishCommand(ctx context.Context, inst *models.BotInstance, msgType protocol.MsgType) error {
 	server, err := h.store.FindServerByID(ctx, inst.ServerID.String())
 	if err != nil || server == nil {
 		return fmt.Errorf("server not found")

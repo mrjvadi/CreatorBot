@@ -77,3 +77,12 @@ func (s *Store) FindCategoryByID(ctx context.Context, idStr string) (*models.Cat
 func (s *Store) DeleteFile(ctx context.Context, idStr string) error {
 	return s.db.Conn().WithContext(ctx).Delete(&models.File{}, "id = ?", idStr).Error
 }
+
+func (s *Store) FindFileByID(ctx context.Context, idStr string) (*models.File, error) {
+	var f models.File
+	err := s.db.Conn().WithContext(ctx).
+		Preload("Category").
+		Where("id = ?", idStr).First(&f).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	return &f, err
+}

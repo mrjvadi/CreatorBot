@@ -322,10 +322,8 @@ func (p *Processor) batchRecalcUsers(ctx context.Context) {
 
 // RegisterScoreHandlers handler هایی که به score request ها جواب می‌دهند.
 func (p *Processor) RegisterScoreHandlers() {
-	rawNC := p.nc.NC()
-
 	// ── user score request ────────────────────────────────
-	rawNC.Subscribe("fraud.user.score.request", func(msg *nats.Msg) {
+	p.nc.SubscribeRaw("fraud.user.score.request", func(msg *nats.Msg) {
 		var req struct {
 			TelegramID int64 `json:"telegram_id"`
 		}
@@ -356,7 +354,7 @@ func (p *Processor) RegisterScoreHandlers() {
 	})
 
 	// ── community score request ───────────────────────────
-	rawNC.Subscribe("fraud.community.score.request", func(msg *nats.Msg) {
+	p.nc.SubscribeRaw("fraud.community.score.request", func(msg *nats.Msg) {
 		var req struct {
 			CommunityID int64 `json:"community_id"`
 		}

@@ -29,12 +29,14 @@ func (h *Handler) handleChannelForward(ctx context.Context, c tele.Context, st w
 	uid := c.Sender().ID
 	msg := c.Message()
 
-	if msg.ForwardFromChat == nil {
+	// telebot v4: پیام forward شده از کانال
+	origChat := msg.OriginalChat
+	if origChat == nil {
 		return c.Send("لطفاً یک پیام از کانال forward کنید.")
 	}
 
-	ch := msg.ForwardFromChat
-	if ch.Type != "channel" {
+	ch := origChat
+	if ch.Type != tele.ChatChannel {
 		return c.Send("پیام باید از یک کانال باشد.")
 	}
 
@@ -53,10 +55,16 @@ func (h *Handler) handleChannelForward(ctx context.Context, c tele.Context, st w
 		return c.Send("❌ ربات ادمین این کانال نیست.\n\nابتدا ربات را به کانال اضافه و ادمین کنید.")
 	}
 
+	// دریافت تعداد اعضا
+	memberCount, _ := h.bot.Len(ch)
+	if memberCount <= 0 {
+		memberCount = 0 // nilable
+	}
+
 	h.setStep(ctx, uid, stepChannelCPJ,
 		"channel_id", strconv.FormatInt(ch.ID, 10),
 		"channel_name", ch.Title,
-		"member_count", strconv.Itoa(ch.MembersCount),
+		"member_count", strconv.Itoa(memberCount),
 	)
 
 	return c.Send(
@@ -66,7 +74,7 @@ func (h *Handler) handleChannelForward(ctx context.Context, c tele.Context, st w
 				"حداقل CPJ را وارد کنید (TON):\n"+
 				"تبلیغاتی که CPJ کمتر از این دارند پذیرفته نمی‌شوند.\n"+
 				"مثال: <code>0.005</code>",
-			ch.Title, ch.MembersCount,
+			ch.Title, memberCount,
 		),
 		tele.ModeHTML, kbCancel(),
 	)
@@ -94,8 +102,8 @@ func (h *Handler) handleChannelCPJ(ctx context.Context, c tele.Context, st wizar
 		ChannelID:   channelID,
 		ChannelName: st.Data["channel_name"],
 		MemberCount: memberCount,
-		CPJRate:     cpj,
-		IsVerified:  false,
+		EffectiveCPJ:     cpj,
+		Status: store.ChannelPending,
 		IsActive:    true,
 	}
 
@@ -120,7 +128,7 @@ func (h *Handler) handleChannelCPJ(ctx context.Context, c tele.Context, st wizar
 					"CPJ: %.3f TON\n"+
 					"صاحب: <code>%d</code>\n"+
 					"🆔 <code>%s</code>",
-				ch.ChannelName, ch.MemberCount, ch.CPJRate,
+				ch.ChannelName, ch.MemberCount, ch.EffectiveCPJ,
 				uid, ch.ID,
 			),
 			tele.ModeHTML, verifyKB,
@@ -134,7 +142,7 @@ func (h *Handler) handleChannelCPJ(ctx context.Context, c tele.Context, st wizar
 				"👥 %d عضو\n"+
 				"💰 حداقل CPJ: %.3f TON\n\n"+
 				"⏳ منتظر تأیید ادمین...",
-			ch.ChannelName, ch.MemberCount, ch.CPJRate,
+			ch.ChannelName, ch.MemberCount, ch.EffectiveCPJ,
 		),
 		tele.ModeHTML, kbMain(),
 	)
@@ -160,7 +168,7 @@ func (h *Handler) onMyChannels(c tele.Context) error {
 	sb.WriteString(fmt.Sprintf("<b>📢 کانال‌های شما (%d)</b>\n\n", len(channels)))
 	for _, ch := range channels {
 		verified := "⏳ در انتظار تأیید"
-		if ch.IsVerified {
+		if ch.Status == store.ChannelVerified {
 			verified = "✅ تأیید شده"
 		}
 		active := "🟢"
@@ -172,7 +180,7 @@ func (h *Handler) onMyChannels(c tele.Context) error {
 				"👥 %d اعضا | 💰 CPJ: %.3f TON\n"+
 				"🆔 <code>%s</code>\n\n",
 			active, ch.ChannelName, verified,
-			ch.MemberCount, ch.CPJRate, ch.ID,
+			ch.MemberCount, ch.EffectiveCPJ, ch.ID,
 		))
 	}
 

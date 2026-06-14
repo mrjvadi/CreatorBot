@@ -43,7 +43,7 @@ func (h *Handler) handleCampaignMedia(ctx context.Context, c tele.Context, st wi
 
 	switch {
 	case m.Photo != nil:
-		fileID = m.Photo[len(m.Photo)-1].FileID
+		fileID = m.Photo.FileID
 		mediaType = "photo"
 	case m.Video != nil:
 		fileID = m.Video.FileID

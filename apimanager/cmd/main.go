@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrjvadi/creatorbot/apimanager/internal/handler"
 	"github.com/mrjvadi/creatorbot/apimanager/internal/middleware"
+	pgadapter "github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
@@ -21,8 +22,6 @@ import (
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"encoding/json"
 
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 type Config struct {
@@ -47,14 +46,14 @@ func main() {
 	}
 
 	// ── PostgreSQL ─────────────────────────────────────────
-	db, err := gorm.Open(postgres.Open(cfg.PostgresDSN))
+	pg, err := pgadapter.New(pgadapter.Config{DSN: cfg.PostgresDSN})
 	if err != nil {
 		log.Fatal("postgres", ports.F("err", err))
 	}
-	if err := models.AutoMigrate(db); err != nil {
+	if err := pg.Conn().AutoMigrate(models.AllModels()...); err != nil {
 		log.Fatal("migrate", ports.F("err", err))
 	}
-	st := store.New(store.NewGormDB(db))
+	st := store.New(pg)
 
 	// ── NATS ───────────────────────────────────────────────
 	nc, err := natsclient.New(natsclient.Config{
@@ -113,6 +112,10 @@ func main() {
 	agent.POST("/result", h.AgentResult)
 
 	// User (JWT)
+	// rate limiting: 60 req/min per IP
+	limiter := middleware.NewSimpleLimiter(60)
+	v1.Use(middleware.RateLimit(limiter, 60))
+
 	user := v1.Group("", middleware.JWTAuth(cfg.AccessSecret))
 	user.GET("/me", h.Me)
 	user.GET("/instances", h.ListInstances)

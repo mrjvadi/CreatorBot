@@ -53,7 +53,12 @@ func (s *Scheduler) expireLocks(ctx context.Context) {
 		}
 		msg := fmt.Sprintf("⚠️ قفل کانال <b>%s</b> منقضی شد.\nدلیل: %s",
 			lock.ChannelTitle, expireReason(lock))
-		if err := s.sender.Send(ctx, lock.Owner.TelegramID, msg, ports.WithHTML()); err != nil {
+		// Owner رو از store بگیر
+		owner, err := s.store.FindOwnerByID(ctx, lock.OwnerID)
+		if err != nil || owner == nil {
+			continue
+		}
+		if err := s.sender.Send(ctx, owner.TelegramID, msg, ports.WithHTML()); err != nil {
 			s.log.Error("expireLocks: notify failed", ports.F("err", err))
 		}
 		s.log.Info("lock expired", ports.F("channel", lock.ChannelID))

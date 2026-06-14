@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrjvadi/creatorbot/member-bot/internal/models"
+	"github.com/mrjvadi/creatorbot/member-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/worker"
 	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -14,14 +15,20 @@ import (
 
 type Dispatcher struct {
 	db         ports.DB
+	st         *store.Store
 	cache      ports.Cache
 	log        ports.Logger
 	encryptKey string
 	pool       *worker.Pool
+	balancer   *Balancer
 }
 
-func New(db ports.DB, cache ports.Cache, log ports.Logger, encryptKey string) *Dispatcher {
-	return &Dispatcher{db: db, cache: cache, log: log, encryptKey: encryptKey}
+func New(db ports.DB, st *store.Store, cache ports.Cache, log ports.Logger, encryptKey string) *Dispatcher {
+	return &Dispatcher{
+		db: db, st: st, cache: cache,
+		log: log, encryptKey: encryptKey,
+		balancer: NewBalancer(st, cache, log),
+	}
 }
 
 func (d *Dispatcher) Start(ctx context.Context) error {
@@ -42,6 +49,11 @@ func (d *Dispatcher) Start(ctx context.Context) error {
 	workers, err := d.buildWorkers(bots)
 	if err != nil {
 		return err
+	}
+
+	// channel assignment با load balance
+	if err := d.balancer.Assign(ctx); err != nil {
+		d.log.Error("initial channel assignment failed", ports.F("err", err))
 	}
 
 	go d.syncLoop(ctx)

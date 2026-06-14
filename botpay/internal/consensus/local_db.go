@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // LocalDB یک SQLite database محلی برای هر worker.
@@ -18,7 +18,7 @@ type LocalDB struct {
 
 // OpenLocalDB یک LocalDB باز یا می‌سازد.
 func OpenLocalDB(path, workerID string) (*LocalDB, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_timeout=5000")
+	db, err := sql.Open("sqlite", path+"?_journal=WAL&_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite %s: %w", path, err)
 	}

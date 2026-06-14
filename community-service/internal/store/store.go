@@ -182,42 +182,29 @@ func min(a, b int) int {
 }
 
 func (s *Store) UpdateCommunityScore(ctx context.Context, chatID int64, score int) error {
-	return s.db.WithContext(ctx).Model(&Community{}).
+	return s.pg.WithContext(ctx).Model(&Community{}).
 		Where("chat_id = ?", chatID).Update("quality_score", score).Error
 }
 
 func (s *Store) UpdateCommunityStatus(ctx context.Context, id uuid.UUID, status CommunityStatus) error {
-	return s.db.WithContext(ctx).Model(&Community{}).
+	return s.pg.WithContext(ctx).Model(&Community{}).
 		Where("id = ?", id).Update("status", status).Error
 }
 
 func (s *Store) ListCommunitiesByOwner(ctx context.Context, ownerID int64) ([]Community, error) {
 	var list []Community
-	return list, s.db.WithContext(ctx).
+	return list, s.pg.WithContext(ctx).
 		Where("owner_telegram_id = ?", ownerID).Find(&list).Error
 }
 
 func (s *Store) ListPendingCommunities(ctx context.Context) ([]Community, error) {
 	var list []Community
-	return list, s.db.WithContext(ctx).Where("status = ?", StatusPending).Find(&list).Error
+	return list, s.pg.WithContext(ctx).Where("status = ?", CommunityPending).Find(&list).Error
 }
 
-func (s *Store) IncrementMemberActivity(ctx context.Context, communityID uuid.UUID, telegramID int64, msgs, replies, reactions int) error {
-	return s.db.WithContext(ctx).Model(&MemberActivityScore{}).
-		Where("community_id = ? AND telegram_id = ?", communityID, telegramID).
-		Updates(map[string]any{
-			"message_count":  gorm.Expr("message_count + ?", msgs),
-			"reply_count":    gorm.Expr("reply_count + ?", replies),
-			"reaction_count": gorm.Expr("reaction_count + ?", reactions),
-			"updated_at":     time.Now(),
-		}).Error
-}
 
-func (s *Store) SetValidationWindow(ctx context.Context, communityID uuid.UUID, hours int) error {
-	if hours < 1 { hours = 1 }
-	if hours > 168 { hours = 168 }
-	return s.db.WithContext(ctx).
-		Where(ValidationWindow{CommunityID: communityID}).
-		Assign(ValidationWindow{WindowHours: hours}).
-		FirstOrCreate(&ValidationWindow{}).Error
+
+func (s *Store) UpdateValidationWindow(ctx context.Context, id uuid.UUID, windowSec int) error {
+	return s.pg.WithContext(ctx).Model(&Community{}).
+		Where("id = ?", id).Update("validation_window_sec", windowSec).Error
 }

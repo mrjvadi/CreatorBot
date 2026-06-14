@@ -150,6 +150,20 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 	return nil
 }
 
+// DeductForService پرداخت برای ایجاد سرویس — ref = plan_id.
+func (c *Client) DeductForService(ctx context.Context, telegramID int64, amountTON float64, planID string) (string, error) {
+	resp, err := c.Deduct(ctx, telegramID, amountTON, "plan:"+planID, "خرید سرویس")
+	if err != nil {
+		return "", err
+	}
+	return resp.TxID, nil
+}
+
+// RefundService استرداد در صورت شکست provisioning.
+func (c *Client) RefundService(ctx context.Context, telegramID int64, amountTON float64, invoiceCode string) error {
+	return c.AddCredit(ctx, telegramID, amountTON, "استرداد: "+invoiceCode)
+}
+
 // ErrInsufficientBalance خطای موجودی ناکافی.
 var ErrInsufficientBalance = fmt.Errorf("insufficient balance")
 

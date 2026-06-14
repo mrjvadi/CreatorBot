@@ -14,8 +14,8 @@ import (
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/tgbot"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -47,12 +47,16 @@ func main() {
 	}
 	st := store.New(db)
 	
+	ctx := context.Background()
 	if err := st.SeedCategories(ctx); err != nil {
 		log.Fatal("seed categories", ports.F("err", err))
 	}
 
 	// ── Redis ──────────────────────────────────────────────
-	cache := redis.New(redis.Config{Addr: cfg.RedisAddr, Password: cfg.RedisPass, DB: 4})
+	cache, err := redis.New(redis.Config{Addr: cfg.RedisAddr, Password: cfg.RedisPass, DB: 4})
+	if err != nil {
+		log.Fatal("redis", ports.F("err", err))
+	}
 
 	// ── NATS ──────────────────────────────────────────────
 	nc, err := natsclient.New(natsclient.Config{
@@ -77,8 +81,8 @@ func main() {
 
 	// ── Engine + Analyzer ────────────────────────────────────
 	broadcaster := engine.NewBroadcaster(b)
-	eng := engine.New(st, nc, broadcaster, log)
-	analyzer := engine.NewAnalyzer(b, st, log)
+	fc := fraudclient.New(nc)
+	eng := engine.New(st, nc, broadcaster, fc, log)
 
 	// ── Handler ───────────────────────────────────────────
 	h := tgbot.NewHandler(b, st, eng, cache, log, cfg.OwnerID)

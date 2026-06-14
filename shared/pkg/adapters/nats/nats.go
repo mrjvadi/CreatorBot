@@ -71,18 +71,28 @@ func (c *Client) PublishCore(subject string, payload any) error {
 
 // Subscribe یک handler برای یک subject ثبت می‌کند.
 // برای heartbeat و رویدادهای ساده استفاده می‌شود.
-func (c *Client) Subscribe(subject string, handler func([]byte)) (*nats.Subscription, error) {
-	return c.nc.Subscribe(subject, func(msg *nats.Msg) {
+// Subscribe به یک subject subscribe می‌کند.
+// جهت سادگی فقط error برمی‌گرداند.
+func (c *Client) Subscribe(subject string, handler func([]byte)) error {
+	_, err := c.nc.Subscribe(subject, func(msg *nats.Msg) {
 		handler(msg.Data)
 	})
+	return err
+}
+
+// SubscribeRaw مستقیماً *nats.Subscription برمی‌گرداند — برای request/reply.
+func (c *Client) SubscribeRaw(subject string, handler func(*nats.Msg)) error {
+	_, err := c.nc.Subscribe(subject, handler)
+	return err
 }
 
 // QueueSubscribe چند instance از یک سرویس می‌توانند روی یک queue باشند.
 // هر پیام فقط به یک instance می‌رسد (load balancing).
-func (c *Client) QueueSubscribe(subject, queue string, handler func([]byte)) (*nats.Subscription, error) {
-	return c.nc.QueueSubscribe(subject, queue, func(msg *nats.Msg) {
+func (c *Client) QueueSubscribe(subject, queue string, handler func([]byte)) error {
+	_, err := c.nc.QueueSubscribe(subject, queue, func(msg *nats.Msg) {
 		handler(msg.Data)
 	})
+	return err
 }
 
 // EnsureStream یک JetStream stream می‌سازد اگه وجود نداشته باشد.
@@ -134,7 +144,7 @@ func (c *Client) PublishToDLQ(subject string, payload []byte, err error, attempt
 // SubscribeWithRetry با retry و DLQ subscribe می‌کند.
 // maxRetries: تعداد تلاش مجدد قبل از ارسال به DLQ
 func (c *Client) SubscribeWithRetry(subject string, maxRetries int, handler func([]byte) error) error {
-	return c.Subscribe(subject, func(data []byte) {
+	err := c.Subscribe(subject, func(data []byte) {
 		var lastErr error
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			if lastErr = handler(data); lastErr == nil {
@@ -147,4 +157,5 @@ func (c *Client) SubscribeWithRetry(subject string, maxRetries int, handler func
 		// همه تلاش‌ها ناموفق → DLQ
 		c.PublishToDLQ(subject, data, lastErr, maxRetries)
 	})
+	return err
 }

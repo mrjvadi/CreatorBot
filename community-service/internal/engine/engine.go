@@ -24,7 +24,7 @@ func New(st *store.Store, nc *natsclient.Client, log ports.Logger) *Engine {
 
 // RegisterCommunity ثبت گروه/کانال.
 func (e *Engine) RegisterCommunity(ctx context.Context, ownerID uuid.UUID, telegramID int64, commType store.CommunityType, name, username string) (*store.Community, error) {
-	existing, _ := e.store.FindCommunityByTelegramID(ctx, telegramID)
+	existing, _ := e.store.FindCommunityByChatID(ctx, telegramID)
 	if existing != nil {
 		return nil, fmt.Errorf("community already registered")
 	}
@@ -229,4 +229,13 @@ func revenueMultiplier(score int) float64 {
 	case score >= 30: return 0.5
 	default:          return 0.0
 	}
+}
+
+// HandleLeave ترک کاربر از community.
+func (e *Engine) HandleLeave(ctx context.Context, telegramID, chatID int64) error {
+	e.log.Info("member left",
+		ports.F("user", telegramID),
+		ports.F("chat", chatID))
+	// TODO: invalidate pending validations که هنوز validate نشدن
+	return nil
 }

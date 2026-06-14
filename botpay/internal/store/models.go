@@ -30,7 +30,7 @@ type Wallet struct {
 
 	// TONAddress آدرس TON اختصاصی این کاربر (برای واریز)
 	// از HD wallet مشتق می‌شود
-	TONAddress string  `gorm:"uniqueIndex"`
+	TONAddress string  `gorm:"index"`  // uniqueIndex نیست — همه کاربرها masterAddr مشترک دارند
 
 	// Frozen موجودی بلوک‌شده (در انتظار تأیید تراکنش)
 	Frozen     int64   `gorm:"default:0"`
@@ -86,7 +86,7 @@ type Transaction struct {
 	Fee         int64      `gorm:"default:0"`
 
 	// TON blockchain
-	TxHash      string     `gorm:"uniqueIndex"` // hash تراکنش on-chain
+	TxHash      string     `gorm:"index"`       // on-chain tx hash — partial unique در migration
 	FromAddress string     // آدرس فرستنده
 	ToAddress   string     // آدرس گیرنده
 

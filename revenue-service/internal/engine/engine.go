@@ -19,15 +19,22 @@ type PayClient interface {
 
 // Engine پردازش و تقسیم درآمد.
 type Engine struct {
-	store          *store.Store
-	pay            PayClient
-	log            ports.Logger
-	retryInterval  time.Duration
+	store               *store.Store
+	pay                 PayClient
+	log                 ports.Logger
+	retryInterval       time.Duration
+	platformTelegramID  int64
+	nc                  natsPublisher
+}
+
+// natsPublisher interface برای publish به NATS.
+type natsPublisher interface {
+	PublishCore(subject string, payload any) error
 }
 
 func New(st *store.Store, pay PayClient, log ports.Logger) *Engine {
 	return &Engine{
-		store:         st,
+		store:        st,
 		pay:           pay,
 		log:           log,
 		retryInterval: 30 * time.Second,
@@ -167,4 +174,39 @@ func (e *Engine) CreateAndProcess(ctx context.Context,
 
 func (e *Engine) SetPlatformWallet(telegramID int64) {
 	e.platformTelegramID = telegramID
+}
+
+func (e *Engine) SetNC(nc natsPublisher) {
+	e.nc = nc
+}
+
+// ProcessGroupRevenue درآمد گروه را با تقسیم ۵۰/۴۰/۱۰ پردازش می‌کند.
+// ۴۰٪ به NATS فرستاده می‌شود تا community-service بین اعضا توزیع کند.
+func (e *Engine) ProcessGroupRevenue(ctx context.Context, earning *store.Earning) error {
+	ownerNano := earning.TotalNano * 50 / 100
+	memberPoolNano := earning.TotalNano * 40 / 100
+	platformNano := earning.TotalNano - ownerNano - memberPoolNano
+
+	// پرداخت به owner
+	if ownerNano > 0 && earning.OwnerTelegramID != 0 {
+		e.pay.AddCredit(ctx, earning.OwnerTelegramID,
+			float64(ownerNano)/1e9, "درآمد گروه — سهم owner")
+	}
+
+	// ارسال member pool به community-service
+	if memberPoolNano > 0 {
+		e.nc.PublishCore("community.member.pool", map[string]any{
+			"community_id": earning.BotID,
+			"pool_nano":    memberPoolNano,
+			"ref_id":       earning.ID,
+		})
+	}
+
+	// پرداخت به platform
+	if platformNano > 0 && e.platformTelegramID != 0 {
+		e.pay.AddCredit(ctx, e.platformTelegramID,
+			float64(platformNano)/1e9, "کمیسیون پلتفرم")
+	}
+
+	return e.store.MarkDone(ctx, earning.ID, "", "", 0, 0)
 }

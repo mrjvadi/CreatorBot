@@ -30,8 +30,9 @@ func (h *Handler) adminLinksList(ctx context.Context, c tele.Context) error {
 	}
 
 	lines = append(lines, "", h.t(ctx, uid, i18n.KeyLinkAskType))
-	h.setStep(ctx, uid, stepLinkType)
-	return c.Send(joinLines(lines), tele.ModeHTML, h.kbBotType(ctx, uid))
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(kb.Row(kb.Data("➕ لینک جدید", "create_link")))
+	return c.Send(joinLines(lines), tele.ModeHTML, kb)
 }
 
 func (h *Handler) adminLinkCreate(ctx context.Context, c tele.Context, botType string, maxUse int, label string) error {

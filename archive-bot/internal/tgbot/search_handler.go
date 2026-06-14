@@ -8,6 +8,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/archive-bot/internal/search"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 const maxResults = 10
@@ -19,9 +20,9 @@ func (h *Handler) doSearch(ctx context.Context, c tele.Context, query string) er
 	}
 
 	normalized := search.Normalize(query)
-	files, err := search.Search(h.db.Conn(), normalized, maxResults)
+	files, err := search.Search(ctx, h.db.Conn(), normalized, maxResults)
 	if err != nil {
-		h.log.Error("doSearch", nil)
+		h.log.Error("doSearch", ports.F("err", err))
 		return c.Send("❌ خطا در جستجو.")
 	}
 
@@ -54,57 +55,51 @@ func (h *Handler) onAdd(c tele.Context) error {
 	)
 }
 
-// onInlineQuery جستجوی inline در هر chat.
+// onInlineQuery جستجوی inline — از ArticleResult با دستور /file_{id} استفاده می‌کند.
+// کاربر نتیجه را انتخاب می‌کند و bot فایل را به chat می‌فرستد.
 func (h *Handler) onInlineQuery(c tele.Context) error {
+	ctx := context.Background()
 	query := c.Query().Text
 	if len(strings.TrimSpace(query)) < 2 {
-		return c.Answer(&tele.QueryResponse{
-			Results: tele.Results{},
-		})
+		return c.Answer(&tele.QueryResponse{Results: tele.Results{}})
 	}
 
-	ctx := context.Background()
 	normalized := search.Normalize(query)
-	files, err := search.Search(h.db.Conn(), normalized, 10)
+	files, err := search.Search(ctx, h.db.Conn(), normalized, 10)
 	if err != nil || len(files) == 0 {
 		return c.Answer(&tele.QueryResponse{Results: tele.Results{}})
 	}
 
 	var results tele.Results
 	for i, f := range files {
-		var result tele.Result
-		caption := "<b>" + f.Title + "</b>"
-		if f.Tags != "" {
-			caption += "\n🏷 " + f.Tags
+		desc := f.Description
+		if desc == "" {
+			desc = f.Tags
 		}
 
+		typeIcon := "📄"
 		switch f.FileType {
 		case "photo":
-			result = &tele.PhotoResult{
-				FileID:  f.FileID,
-				Caption: caption,
-			}
+			typeIcon = "🖼"
 		case "video":
-			result = &tele.VideoResult{
-				FileID:  f.FileID,
-				Caption: caption,
-				Title:   f.Title,
-			}
-		default:
-			result = &tele.DocumentResult{
-				FileID:  f.FileID,
-				Caption: caption,
-				Title:   f.Title,
-			}
+			typeIcon = "🎬"
+		case "audio":
+			typeIcon = "🎵"
 		}
 
-		result.SetResultID(fmt.Sprintf("%d", i))
-		result.SetParseMode(tele.ModeHTML)
-		results = append(results, result)
+		r := &tele.ArticleResult{
+			ResultBase:  tele.ResultBase{},
+			Title:       typeIcon + " " + f.Title,
+			Description: desc,
+			// وقتی انتخاب میشه این متن ارسال میشه
+			Text: fmt.Sprintf("/file_%s", f.ID),
+		}
+		r.SetResultID(fmt.Sprintf("%d", i))
+		results = append(results, r)
 	}
 
 	return c.Answer(&tele.QueryResponse{
-		Results:    results,
-		CacheTime:  30,
+		Results:   results,
+		CacheTime: 30,
 	})
 }

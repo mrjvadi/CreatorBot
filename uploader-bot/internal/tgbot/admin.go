@@ -149,6 +149,8 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st state, text
 		}
 		// آپدیت config MongoDB برای hot-reload
 		h.eng.Config.Update(ctx, key, text)
+		// اطلاع به همه instance های این bot
+		configstore.PublishConfigUpdated(h.eng.Nats, h.eng.InstanceID, "uploader")
 		h.clearState(ctx, uid)
 		return c.Send("✅ تنظیم ذخیره شد.", kbAdmin())
 

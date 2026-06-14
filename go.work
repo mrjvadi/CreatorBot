@@ -11,5 +11,10 @@ use (
 	./archive-bot
 	./member-bot
 	./source-service
-	botpay
+	./botpay
+	./revenue-service
+	./webhook-gateway
+	./ads-bot
+	./fraud-engine
+	./community-service
 )

@@ -24,10 +24,17 @@ func (h *Handler) adminServersList(ctx context.Context, c tele.Context) error {
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, h.t(ctx, uid, i18n.KeyServerAskName))
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("➕ افزودن سرور", "add_server")),
+	)
+	return c.Send(joinLines(lines), tele.ModeHTML, kb)
+}
 
+func (h *Handler) adminServerStart(ctx context.Context, c tele.Context) error {
+	uid := c.Sender().ID
 	h.setStep(ctx, uid, stepServerName)
-	return c.Send(joinLines(lines), tele.ModeHTML, h.kbBackCancel(ctx, uid))
+	return c.Edit(h.t(ctx, uid, i18n.KeyServerAskName), tele.ModeHTML, h.kbBackCancel(ctx, uid))
 }
 
 func (h *Handler) adminServerAdd(ctx context.Context, c tele.Context, name, ip string) error {
@@ -52,7 +59,7 @@ func (h *Handler) adminServerAdd(ctx context.Context, c tele.Context, name, ip s
 	}
 
 	return c.Send(
-		h.t(ctx, uid, i18n.KeyServerAdded, srv.Name, srv.IP, srv.ID),
+		h.t(ctx, uid, i18n.KeyServerAdded, srv.Name),
 		tele.ModeHTML, h.kbAdmin(ctx, uid),
 	)
 }

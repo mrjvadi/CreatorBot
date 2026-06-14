@@ -61,7 +61,7 @@ func main() {
 	var sender ports.BotSender = telebot.New(rawBot)
 
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, db, cache, log, cfg.OwnerID)
+	h := tgbot.NewHandler(sender, st, db, cache, log, cfg.OwnerID, rawBot.Me.Username)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

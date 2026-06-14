@@ -38,11 +38,6 @@ func (s *Store) UpdateBalance(ctx context.Context, userID uuid.UUID, delta float
 		UpdateColumn("balance", gorm.Expr("balance + ?", delta)).Error
 }
 
-// ---- Panel ----
-
-	return &p, err
-}
-
 // ---- Plan ----
 
 func (s *Store) ListPlans(ctx context.Context) ([]models.Plan, error) {

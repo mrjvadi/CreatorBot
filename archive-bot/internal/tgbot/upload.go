@@ -192,14 +192,13 @@ func extractFileInfo(c tele.Context) *fileInfo {
 	case m.Audio != nil:
 		return &fileInfo{m.Audio.FileID, "audio", m.Caption}
 	case m.Photo != nil:
-		p := m.Photo
-		return &fileInfo{p[len(p)-1].FileID, "photo", m.Caption}
+		return &fileInfo{m.Photo.FileID, "photo", m.Caption}
 	}
 	return nil
 }
 
 func sendArchiveFile(c tele.Context, f models.File, isAdmin bool) {
-	file := tele.FromFileID(f.FileID)
+	file := tele.File{FileID: f.FileID}
 	caption := "<b>" + f.Title + "</b>"
 	if f.Description != "" {
 		caption += "\n" + f.Description

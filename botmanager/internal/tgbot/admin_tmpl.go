@@ -25,8 +25,9 @@ func (h *Handler) adminTemplatesList(ctx context.Context, c tele.Context) error 
 	}
 	lines = append(lines, h.t(ctx, uid, i18n.KeyTemplateAskType))
 
-	h.setStep(ctx, uid, stepTmplType)
-	return c.Send(joinLines(lines), tele.ModeHTML, h.kbBotType(ctx, uid))
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(kb.Row(kb.Data("➕ تمپلیت جدید", "create_tmpl")))
+	return c.Send(joinLines(lines), tele.ModeHTML, kb)
 }
 
 func (h *Handler) adminTemplateAdd(ctx context.Context, c tele.Context, botType, image, tag, name string) error {

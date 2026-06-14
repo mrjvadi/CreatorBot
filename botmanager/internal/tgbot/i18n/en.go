@@ -1,212 +1,272 @@
 package i18n
 
 var en = map[Key]string{
-	// ── General ───────────────────────────────────────────
-	KeyCancel:    "❌ Cancel",
-	KeyCancelled: "Cancelled.",
+	KeyError:     "❌ An error occurred. Please try again.",
+	KeyCancelled: "✅ Operation cancelled.",
+	KeyDone:      "✅ Done.",
 	KeyBack:      "🔙 Back",
+	KeyCancel:    "❌ Cancel",
 	KeyConfirm:   "✅ Confirm",
-	KeyError:     "An error occurred. Please try again.",
-	KeyNotFound:  "Not found.",
-	KeySaved:     "✅ Saved successfully.",
-	KeyDeleted:   "🗑 Deleted.",
+	KeyLoading:   "⏳ Loading...",
+	KeyNotFound:  "❌ Not found.",
+	KeyNoAccess:  "⛔ Access denied.",
 
-	// ── Start / Welcome ───────────────────────────────────
-	KeyWelcomeAdmin: "Hello %s\nWelcome to CreatorBot admin panel 👑",
-	KeyWelcomeUser:  "Hello %s 👋\nWith CreatorBot you can build custom Telegram bots.",
+	KeyMenuWallet:        "💰 Wallet",
+	KeyMenuServices:      "🤖 My Services",
+	KeyMenuCommunities:   "🏘 Communities",
+	KeyMenuAds:           "📢 Advertisements",
+	KeyMenuEarnings:      "📊 Earnings",
+	KeyMenuPlans:         "💎 Plans",
+	KeyMenuNotifications: "🔔 Notifications",
+	KeyMenuSettings:      "⚙️ Settings",
+	KeyMenuHelp:          "❓ Help",
+	KeyMenuSupport:       "💬 Support",
+	KeyMenuMyBots:        "🤖 My Bots",
 
-	// ── Language ──────────────────────────────────────────
-	KeySelectLang:  "زبان خود را انتخاب کنید:\nSelect your language:",
-	KeyLangChanged: "✅ Language changed to English.",
-
-	// ── Admin Menu ────────────────────────────────────────
+	KeyMenuUsers:     "👥 Users",
+	KeyMenuCampaigns: "📢 Campaigns",
+	KeyMenuFinance:   "💰 Finance",
+	KeyMenuFraud:     "🚨 Fraud",
+	KeyMenuStats:     "📈 Statistics",
+	KeyMenuSystem:    "⚙️ System",
 	KeyMenuBots:      "🤖 Bots",
-	KeyMenuLinks:     "🔗 Invite Links",
+	KeyMenuLinks:     "🔗 Links",
 	KeyMenuServers:   "🖥 Servers",
 	KeyMenuTemplates: "📦 Templates",
-	KeyMenuPlans:     "💰 Plans",
-	KeyMenuUsers:     "👥 Users",
-	KeyMenuStats:     "📊 Statistics",
 
-	// ── User Menu ─────────────────────────────────────────
-	KeyMenuMyBots:  "🤖 My Bots",
-	KeyMenuSupport: "📞 Support",
-	KeyMenuHelp:    "❓ Help",
+	KeyWelcomeUser: `👋 Hello <b>%s</b>!
 
-	// ── Server ────────────────────────────────────────────
-	KeyServersTitle:    "<b>🖥 Servers</b>",
-	KeyServersEmpty:    "No servers registered.",
-	KeyServerAskName:   "Enter server name:\nExample: <code>server-de1</code>",
-	KeyServerAskIP:     "Enter server IP address:\nExample: <code>1.2.3.4</code>",
-	KeyServerAdded:     "✅ <b>Server added</b>\n\nName: %s\nIP: <code>%s</code>\nID: <code>%s</code>",
-	KeyServerDuplicate: "This IP is already registered.",
-	KeyServerAddError:  "Error adding server.",
+Welcome to CreatorBot.
+With this platform you can:
+• Create and manage Telegram bots
+• Earn revenue
+• Manage communities
+• Run targeted advertising campaigns
 
-	// ── Template ──────────────────────────────────────────
-	KeyTemplatesTitle:   "<b>📦 Templates</b>",
-	KeyTemplatesEmpty:   "No templates found.",
-	KeyTemplateAskType:  "Select bot type:",
-	KeyTemplateAskImage: "Enter Docker image name:\nExample: <code>registry.io/mybot</code>",
-	KeyTemplateAskTag:   "Enter image tag:\nExample: <code>latest</code> or <code>v1.2.0</code>",
-	KeyTemplateAskName:  "Enter a name for this template:\nExample: <code>uploader-v2</code>",
-	KeyTemplateAdded:    "✅ <b>Template added</b>\n\nName: <b>%s</b>\nType: %s\nImage: <code>%s:%s</code>\nID: <code>%s</code>",
-	KeyTemplateAddError: "Error adding template.",
+Use the menu below to get started 👇`,
 
-	// ── Plan ──────────────────────────────────────────────
-	KeyPlansTitle:        "<b>💰 Plans</b>",
-	KeyPlansEmpty:        "No plans found.",
-	KeyPlansNoTemplate:   "⚠️ You need to add a template first.",
-	KeyPlanAskTemplate:   "Send the template ID to create a new plan:",
-	KeyPlanTmplNotFound:  "Template not found. Please check the ID.",
-	KeyPlanAskName:       "Enter plan name:\nExample: Monthly",
-	KeyPlanAskDays:       "Enter plan duration in days:\nExample: <b>30</b>",
-	KeyPlanAskPrice:      "Enter plan price:\nExample: <b>5</b>",
-	KeyPlanInvalidNumber: "Please enter a valid number.",
-	KeyPlanAdded:         "✅ <b>Plan added</b>\n\nName: <b>%s</b>\nTemplate: %s\nDuration: %d days\nPrice: <b>%.2f</b>\nID: <code>%s</code>",
-	KeyPlanAddError:      "Error adding plan.",
+	KeyWelcomeAdmin: `👑 Hello <b>%s</b>!
 
-	// ── Invite Link ───────────────────────────────────────
-	KeyLinksTitle:      "<b>🔗 Invite Links</b>\n\nUsers can build bots using these links.",
-	KeyLinksEmpty:      "No invite links yet.",
-	KeyLinkAskType:     "Select bot type for the new link:",
-	KeyLinkAskLimit:    "Select usage limit for this link:",
-	KeyLinkAskLabel:    "Write a private note (e.g. «For John»)\nThis note is only visible to you.\n\nEnter <b>0</b> for no note.",
-	KeyLinkCreated:     "✅ <b>Invite link created</b>\n\nType: %s %s%s\nLimit: %s\n\n🔗 Link:\n<code>%s</code>\n\nSend this link to the user.",
-	KeyLinkCreateError: "Error creating invite link.",
+Welcome to the CreatorBot Admin Panel.
+Use the menu below to access all sections 👇`,
 
-	// ── Bots (Admin) ──────────────────────────────────────
-	KeyBotsTitle:    "<b>🤖 All Bots (%d)</b>",
-	KeyBotsEmpty:    "No bots found.\n\nCreate an invite link from «🔗 Invite Links» and share it with a user.",
-	KeyBotStopped:   "⏹ Bot <code>%s</code> stopped.",
-	KeyBotStarted:   "▶️ Start command sent for <code>%s</code>.",
-	KeyBotDeleted:   "🗑 Bot <b>%s</b> deleted.",
-	KeyBotNotFound:  "Bot not found.",
+	KeyHelpText: `📚 <b>CreatorBot Help</b>
 
-	// ── Users ─────────────────────────────────────────────
-	KeyUsersTitle:    "<b>👥 Users (%d)</b>",
-	KeyUsersEmpty:    "No users registered yet.",
-	KeyUserBlocked:   "🚫 User blocked.",
-	KeyUserUnblocked: "✅ User unblocked.",
-	KeyUserMadeAdmin: "🛡 User promoted to Admin.",
-	KeyUserMadeUser:  "👤 User role changed to User.",
+💰 <b>Wallet</b> — Balance, deposit, withdraw
+🤖 <b>My Services</b> — Create and manage bots
+🏘 <b>Communities</b> — Register groups and channels
+📢 <b>Advertisements</b> — Create ad campaigns
+📊 <b>Earnings</b> — Revenue reports
+💎 <b>Plans</b> — Upgrade subscription
+🔔 <b>Notifications</b> — Configure alerts
+⚙️ <b>Settings</b> — Language, security, support
 
-	// ── Stats ─────────────────────────────────────────────
-	KeyStatsTitle: "<b>📊 System Statistics</b>",
+❓ Need help? Contact our support team.`,
 
-	// ── User Bots ─────────────────────────────────────────
-	KeyMyBotsTitle: "<b>🤖 Your Bots (%d)</b>",
-	KeyMyBotsEmpty: "<b>🤖 Your Bots</b>\n\nYou don't have any active bots yet.\n\nContact support to purchase or get an invite link.",
-	KeySupportText: "<b>📞 Support</b>\n\nContact our support team:\n@support_username\n\nAvailable: 9am - 9pm",
-	KeyHelpText:    "<b>❓ Help</b>\n\nWith CreatorBot you can build custom Telegram bots:\n\n📤 <b>Uploader</b> — Send files via code\n🔒 <b>VPN</b> — Sell VPN subscriptions\n📂 <b>Archive</b> — Archive and search files\n👥 <b>Member</b> — Channel membership lock\n\nContact support to purchase.",
+	KeyHelpAdmin: `👑 <b>CreatorBot Admin Panel</b>
 
-	// ── Wizard ────────────────────────────────────────────
-	KeyWizardInvalidLink:   "❌ This link is not valid.",
-	KeyWizardExpiredLink:   "❌ This link has expired.",
-	KeyWizardUsedLink:      "❌ This link has already been used.",
-	KeyWizardConfirm:       "<b>🔗 Valid Invite Link</b>\n\n%s <b>%s Bot</b>\n\n%s\n\nDo you want to continue?",
-	KeyWizardAskToken:      "Get a bot token from @BotFather and send it here.\n\n⚠️ Never share your token with anyone.",
-	KeyWizardInvalidToken:  "❌ Invalid token format.\n\nThe token must be from @BotFather and look like:\n<code>123456789:AABB...</code>",
-	KeyWizardAlreadyExists: "⚠️ This bot is already registered.\n\nID: <code>%s</code>\nStatus: %s",
-	KeyWizardNoServer:      "⚠️ No servers are available at this time.\nPlease try again later or contact support.",
-	KeyWizardNoTemplate:    "⚠️ No template configured for this bot type.\nPlease contact support.",
-	KeyWizardDeployError:   "⚠️ <b>Bot registered but deploy failed</b>\n\nAdmin will investigate shortly.\nID: <code>%s</code>",
-	KeyWizardSuccess:       "🎉 <b>Your bot is ready!</b>\n\n%s <b>%s Bot</b>\nServer: %s\nStatus: 🟡 Starting up\n\nUsually active within 1-2 minutes.\n\nCheck status: <b>🤖 My Bots</b>",
+👥 <b>Users</b> — Manage and search users
+🤖 <b>Services</b> — Manage user bots
+🏘 <b>Communities</b> — Monitor groups and channels
+📢 <b>Campaigns</b> — Manage advertising
+💰 <b>Finance</b> — Financial reports and withdrawals
+🚨 <b>Fraud</b> — Monitor and combat fraud
+📈 <b>Statistics</b> — Platform-wide stats
+⚙️ <b>System</b> — Plans, servers, settings`,
 
-	// ── Bot Types ─────────────────────────────────────────
-	KeyBotTypeUploader: "📤 Uploader",
-	KeyBotTypeVPN:      "🔒 VPN",
-	KeyBotTypeArchive:  "📂 Archive",
-	KeyBotTypeMember:   "👥 Member",
+	KeyWalletHome: `💰 <b>Wallet</b>
 
-	KeyBotDescUploader: "File uploader bot — send files via code",
-	KeyBotDescVPN:      "VPN sales bot — sell subscriptions",
-	KeyBotDescArchive:  "Archive bot — search and categorize files",
-	KeyBotDescMember:   "Member lock bot — check channel membership",
+💎 TON Balance: <b>%.4f</b>
+🎁 Credit: <b>%.4f</b>
+💵 Total Available: <b>%.4f</b>`,
 
+	KeyWalletDeposit:    "📥 <b>Deposit</b>\n\nSelect a deposit method:",
+	KeyWalletWithdraw:   "📤 <b>Withdraw</b>\n\nSelect a withdrawal method:",
+	KeyWalletTransfer:   "🔄 <b>Internal Transfer</b>\n\nEnter the recipient's Telegram ID:",
+	KeyWalletHistory:    "📜 <b>Transaction History</b>",
+	KeyWalletRewards:    "🎁 <b>Rewards</b>\n\nYour earned rewards:",
+	KeyWalletLowBalance: "❌ Insufficient balance.\n\n💡 Use the Deposit button to top up your wallet.",
 
-	// ── Admin Stats ──────────────────────────────────────────
-	KeyStatsBotsLine:    "🤖 Bots (%d total)\n🟢 Running: %d  🔴 Stopped: %d  🟡 Pending: %d  ⚠️ Error: %d",
-	KeyStatsServersLine: "🖥 Servers (%d total)\n🟢 Online: %d  🔴 Offline: %d",
-	KeyStatsUsersLine:   "👥 Users (%d total)\n🛡 Admin: %d  🚫 Blocked: %d",
+	KeyServicesHome:  "🤖 <b>My Services</b>\n\n%d active services",
+	KeyServicesEmpty: "🤖 <b>My Services</b>\n\nYou don't have any services yet.\nClick «Create Service» to build your first bot! 🚀",
 
-	// ── Plans ─────────────────────────────────────────────────
-	KeyPlansAvailable:    "<b>💎 Available Plans</b>",
-	KeyPlansFree:         "🆓 Free",
-	KeyPlansDays:         "%d days",
-	KeyPlansEternal:      "Lifetime",
-	KeyPlansSelectPrompt: "Send the plan ID you want:",
+	KeyServiceCreate:     "🆕 <b>Create New Service</b>",
+	KeyServiceSelectType: "🤖 <b>Select Service Type:</b>",
+	KeyServiceSelectPlan: "💎 <b>Select a Plan:</b>\n\nService: %s",
+	KeyServiceEnterToken: `🔑 <b>Bot Token</b>
 
-	// ── Wallet ────────────────────────────────────────────────
-	KeyBalanceLine:  "💳 Balance: <b>%.4f TON</b>",
-	KeyCreditLine:   " (🎁 %.4f credit)",
-	KeyPlanLine:     "📋 Plan: <b>%s</b>\n🤖 %d/%d bots\n%s",
-	KeyExpiredSub:   "❌ Expired",
-	KeyEternalSub:   "♾ Lifetime",
-	KeyDaysLeft:     "⏰ %d days left",
+Plan: <b>%s</b> — <b>%.2f TON</b>
 
-	// ── Purchase ──────────────────────────────────────────────
-	KeyNoPlans:         "No plans available.",
-	KeyBuyConfirm:      "<b>Confirm Purchase</b>\n\n📋 Plan: <b>%s</b>\n💰 Price: <b>%.2f TON</b>\n💳 Your balance: %.4f TON\n\nConfirm?",
-	KeyBuySuccess:      "✅ <b>Plan %s activated!</b>\n\n🤖 %d bots\nYou can now build your bot.",
-	KeyInsufficientBal: "❌ Insufficient balance.",
-	KeyNeedDeposit:     "<b>💎 Buy Plan %s</b>\n\n💰 Price: %.2f TON\n💳 Your balance: %.4f TON\n📥 Need to deposit: <b>%.4f TON</b>\n\nCode: <code>%s</code>\n\n1. Click Deposit\n2. Pay the amount\n3. Click «Done»",
-	KeyDepositDone:     "✅ <b>Payment confirmed!</b>\n\n📋 Plan: %s\n🤖 %d bots\nYou can now build your bot.",
-	KeyDepositPending:  "⏳ Balance still insufficient.\n\n💳 Balance: %.4f TON\n💰 Need: %.2f TON\n\nWait a few minutes and try again.",
-	KeySubExists:       "You already have an active subscription.",
-	KeyFreePlanActive:  "🎉 <b>Free plan activated!</b>\n\n📋 %s\n🤖 %d bots\n⏳ %s\n\nYou can now build your bot.",
-	KeyCapacityFull:    "Bot limit reached (%d/%d).\n\n💎 Upgrade your plan for more bots.",
-	KeyNoPlan:          "You need to purchase a plan to build bots.",
+Get your bot token from @BotFather and send it here:
 
-	// ── Block ─────────────────────────────────────────────────
-	KeyBlocked: "⛔️ Your access has been restricted.",
+<code>1234567890:ABCDefghijklmnop...</code>
 
+📌 How to get a token:
+1. Open @BotFather in Telegram
+2. Send /newbot
+3. Enter your bot's name and username
+4. Copy and send the token here`,
 
-	// ── Admin — Plan ──────────────────────────────────────────
-	KeyAdminPlanLine:   "• <b>%s</b>%s — %d days — <b>%.2f TON</b> — %d bots\n  ID: <code>%s</code>",
-	KeyAdminPlanFree:   " 🆓",
-	KeyAdminPlanAdded:  "✅ <b>Plan added</b>\n\nName: <b>%s</b>%s\nTemplate: %s\nDuration: %d days\nPrice: <b>%.2f TON</b>\nMax bots: %d\nID: <code>%s</code>",
-	KeyAdminTemplates:  "<b>Templates:</b>",
+	KeyServiceConfirm: `✅ <b>Confirm Service Creation</b>
 
-	// ── Admin — Bots ──────────────────────────────────────────
-	KeyAdminBotSummary:  "🟢 %d  🔴 %d  🟡 %d  ⚠️ %d",
-	KeyAdminLinkStats:   "✅ Active: %d  |  ❌ Expired: %d",
-	KeyAdminLinkLimitX:  "%d×",
+🤖 Type: <b>%s</b>
+💎 Plan: <b>%s</b>
+💰 Price: <b>%.2f TON</b>
 
-	// ── Admin — Users ─────────────────────────────────────────
-	KeyAdminUserSummary: "👑 %d  🛡 %d  👤 %d  🚫 %d",
-	KeyAdminUserDetail:  "<b>👤 %s</b>%s\nTID: <code>%d</code>\nRole: %s\nBlocked: %s\nBots: %d",
-	KeyAdminUserBlocked: "🚫",
+Are you sure?`,
 
-	// ── How to build ──────────────────────────────────────────
-	KeyHowToBuild: "<b>🔗 How to build a bot?</b>\n\n" +
-		"1. Message the admin and say you want to build a bot\n" +
-		"2. Admin will send you an invite link\n" +
-		"3. Open the link\n" +
-		"4. Create a bot on @BotFather and send the token here\n" +
-		"5. Done! Your bot will be ready in 2 minutes.",
-	KeyHowToBuildDone: "✅ Got it",
-	KeyNoFreePlan:     "No free plan available.",
+	KeyServiceCreating: "⏳ <b>Setting up your service...</b>\n\nPlease wait.",
+	KeyServiceCreated: `🎉 <b>Service successfully created!</b>
 
-	// ── Free template ─────────────────────────────────────────
-	KeyTmplFreeAdded:  "✅ <b>Free template added</b>\n\nName: <b>%s</b>\nType: %s\nImage: <code>%s:%s</code>\nID: <code>%s</code>\n\nNow you can create a free plan.",
-	KeyTmplFreeExists: "⚠️ A free template of type <b>%s</b> already exists.\nID: <code>%s</code>",
+🤖 Type: <b>%s</b>
+💎 Plan: <b>%s</b>
+📦 Status: <b>Setting up</b>
 
+⏱ Usually ready within 2-3 minutes.
+Track the status in «My Services».`,
 
-	// ── Subscription active, no bot ─────────────────────────
-	KeySubActiveNoBot:   "🎉 <b>Plan %s is active</b>\n\nYou haven't built a bot yet.\n\nTo build a bot, get an <b>invite link</b> from the admin.\nOpen the link and follow the steps.",
-	KeyBuildWithLink:    "🔗 Build bot with invite link",
+	KeyServiceFailed:       "❌ <b>Service setup failed.</b>\n\nYour payment has been refunded to your wallet.",
+	KeyServiceNoCapacity:   "❌ <b>Capacity reached.</b>\n\nYour current plan doesn't allow more services.\n\n💡 Upgrade your plan to increase capacity.",
+	KeyServiceInvalidToken: "❌ <b>Invalid token.</b>\n\nExample: <code>1234567890:ABCDefgh...</code>",
+	KeyServiceDuplicate:    "❌ <b>This bot is already registered.</b>\n\nEach bot can only be used once.",
 
-	// ── Buttons ───────────────────────────────────────────
-	KeyBtnYesBuild:  "✅ Yes, build it",
+	KeyPlansHome:    "💎 <b>Plans</b>\n\nChoose a plan that suits you:",
+	KeyPlanCurrent:  "💎 <b>Your Current Plan</b>\n\n📦 Plan: <b>%s</b>\n🤖 Bots: <b>%d / %d</b>\n📅 Expires: <b>%s</b>\n⏰ Days remaining: <b>%d</b>",
+	KeyPlanNone:     "❌ <b>No active subscription.</b>\n\nSelect a plan to use the platform.",
+	KeyPlanExpired:  "⚠️ <b>Your subscription has expired.</b>\n\nRenew your plan to continue.",
+	KeyPlanUpgrade:  "🚀 <b>Upgrade Plan</b>\n\nSelect a target plan:",
+	KeyPlanBuyTitle: "💎 <b>%s</b>\n\n⏱ Duration: <b>%d days</b>\n🤖 Max bots: <b>%d</b>\n💰 Price: <b>%.2f TON</b>",
+	KeyPlanBought:   "🎉 <b>Plan %s activated successfully!</b>\n\nGo to «My Services» to create your bot.",
+	KeyNoFreePlan:   "❌ No free plan available at this time.",
+	KeyFreePlanDone: "✅ <b>Free plan activated!</b>\n\nYou can now create your first bot.",
+
+	KeyCommHome:     "🏘 <b>Communities</b>\n\nManage your groups and channels and earn from advertising.",
+	KeyCommEmpty:    "🏘 <b>Communities</b>\n\nYou haven't registered any communities yet.\n\nRegister a group or channel to start earning from ads! 💰",
+	KeyCommRegister: "➕ <b>Register New Community</b>\n\nSelect the community type:",
+	KeyCommVerify:   "🔍 <b>Verify Community</b>\n\nAdd the bot to your community as admin, then click Verify.",
+
+	KeyAdsHome:   "📢 <b>Advertisements</b>\n\nManage your advertising campaigns.",
+	KeyAdsEmpty:  "📢 <b>Advertisements</b>\n\nNo campaigns yet.\n\nCreate a campaign to show your ad in target channels! 📣",
+	KeyAdsCreate: "➕ <b>New Campaign</b>\n\nEnter the campaign name:",
+
+	KeyEarningsHome:  "📊 <b>Earnings</b>\n\n💰 Total: <b>%.4f TON</b>\n📅 Today: <b>%.4f TON</b>\n📆 This Month: <b>%.4f TON</b>",
+	KeyEarningsEmpty: "📊 <b>Earnings</b>\n\nNo earnings recorded yet.\n\n💡 Activate communities and services to start earning.",
+
+	KeySettingsHome: "⚙️ <b>Settings</b>\n\nManage your preferences below:",
+	KeyLangChanged:  "✅ Language changed successfully.",
+	KeyLangSelect:   "🌍 <b>Select Language</b>\n\nChoose your preferred language:",
+
+	KeyNotificationsHome: "🔔 <b>Notifications</b>\n\nSelect which notifications you want to receive:",
+
+	KeySupportText: "💬 <b>CreatorBot Support</b>\n\n📚 Docs: t.me/CreatorBotDocs\n💬 Support: @CreatorBotSupport\n🐞 Bug Report: @CreatorBotBug\n\n⏰ Response hours: 9 AM – 10 PM",
+
+	KeyAdminUsersTitle:    "👥 <b>Users</b> (%d total)\n\n👑 %d owner | 🛡 %d admin | 👤 %d regular | 🚫 %d blocked",
+	KeyAdminUserDetail:    "👤 <b>User Info</b>\n\n🏷 Name: <b>%s</b>\n🔗 Username: %s\n🆔 ID: <code>%d</code>\n👑 Role: <b>%s</b>\n🚫 Status: %s\n🤖 Active bots: %d",
+	KeyAdminUserBlocked:   "🚫 User <b>%s</b> has been blocked.",
+	KeyAdminUserUnblocked: "✅ User <b>%s</b> has been unblocked.",
+
+	KeyBotsEmpty:    "🤖 <b>No active bots found.</b>",
+	KeyServerAskName: "🖥 <b>New Server</b>\n\nEnter the server name:\n<i>Example: server-eu-1</i>",
+	KeyServerAskIP:   "🌐 Enter the server IP address:\n<i>Example: 192.168.1.1</i>",
+	KeyServerAdded:   "✅ Server <b>%s</b> added successfully.",
+
+	KeyTemplateAskType:  "📦 <b>New Template</b>\n\nSelect the service type:",
+	KeyTemplateAskImage: "🐳 Enter the Docker image name:\n<i>Example: creatorbot/vpn-bot</i>",
+	KeyTemplateAskTag:   "🏷 Enter the image tag:\n<i>Example: latest or v1.2.3</i>",
+	KeyTmplFreeAdded:    "✅ Free template defined successfully.",
+	KeyTmplFreeExists:   "⚠️ A free template for this type already exists.",
+
+	KeyPlanAskName:  "💎 <b>New Plan</b>\n\nEnter the plan name:",
+	KeyPlanAskPrice: "💰 Enter the plan price in TON:\n<i>Example: 5.0</i>",
+	KeyPlanAskDays:  "📅 Enter the plan duration in days:\n<i>Example: 30</i>",
+	KeyPlanAskBots:  "🤖 Enter the maximum number of bots:\n<i>Example: 3</i>",
+	KeyPlanAdded:    "✅ Plan <b>%s</b> added successfully.",
+
+	KeyLinkAskType:  "🔗 <b>New Invite Link</b>\n\nSelect the service type:",
+	KeyLinkAskLimit: "🔢 Select the number of uses:",
+	KeyLinkCreated:  "✅ Invite link created:\n\n<code>%s</code>\n\nUsage limit: %d",
+
+	KeyStatsTitle: "📈 <b>System Statistics</b>\n⏰ %s\n\n🤖 <b>Bots</b> (%d total)\n🟢 Running: %d | 🔴 Stopped: %d | 🟡 Pending: %d | ⚠️ Error: %d\n\n🖥 <b>Servers</b> (%d total)\n🟢 Online: %d | 🔴 Offline: %d\n\n👥 <b>Users</b> (%d total)\n🛡 Admin: %d | 🚫 Blocked: %d\n\n📦 %d plans | 💰 %d wallets",
+
+	KeySubActiveNoBot: "✅ <b>Plan %s is active!</b>\n\n🤖 Capacity: %d bots\n📅 Expires: %s\n\nGo to «My Services» to create your bot.",
+	KeyBuildWithLink:  "🔗 <b>Valid Invite Link</b>\n\nService: <b>%s</b>\nConfirm to continue:",
+
+	KeyWizardInvalidLink: "❌ <b>Invalid invite link.</b>\n\nPlease get a valid link from the admin.",
+	KeyWizardExpiredLink: "⏰ <b>This invite link has expired.</b>\n\nPlease request a new link from the admin.",
+	KeyWizardUsedLink:    "❌ <b>This invite link has already been used.</b>",
+	KeyWizardAskToken:    "🔑 <b>Bot Token</b>\n\nGet your bot token from @BotFather and send it here:\n\n<code>1234567890:ABCDefgh...</code>",
+
+	KeyHowToBuild: `📘 <b>How to Create a Bot</b>
+
+1️⃣ Open @BotFather in Telegram
+2️⃣ Send /newbot
+3️⃣ Enter your bot's name
+4️⃣ Choose a username (must end with "bot")
+5️⃣ Copy the token you receive
+6️⃣ Send the token here ✅`,
+
+	KeyHowToBuildDone: "✅ Got it, let's continue",
+
+	KeyBtnYesBuild:  "✅ Yes, I have a bot",
 	KeyBtnCancel:    "❌ Cancel",
 	KeyBtnBack:      "🔙 Back",
-	KeyBtnLimit1:    "1️⃣  Once",
-	KeyBtnLimit3:    "3️⃣  3 times",
-	KeyBtnLimit5:    "5️⃣  5 times",
-	KeyBtnLimit10:   "🔟 10 times",
-	KeyBtnLimitNo:   "♾  Unlimited",
+	KeyBtnLimit1:    "1️⃣ Once",
+	KeyBtnLimit3:    "3️⃣ Three times",
+	KeyBtnLimit5:    "5️⃣ Five times",
+	KeyBtnLimit10:   "🔟 Ten times",
+	KeyBtnLimitNo:   "♾️ Unlimited",
 	KeyBtnBlock:     "🚫 Block",
 	KeyBtnUnblock:   "✅ Unblock",
 	KeyBtnMakeAdmin: "🛡 Make Admin",
-	KeyBtnMakeUser:  "👤 Make User",
+	KeyBtnMakeUser:  "👤 Make Regular User",
+	KeyBotsTitle:        "🤖 <b>Bots</b> (%d total)",
+	KeyAdminBotSummary:  "%s <b>%s</b> — %s",
+	KeyBotNotFound:      "❌ Bot not found.",
+	KeyBotStopped:       "⏹ Bot <b>%s</b> stopped.",
+	KeyBotStarted:       "▶️ Bot <b>%s</b> started.",
+	KeyBotDeleted:       "🗑 Bot <b>%s</b> deleted.",
+	KeyLinksTitle:       "🔗 <b>Invite Links</b> (%d links)",
+	KeyLinksEmpty:       "🔗 <b>Invite Links</b>\n\nNo links found.",
+	KeyLinkAskLabel:     "🏷 Enter a label for this link (or send 'skip'):",
+	KeyLinkCreateError:  "❌ Failed to create link.",
+	KeyAdminLinkStats:   "🔗 <code>%s</code>\n📦 %s | 🔢 %d/%s | ⏰ %s",
+	KeyAdminLinkLimitX:  "%d times",
+	KeyPlansTitle:       "💎 <b>Plans</b> (%d plans)",
+	KeyPlansEmpty:       "💎 <b>Plans</b>\n\nNo plans defined.",
+	KeyPlansNoTemplate:  "❌ Define a template first.",
+	KeyPlanAskTemplate:  "📦 Select a service template:",
+	KeyPlanInvalidNumber:"❌ Enter a valid number.",
+	KeyPlanTmplNotFound: "❌ Template not found.",
+	KeyPlanAddError:     "❌ Failed to create plan.",
+	KeyAdminPlanLine:    "💎 <b>%s</b> — %.1f TON | %d days | %d bots",
+	KeyAdminPlanFree:    "🆓 Free",
+	KeyTemplatesTitle:   "📦 <b>Templates</b> (%d templates)",
+	KeyTemplatesEmpty:   "📦 <b>Templates</b>\n\nNo templates defined.",
+	KeyTemplateAskName:  "📦 <b>New Template</b>\n\nEnter template name:",
+	KeyTemplateAdded:    "✅ Template <b>%s</b> added.",
+	KeyTemplateAddError: "❌ Failed to create template.",
+	KeyAdminTemplates:   "📦 <b>%s</b> — %s:%s",
+	KeyServersTitle:     "🖥 <b>Servers</b> (%d servers)",
+	KeyServersEmpty:     "🖥 <b>Servers</b>\n\nNo servers registered.",
+	KeyServerAddError:   "❌ Failed to add server.",
+	KeyServerDuplicate:  "❌ A server with this IP already exists.",
+	KeyUsersTitle:       "👥 <b>Users</b> (%d total)",
+	KeyUsersEmpty:       "👥 <b>Users</b>\n\nNo users found.",
+	KeyAdminUserSummary: "%s <b>%s</b> (@%s) — %s",
+	KeyUserBlocked:      "🚫 User <b>%s</b> blocked.",
+	KeyUserUnblocked:    "✅ User <b>%s</b> unblocked.",
+	KeyUserMadeAdmin:    "🛡 User <b>%s</b> made admin.",
+	KeyUserMadeUser:     "👤 User <b>%s</b> made regular user.",
+	KeyBlocked:          "🚫 Blocked",
+	KeyStatsBotsLine:    "🟢 %d | 🔴 %d | 🟡 %d | ⚠️ %d",
+	KeyStatsServersLine: "🟢 %d | 🔴 %d",
+	KeyStatsUsersLine:   "🛡 %d | 🚫 %d",
+	KeyBotTypeVPN:       "🌐 VPN",
+	KeyBotTypeUploader:  "📤 Uploader",
+	KeyBotTypeMember:    "🔒 Membership Lock",
+	KeyBotTypeArchive:   "📦 Archive",
+	KeyNoPlan:           "❌ No active subscription.",
+	KeySelectLang:       "🌍 Select your preferred language:",
+	KeyBtnLimit:         "🔢 %d times",
+
 }

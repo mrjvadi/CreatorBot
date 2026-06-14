@@ -18,9 +18,6 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/telebot"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
-	"github.com/mrjvadi/creatorbot/member-bot/internal/events"
-	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
-	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
@@ -86,7 +83,7 @@ func main() {
 	}()
 
 	// Worker dispatcher
-	disp := dispatcher.New(db, cache, log, cfg.EncryptKey)
+	disp := dispatcher.New(db, st, cache, log, cfg.EncryptKey)
 	go func() {
 		if err := disp.Start(ctx); err != nil && ctx.Err() == nil {
 			log.Fatal("dispatcher", ports.F("err", err))

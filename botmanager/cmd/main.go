@@ -8,13 +8,13 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
+	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/payclient"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared-core/ton"
-	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
@@ -39,8 +39,8 @@ type Config struct {
 
 	EncryptKey string `mapstructure:"ENCRYPTION_KEY"`
 	// TON payment
-	TONWallet  string `mapstructure:"TON_WALLET_ADDRESS"`
-	TONAPIKey  string `mapstructure:"TON_API_KEY"`
+	TONWallet   string `mapstructure:"TON_WALLET_ADDRESS"`
+	TONAPIKey   string `mapstructure:"TON_API_KEY"`
 	TONNetwork  string `mapstructure:"TON_NETWORK"`
 	BotpayURL   string `mapstructure:"BOTPAY_URL"`
 	BotpayKey   string `mapstructure:"BOTPAY_API_KEY"`
@@ -93,6 +93,7 @@ func main() {
 	settings := tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: 10},
+		URL:    "http://141.95.210.17:8081",
 	}
 	if cfg.LocalBotAPI != "" {
 		settings.URL = cfg.LocalBotAPI
@@ -119,7 +120,7 @@ func main() {
 		})
 		log.Info("botpay connected", ports.F("url", cfg.BotpayURL))
 	}
-	h := tgbot.NewHandler(rawBot, st, cache, dockerManager, log, cfg.OwnerID, cfg.EncryptKey, tonClient, payClient)
+	h := tgbot.NewHandler(rawBot, st, cache, dockerManager, log, cfg.OwnerID, cfg.EncryptKey, tonClient, payClient, nc)
 	tgbot.Register(rawBot, h)
 
 	// ── NATS: دریافت heartbeat و نتایج Docker ─────────────────

@@ -80,7 +80,10 @@ func (w *Watcher) Run(ctx context.Context) {
 func (w *Watcher) poll(ctx context.Context) {
 	txs, err := w.fetchTransactions(ctx)
 	if err != nil {
-		w.log.Error("TON poll failed", ports.F("err", err))
+		// LITE_SERVER_UNKNOWN: خطای گذرا — node هنوز sync نشده یا lt قدیمی
+		// فقط warn بزن، crash نکن
+		w.log.Info("TON poll skipped (transient)",
+			ports.F("err", err.Error()[:min(80, len(err.Error()))]))
 		return
 	}
 
@@ -146,7 +149,9 @@ func (w *Watcher) fetchTransactions(ctx context.Context) ([]tonTx, error) {
 		base = "https://testnet.toncenter.com/api/v2"
 	}
 
-	url := fmt.Sprintf("%s/getTransactions?address=%s&limit=20&archival=false",
+	// archival=true برای دسترسی به تراکنش‌های قدیمی‌تر
+	// بدون lt — از آخرین تراکنش‌ها شروع می‌کند
+	url := fmt.Sprintf("%s/getTransactions?address=%s&limit=20&archival=true",
 		base, w.cfg.MasterAddress)
 	if w.cfg.APIKey != "" {
 		url += "&api_key=" + w.cfg.APIKey
@@ -176,4 +181,9 @@ func (w *Watcher) fetchTransactions(ctx context.Context) ([]tonTx, error) {
 	}
 
 	return result.Result, nil
+}
+
+func min(a, b int) int {
+	if a < b { return a }
+	return b
 }

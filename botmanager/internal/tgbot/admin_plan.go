@@ -23,12 +23,12 @@ func (h *Handler) adminPlansList(ctx context.Context, c tele.Context) error {
 		lines = append(lines, h.t(ctx, uid, i18n.KeyPlansEmpty))
 	} else {
 		for _, p := range plans {
-			free := ""
+			priceStr := fmt.Sprintf("%.2f", p.Price)
 			if p.IsFree {
-				free = h.t(ctx, uid, i18n.KeyAdminPlanFree)
+				priceStr = "رایگان"
 			}
-			lines = append(lines, h.t(ctx, uid, i18n.KeyAdminPlanLine,
-				p.Name, free, p.DurationDay, p.Price, p.MaxBots, p.ID))
+			lines = append(lines, fmt.Sprintf("💎 <b>%s</b> — %s TON | %d روز | %d ربات",
+				p.Name, priceStr, p.DurationDay, p.MaxBots))
 		}
 	}
 	lines = append(lines, "")
@@ -38,7 +38,7 @@ func (h *Handler) adminPlansList(ctx context.Context, c tele.Context) error {
 		return c.Send(joinLines(lines), tele.ModeHTML, h.kbAdmin(ctx, uid))
 	}
 
-	lines = append(lines, h.t(ctx, uid, i18n.KeyAdminTemplates))
+	lines = append(lines, "\n📦 <b>تمپلیت‌های موجود:</b>")
 	for _, t := range templates {
 		free := ""
 		if t.IsFree {

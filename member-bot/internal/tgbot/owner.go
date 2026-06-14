@@ -60,16 +60,16 @@ func (h *Handler) handleChannelForward(ctx context.Context, c tele.Context, st w
 	uid := c.Sender().ID
 	msg := c.Message()
 
-	if msg.ForwardFrom == nil && msg.ForwardFromChat == nil {
+	if msg.OriginalSender == nil && msg.OriginalChat == nil {
 		return c.Send("لطفاً یک پیام از کانال forward کنید.")
 	}
 
 	var channelID int64
 	var channelTitle string
 
-	if msg.ForwardFromChat != nil {
-		channelID = msg.ForwardFromChat.ID
-		channelTitle = msg.ForwardFromChat.Title
+	if msg.OriginalChat != nil {
+		channelID = msg.OriginalChat.ID
+		channelTitle = msg.OriginalChat.Title
 	} else {
 		return c.Send("پیام ارسالی از کانال نیست.")
 	}

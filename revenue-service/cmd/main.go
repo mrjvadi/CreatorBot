@@ -80,6 +80,7 @@ func main() {
 	// ── Revenue Engine ─────────────────────────────────────
 	eng := revengine.New(st, pay, log)
 	eng.SetPlatformWallet(cfg.PlatformTelegramID)
+	eng.SetNC(nc)
 
 	// ── API ────────────────────────────────────────────────
 	apiHandler := api.New(eng, st, nc, api.Config{AdminKey: cfg.AdminKey}, log)

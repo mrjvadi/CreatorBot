@@ -238,6 +238,7 @@ func AllModels() []any {
 		&Subscription{},
 		&DeployJob{},
 		&InviteLink{},
+		&AuditLog{},
 	}
 }
 
@@ -312,4 +313,34 @@ type DeployJob struct {
 	StartedAt     *time.Time
 	FinishedAt    *time.Time
 	Error         string
+}
+
+// ── Audit Log ──────────────────────────────────────────────
+
+// AuditAction نوع action در audit log.
+type AuditAction string
+
+const (
+	AuditCreateInstance AuditAction = "instance.create"
+	AuditDeleteInstance AuditAction = "instance.delete"
+	AuditStopInstance   AuditAction = "instance.stop"
+	AuditStartInstance  AuditAction = "instance.start"
+	AuditBuyPlan        AuditAction = "plan.buy"
+	AuditBlockUser      AuditAction = "user.block"
+	AuditWithdraw       AuditAction = "wallet.withdraw"
+	AuditAdminAction    AuditAction = "admin.action"
+)
+
+// AuditLog ثبت همه عملیات مهم.
+type AuditLog struct {
+	ID          uint      `gorm:"primaryKey;autoIncrement"`
+	CreatedAt   time.Time `gorm:"index"`
+	ActorID     uuid.UUID `gorm:"type:uuid;index"` // کسی که action انجام داد
+	ActorRole   string
+	Action      AuditAction `gorm:"not null;index"`
+	TargetID    string      `gorm:"index"`  // instance_id, user_id, ...
+	TargetType  string      // instance, user, plan, wallet
+	Description string
+	IPAddress   string
+	Extra       string `gorm:"type:text"` // JSON extra data
 }
