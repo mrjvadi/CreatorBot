@@ -179,3 +179,37 @@ func AutoMigrate(db *gorm.DB) error {
 		&WithdrawRequest{},
 	)
 }
+
+// ── Double-Entry Ledger ────────────────────────────────────
+
+// EntryType نوع entry در دفتر دوطرفه.
+type EntryType string
+
+const (
+	EntryDebit  EntryType = "debit"  // کاهش موجودی
+	EntryCredit EntryType = "credit" // افزایش موجودی
+)
+
+// LedgerEntry یک خط در دفتر کل.
+// هر تراکنش دقیقاً دو entry دارد: یک debit + یک credit.
+// مجموع همه entry ها همیشه باید صفر باشد (invariant).
+type LedgerEntry struct {
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CreatedAt     time.Time
+
+	TransactionID uuid.UUID `gorm:"not null;index"` // FK به Transaction
+	WalletID      uuid.UUID `gorm:"not null;index"` // کیف پول مربوطه
+	Type          EntryType `gorm:"not null"`        // debit یا credit
+	AmountNano    int64     `gorm:"not null"`        // همیشه مثبت
+	BalanceAfter  int64     // موجودی بعد از این entry
+
+	// برای auditing
+	Ref     string
+	Note    string
+}
+
+// TransferPair یک جفت entry برای انتقال.
+type TransferPair struct {
+	Debit  LedgerEntry
+	Credit LedgerEntry
+}

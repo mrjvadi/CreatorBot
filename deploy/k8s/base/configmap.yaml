@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: creatorbot-config
+  namespace: creatorbot
+data:
+  LOG_LEVEL: "info"
+  API_PORT: "8080"
+  BOTPAY_PORT: "8087"
+  NATS_USERNAME: "nats"
+  REDIS_DB: "0"

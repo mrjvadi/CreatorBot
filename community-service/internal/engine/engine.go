@@ -236,6 +236,21 @@ func (e *Engine) HandleLeave(ctx context.Context, telegramID, chatID int64) erro
 	e.log.Info("member left",
 		ports.F("user", telegramID),
 		ports.F("chat", chatID))
-	// TODO: invalidate pending validations که هنوز validate نشدن
+
+	// پیدا کردن community
+	comm, err := e.pg.FindCommunityByChatID(ctx, chatID)
+	if err != nil || comm == nil {
+		return nil // community ثبت‌نشده — نادیده بگیر
+	}
+
+	// آپدیت تعداد اعضا در MongoDB
+	if err := e.mongo.DecrementMemberCount(ctx, comm.ID.String()); err != nil {
+		e.log.Error("leave: decrement member count",
+			ports.F("chat", chatID), ports.F("err", err))
+	}
+
+	e.log.Info("member left processed",
+		ports.F("community", comm.ID),
+		ports.F("user", telegramID))
 	return nil
 }

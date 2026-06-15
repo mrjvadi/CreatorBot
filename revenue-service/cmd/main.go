@@ -21,6 +21,7 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 )
 
 type Config struct {
@@ -110,7 +111,8 @@ func main() {
 	srv := &http.Server{Addr: addr, Handler: r}
 
 	go func() {
-		log.Info("revenue-service started",
+		metrics.ServeMetrics(":9092")
+	log.Info("revenue-service started",
 			ports.F("addr", addr),
 			ports.F("nats", cfg.NatsURL))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

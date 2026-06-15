@@ -1,7 +1,10 @@
 package tgbot
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,524 +12,738 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
-	"github.com/mrjvadi/creatorbot/shared-core/documents"
+	"github.com/google/uuid"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
 )
 
-// ════════════════════════════════════════════════════════════
-// پنل مدیریت
-// ════════════════════════════════════════════════════════════
+// ── isAdmin ───────────────────────────────────────────────────
 
-func (h *Handler) adminPanel(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
+func (h *Handler) isAdmin(c tele.Context) bool {
+	if c.Sender().ID == h.ownerID {
+		return true
 	}
-	return c.Send("پنل مدیریت:", kbAdmin())
+	return h.store.IsAdmin(context.Background(), c.Sender().ID)
 }
 
-// ════════════════════════════════════════════════════════════
-// ساخت کد جدید
-// ════════════════════════════════════════════════════════════
+// ── آپلود رسانه جدید ─────────────────────────────────────────
 
 func (h *Handler) adminNewCode(c tele.Context) error {
+	ctx := context.Background()
+	uid := c.Sender().ID
+	h.setStep(ctx, uid, stepCodeFiles)
+	return c.Send(
+		"📤 <b>آپلود رسانه جدید</b>\n\nفایل(ها) را ارسال کنید.\nبرای آلبوم چند فایل ارسال کنید سپس «✅ تمام شد» بزنید.",
+		tele.ModeHTML, kbAlbumDone(),
+	)
+}
+
+func (h *Handler) onMedia(c tele.Context) error {
 	if !h.isAdmin(c) {
+		// کاربر عادی — اگه upload کاربر فعال باشه
+		if h.getSetting(context.Background(), models.SettingUserUpload, "false") == "true" {
+			return h.userUploadMedia(c)
+		}
 		return nil
 	}
 	ctx := context.Background()
-	h.setStep(ctx, c.Sender().ID, stepCodeType)
-	return c.Send(
-		"نوع کد را انتخاب کنید:\n\n"+
-			"1️⃣ <b>یک‌بار</b> — فقط یک نفر می‌تواند استفاده کند\n"+
-			"🔢 <b>محدود</b> — تعداد مشخص استفاده\n"+
-			"♾ <b>نامحدود</b> — بی‌نهایت استفاده\n"+
-			"⏰ <b>زمان‌دار</b> — تا تاریخ مشخص",
-		tele.ModeHTML, kbCodeType(),
-	)
-}
-
-// handleStep state machine ادمین برای ساخت کد.
-func (h *Handler) handleStep(ctx context.Context, c tele.Context, st state, text string) error {
 	uid := c.Sender().ID
+	st := h.getState(ctx, uid)
 
-	// لغو همیشه ممکنه
-	if text == btnCancel || text == btnBack {
-		h.clearState(ctx, uid)
-		h.albumClear(ctx, uid)
-		return c.Send("لغو شد.", kbAdmin())
+	fi := extractFile(c)
+	if fi == nil {
+		return nil
 	}
 
-	switch st.Step {
-
-	// ── نوع کد ───────────────────────────────────────────
-	case stepCodeType:
-		ct := parseCodeType(text)
-		if ct == "" {
-			return c.Send("نوع کد را از دکمه‌های بالا انتخاب کنید.", kbCodeType())
-		}
-		h.setStep(ctx, uid, stepCodeLimit, "type", string(ct))
-
-		switch ct {
-		case documents.CodeLimited:
-			return c.Send("تعداد مجاز استفاده را وارد کنید:\nمثال: 5", kbCancel())
-		case documents.CodeExpiry:
-			return c.Send(
-				"مدت اعتبار کد را وارد کنید:\n\n"+
-					"مثال: <code>7d</code> (هفت روز)\n"+
-					"<code>24h</code> (بیست و چهار ساعت)\n"+
-					"<code>30</code> (سی روز)",
-				tele.ModeHTML, kbCancel(),
-			)
-		default:
-			// یک‌بار یا نامحدود → برو به انتخاب فایل
-			h.setStep(ctx, uid, stepCodeFiles)
-			return c.Send(
-				"فایل یا فایل‌های مورد نظر را ارسال کنید.\n\n"+
-					"برای <b>آلبوم</b>: چند فایل پشت سر هم بفرستید، سپس «تمام» بزنید.\n"+
-					"برای <b>فایل تکی</b>: یک فایل بفرستید.",
-				tele.ModeHTML, kbAlbumDone(),
-			)
-		}
-
-	// ── محدودیت تعداد ─────────────────────────────────────
-	case stepCodeLimit:
-		ct := documents.CodeType(st.Data["type"])
-		if ct == documents.CodeExpiry {
-			// این مرحله برای expiry date هست
-			exp, err := parseDuration(text)
-			if err != nil {
-				return c.Send("فرمت نامعتبر. مثال: 7d یا 24h یا 30", kbCancel())
-			}
-			h.setStep(ctx, uid, stepCodeFiles,
-				"expiry", exp.Format(time.RFC3339))
-		} else {
-			// limited count
-			n, err := strconv.Atoi(text)
-			if err != nil || n <= 0 {
-				return c.Send("عدد صحیح مثبت وارد کنید.", kbCancel())
-			}
-			h.setStep(ctx, uid, stepCodeFiles, "max_use", strconv.Itoa(n))
-		}
+	if st.Step == stepCodeFiles {
+		ids := h.albumAdd(ctx, uid, fi.FileID+"|"+fi.FileType+"|"+fi.Caption+"|"+fi.Thumbnail)
 		return c.Send(
-			"فایل یا فایل‌های مورد نظر را ارسال کنید.\n\n"+
-				"برای آلبوم: چند فایل پشت سر هم بفرستید، سپس «تمام» بزنید.",
+			fmt.Sprintf("✅ فایل %d اضافه شد.\nبرای پایان «✅ تمام شد» بزنید.", len(ids)),
 			kbAlbumDone(),
 		)
-
-	// ── جمع‌آوری فایل‌ها ──────────────────────────────────
-	case stepCodeFiles:
-		if text == btnDone {
-			ids := h.albumGet(ctx, uid)
-			if len(ids) == 0 {
-				return c.Send("هیچ فایلی ارسال نشده. ابتدا فایل بفرستید.", kbAlbumDone())
-			}
-			return h.finishCodeCreation(ctx, c, st, ids)
-		}
-		// متن در این مرحله معنایی ندارد
-		return c.Send("فایل بفرستید یا «تمام» بزنید.", kbAlbumDone())
-
-	// ── تأیید نهایی ───────────────────────────────────────
-	case stepCodeConfirm:
-		if text == btnConfirm {
-			return h.createCodeFromState(ctx, c, st)
-		}
-		h.clearState(ctx, uid)
-		h.albumClear(ctx, uid)
-		return c.Send("لغو شد.", kbAdmin())
-
-	// ── تنظیمات ───────────────────────────────────────────
-	case stepSettingKey:
-		h.setStep(ctx, uid, stepSettingValue, "key", settingKeyFromBtn(text))
-		return c.Send("مقدار جدید را وارد کنید:", kbCancel())
-
-	case stepSettingValue:
-		key := st.Data["key"]
-		if key == "" {
-			h.clearState(ctx, uid)
-			return c.Send("خطا.", kbAdmin())
-		}
-		if err := h.eng.Settings.Set(ctx, key, text); err != nil {
-			return c.Send("❌ خطا در ذخیره تنظیم.")
-		}
-		// آپدیت config MongoDB برای hot-reload
-		h.eng.Config.Update(ctx, key, text)
-		// اطلاع به همه instance های این bot
-		configstore.PublishConfigUpdated(h.eng.Nats, h.eng.InstanceID, "uploader")
-		h.clearState(ctx, uid)
-		return c.Send("✅ تنظیم ذخیره شد.", kbAdmin())
-
-	// ── broadcast ─────────────────────────────────────────
-	case stepBroadcast:
-		h.clearState(ctx, uid)
-		return h.doBroadcast(ctx, c, text)
 	}
-
 	return nil
 }
 
-// finishCodeCreation پیش‌نمایش کد و درخواست تأیید.
-func (h *Handler) finishCodeCreation(ctx context.Context, c tele.Context, st state, fileIDs []string) error {
-	uid := c.Sender().ID
-
-	ct := documents.CodeType(st.Data["type"])
-	maxUse := 0
-	if n, err := strconv.Atoi(st.Data["max_use"]); err == nil {
-		maxUse = n
-	}
-
-	// ذخیره fileIDs در state
-	idsStr := strings.Join(fileIDs, ",")
-	h.setStep(ctx, uid, stepCodeConfirm,
-		"type", string(ct),
-		"max_use", strconv.Itoa(maxUse),
-		"expiry", st.Data["expiry"],
-		"file_ids", idsStr,
-	)
-	h.albumClear(ctx, uid)
-
-	limitText := codeTypeLabel(ct)
-	if ct == documents.CodeLimited {
-		limitText = fmt.Sprintf("محدود — %d بار", maxUse)
-	}
-	expiryText := "ندارد"
-	if st.Data["expiry"] != "" {
-		if exp, err := time.Parse(time.RFC3339, st.Data["expiry"]); err == nil {
-			expiryText = exp.Format("2006/01/02 15:04")
-		}
-	}
-
-	return c.Send(
-		fmt.Sprintf(
-			"<b>پیش‌نمایش کد:</b>\n\n"+
-				"📁 تعداد فایل: %d\n"+
-				"🔑 نوع: %s\n"+
-				"⏰ انقضا: %s\n\n"+
-				"تأیید می‌کنید؟",
-			len(fileIDs), limitText, expiryText,
-		),
-		tele.ModeHTML, kbConfirmCancel(),
-	)
+type fileInfo struct {
+	FileID    string
+	FileType  string
+	Caption   string
+	Thumbnail string
 }
 
-// createCodeFromState کد نهایی را می‌سازد.
-func (h *Handler) createCodeFromState(ctx context.Context, c tele.Context, st state) error {
+func extractFile(c tele.Context) *fileInfo {
+	m := c.Message()
+	switch {
+	case m.Video != nil:
+		th := ""
+		if m.Video.Thumbnail != nil {
+			th = m.Video.Thumbnail.FileID
+		}
+		return &fileInfo{m.Video.FileID, "video", m.Caption, th}
+	case m.Photo != nil:
+		return &fileInfo{m.Photo.FileID, "photo", m.Caption, ""}
+	case m.Document != nil:
+		return &fileInfo{m.Document.FileID, "document", m.Caption, ""}
+	case m.Audio != nil:
+		return &fileInfo{m.Audio.FileID, "audio", m.Caption, ""}
+	case m.Animation != nil:
+		return &fileInfo{m.Animation.FileID, "animation", m.Caption, ""}
+	case m.Voice != nil:
+		return &fileInfo{m.Voice.FileID, "voice", m.Caption, ""}
+	}
+	return nil
+}
+
+func (h *Handler) adminFinishUpload(ctx context.Context, c tele.Context) error {
 	uid := c.Sender().ID
+	album := h.albumGet(ctx, uid)
+	h.albumClear(ctx, uid)
 	h.clearState(ctx, uid)
 
-	ct := documents.CodeType(st.Data["type"])
-	maxUse, _ := strconv.Atoi(st.Data["max_use"])
-	fileIDs := strings.Split(st.Data["file_ids"], ",")
+	if len(album) == 0 {
+		return c.Send("❌ هیچ فایلی آپلود نشد.", kbAdmin())
+	}
 
-	var expiresAt *time.Time
-	if st.Data["expiry"] != "" {
-		if exp, err := time.Parse(time.RFC3339, st.Data["expiry"]); err == nil {
-			expiresAt = &exp
+	// ساخت کد
+	code := &models.Code{
+		Code:    h.store.GenerateUniqueCode(ctx),
+		Type:    models.CodeUnlimited,
+		IsAlbum: len(album) > 1,
+	}
+	if err := h.store.CreateCode(ctx, code); err != nil {
+		return c.Send("❌ خطا در ذخیره کد.", kbAdmin())
+	}
+
+	// ذخیره فایل‌ها
+	for i, entry := range album {
+		parts := strings.SplitN(entry, "|", 4)
+		if len(parts) < 2 {
+			continue
 		}
-	}
-
-	code := &documents.Code{
-		Code:      genAlphaCode(),
-		Type:      ct,
-		MaxUse:    maxUse,
-		ExpiresAt: expiresAt,
-		IsAlbum:   len(fileIDs) > 1,
-		FileIDs:   fileIDs,
-	}
-
-	if err := h.codes.Create(ctx, code); err != nil {
-		h.log().Error("createCode", ports.F("err", err))
-		return c.Send("❌ خطا در ساخت کد.", kbAdmin())
-	}
-
-	limitText := codeTypeLabel(ct)
-	if ct == documents.CodeLimited {
-		limitText = fmt.Sprintf("محدود — %d بار", maxUse)
-	}
-	expiryText := "ندارد"
-	if expiresAt != nil {
-		expiryText = expiresAt.Format("2006/01/02 15:04")
+		f := &models.File{
+			FileID: parts[0], FileType: parts[1],
+		}
+		if len(parts) > 2 {
+			f.Caption = parts[2]
+		}
+		if len(parts) > 3 {
+			f.Thumbnail = parts[3]
+		}
+		h.store.CreateFile(ctx, f)
+		h.store.AddFileToCode(ctx, code.ID, f.ID, i)
 	}
 
 	return c.Send(
 		fmt.Sprintf(
-			"✅ <b>کد ساخته شد</b>\n\n"+
-				"🔑 کد: <code>%s</code>\n"+
-				"📁 فایل‌ها: %d عدد\n"+
-				"📋 نوع: %s\n"+
-				"⏰ انقضا: %s\n\n"+
-				"این کد را برای کاربر ارسال کنید.",
-			code.Code, len(fileIDs), limitText, expiryText,
+			"✅ <b>رسانه ذخیره شد!</b>\n\n🆔 کد: <code>%s</code>\n📦 فایل: %d عدد\n\nلینک: <code>https://t.me/%s?start=%s</code>",
+			code.Code, len(album), h.store.GetSetting(ctx, "bot_username"), code.Code,
 		),
 		tele.ModeHTML, kbAdmin(),
 	)
 }
 
-// ════════════════════════════════════════════════════════════
-// لیست کدها
-// ════════════════════════════════════════════════════════════
+// ── لیست کدها ────────────────────────────────────────────────
 
 func (h *Handler) adminCodeList(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
-	}
-	ctx := context.Background()
+	return h.adminCodeListPage(c, nil, 1)
+}
 
-	codes, err := h.codes.List(ctx, 20)
+func (h *Handler) adminCodeListPage(c tele.Context, folderID *uuid.UUID, page int) error {
+	ctx := context.Background()
+	codes, total, err := h.store.ListCodes(ctx, folderID, page, 10)
 	if err != nil {
-		return c.Send("❌ خطا در دریافت کدها.")
+		return c.Send("❌ خطا.", kbAdmin())
 	}
+
 	if len(codes) == 0 {
-		return c.Send("هیچ کدی وجود ندارد.", kbAdmin())
+		return c.Send("📋 هیچ رسانه‌ای موجود نیست.", kbAdmin())
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("<b>📋 کدها (%d)</b>\n\n", len(codes)))
-
+	sb.WriteString(fmt.Sprintf("📋 <b>رسانه‌ها</b> (کل: %d)\n\n", total))
 	for _, code := range codes {
-		valid := "✅"
-		if !h.codes.IsValid(&code) {
-			valid = "❌"
-		}
-		limitText := codeTypeLabel(code.Type)
-		if code.Type == documents.CodeLimited {
-			limitText = fmt.Sprintf("%d/%d", code.UsedCount, code.MaxUse)
-		} else if code.Type == documents.CodeOnce {
-			if code.UsedCount > 0 {
-				limitText = "استفاده شده"
-			} else {
-				limitText = "استفاده نشده"
+		sb.WriteString(fmt.Sprintf("📦 <code>%s</code>", code.Code))
+		if code.Caption != "" {
+			cap := code.Caption
+			if len(cap) > 40 {
+				cap = cap[:40] + "..."
 			}
+			sb.WriteString(" — " + cap)
 		}
-		expiryText := ""
-		if code.ExpiresAt != nil {
-			if time.Now().After(*code.ExpiresAt) {
-				expiryText = " 🔴منقضی"
-			} else {
-				expiryText = fmt.Sprintf(" ⏰%s", code.ExpiresAt.Format("01/02"))
-			}
-		}
-		sb.WriteString(fmt.Sprintf(
-			"%s <code>%s</code> — %d فایل — %s%s\n",
-			valid, code.Code, len(code.FileIDs), limitText, expiryText,
+		sb.WriteString(fmt.Sprintf(" | %d بار\n", code.UsedCount))
+	}
+
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	for _, code := range codes {
+		rows = append(rows, kb.Row(
+			kb.Data("⚙️ "+code.Code, "code_settings:"+code.ID.String()),
 		))
 	}
+	// pagination
+	var navRow []tele.Btn
+	if page > 1 {
+		navRow = append(navRow, kb.Data("⬅️", fmt.Sprintf("code_page:%d", page-1)))
+	}
+	if int64(page*10) < total {
+		navRow = append(navRow, kb.Data("➡️", fmt.Sprintf("code_page:%d", page+1)))
+	}
+	if len(navRow) > 0 {
+		rows = append(rows, kb.Row(navRow...))
+	}
+	rows = append(rows, kb.Row(kb.Data("🔙 بازگشت", "admin_main")))
+	kb.Inline(rows...)
 
-	sb.WriteString("\nبرای حذف: /delcode &lt;code&gt;")
-
-	return c.Send(sb.String(), tele.ModeHTML, kbAdmin())
+	return c.Send(sb.String(), tele.ModeHTML, kb)
 }
 
-// /delcode <code>
-func (h *Handler) adminDelCode(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
+// ── تنظیمات کد ───────────────────────────────────────────────
+
+func (h *Handler) adminCodeSettings(ctx context.Context, c tele.Context, codeIDStr string) error {
+	id, err := uuid.Parse(codeIDStr)
+	if err != nil {
+		return c.Edit("❌ کد نامعتبر.")
 	}
-	codeStr := strings.TrimSpace(c.Message().Payload)
-	if codeStr == "" {
-		return c.Send("استفاده: /delcode <code>")
+	code, err := h.store.FindCodeByID(ctx, id)
+	if err != nil || code == nil {
+		return c.Edit("❌ کد یافت نشد.")
 	}
 
-	ctx := context.Background()
-	code, _ := h.codes.FindByCode(ctx, codeStr)
+	info := fmt.Sprintf(
+		"⚙️ <b>تنظیمات رسانه</b>\n\n🆔 کد: <code>%s</code>\n📦 فایل‌ها: %d\n📥 استفاده: %d\n",
+		code.Code, len(code.Files), code.UsedCount,
+	)
+	return c.Edit(info, tele.ModeHTML,
+		kbCodeSettings(codeIDStr, code.ForwardLock, code.AutoDelete > 0,
+			code.Password != "", code.DownloadLimit))
+}
+
+func (h *Handler) adminCodeDelete(ctx context.Context, c tele.Context, codeIDStr string) error {
+	id, _ := uuid.Parse(codeIDStr)
+	if err := h.store.DeleteCode(ctx, id); err != nil {
+		return c.Edit("❌ خطا در حذف.")
+	}
+	return c.Edit("🗑 رسانه حذف شد.")
+}
+
+func (h *Handler) adminToggleForward(ctx context.Context, c tele.Context, codeIDStr string) error {
+	id, _ := uuid.Parse(codeIDStr)
+	code, _ := h.store.FindCodeByID(ctx, id)
 	if code == nil {
-		return c.Send("❌ کد یافت نشد.")
+		return c.Edit("❌ یافت نشد.")
+	}
+	code.ForwardLock = !code.ForwardLock
+	h.store.UpdateCode(ctx, code)
+	return h.adminCodeSettings(ctx, c, codeIDStr)
+}
+
+func (h *Handler) adminToggleAntiDelete(ctx context.Context, c tele.Context, codeIDStr string) error {
+	id, _ := uuid.Parse(codeIDStr)
+	code, _ := h.store.FindCodeByID(ctx, id)
+	if code == nil {
+		return c.Edit("❌ یافت نشد.")
+	}
+	if code.AutoDelete > 0 {
+		code.AutoDelete = 0
+	} else {
+		code.AutoDelete = h.getSettingInt(ctx, models.SettingAutoDeleteDefault, 30)
+	}
+	h.store.UpdateCode(ctx, code)
+	return h.adminCodeSettings(ctx, c, codeIDStr)
+}
+
+func (h *Handler) adminEditCaptionSave(ctx context.Context, c tele.Context, codeIDStr, caption string) error {
+	h.clearState(ctx, c.Sender().ID)
+	id, _ := uuid.Parse(codeIDStr)
+	code, _ := h.store.FindCodeByID(ctx, id)
+	if code == nil {
+		return c.Send("❌ یافت نشد.", kbAdmin())
+	}
+	code.Caption = caption
+	h.store.UpdateCode(ctx, code)
+	return c.Send("✅ کپشن بروزرسانی شد.", kbAdmin())
+}
+
+func (h *Handler) adminSetPasswordSave(ctx context.Context, c tele.Context, codeIDStr, password string) error {
+	h.clearState(ctx, c.Sender().ID)
+	id, _ := uuid.Parse(codeIDStr)
+	code, _ := h.store.FindCodeByID(ctx, id)
+	if code == nil {
+		return c.Send("❌ یافت نشد.", kbAdmin())
+	}
+	if password == "0" {
+		password = ""
+	}
+	code.Password = password
+	h.store.UpdateCode(ctx, code)
+	msg := "✅ رمز عبور حذف شد."
+	if password != "" {
+		msg = "✅ رمز عبور تنظیم شد."
+	}
+	return c.Send(msg, kbAdmin())
+}
+
+func (h *Handler) adminSetLimitSave(ctx context.Context, c tele.Context, codeIDStr, limitStr string) error {
+	h.clearState(ctx, c.Sender().ID)
+	id, _ := uuid.Parse(codeIDStr)
+	code, _ := h.store.FindCodeByID(ctx, id)
+	if code == nil {
+		return c.Send("❌ یافت نشد.", kbAdmin())
+	}
+	limit, _ := strconv.Atoi(limitStr)
+	code.DownloadLimit = limit
+	h.store.UpdateCode(ctx, code)
+	return c.Send(fmt.Sprintf("✅ محدودیت دانلود: %d بار", limit), kbAdmin())
+}
+
+func (h *Handler) adminSendPreview(ctx context.Context, c tele.Context, codeIDStr string) error {
+	id, _ := uuid.Parse(codeIDStr)
+	code, _ := h.store.FindCodeByID(ctx, id)
+	if code == nil {
+		return c.Edit("❌ یافت نشد.")
+	}
+	channels, _ := h.store.ListPreviewChannels(ctx)
+	if len(channels) == 0 {
+		return c.Edit("❌ کانال پیش‌نمایش ثبت نشده.")
+	}
+	files, _ := h.store.GetFilesForCode(ctx, code.ID)
+	sig := h.getSetting(ctx, models.SettingSignature, "")
+	for _, ch := range channels {
+		for _, f := range files {
+			sendFileWithSig(c, f, sig, false)
+			_ = ch
+		}
+	}
+	return c.Edit("✅ پیش‌نمایش ارسال شد.")
+}
+
+// ── پوشه‌ها ───────────────────────────────────────────────────
+
+func (h *Handler) adminFolderList(c tele.Context) error {
+	ctx := context.Background()
+	folders, _ := h.store.ListFolders(ctx, nil)
+
+	items := make([]folderItem, 0, len(folders))
+	for _, f := range folders {
+		items = append(items, folderItem{ID: f.ID.String(), Name: f.Name})
 	}
 
-	// inline keyboard برای تأیید حذف
+	kb := kbFolderList(items)
+	return c.Send(fmt.Sprintf("📁 <b>پوشه‌ها</b> (%d پوشه)", len(folders)),
+		tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminNewFolderSave(ctx context.Context, c tele.Context, name string) error {
+	h.clearState(ctx, c.Sender().ID)
+	if err := h.store.CreateFolder(ctx, &models.Folder{Name: name}); err != nil {
+		return c.Send("❌ خطا در ایجاد پوشه.", kbAdmin())
+	}
+	return c.Send("✅ پوشه «"+name+"» ایجاد شد.", kbAdmin())
+}
+
+func (h *Handler) adminFolderDelete(ctx context.Context, c tele.Context, idStr string) error {
+	id, _ := uuid.Parse(idStr)
+	h.store.DeleteFolder(ctx, id)
+	return c.Edit("🗑 پوشه حذف شد.")
+}
+
+// ── کانال‌ها ──────────────────────────────────────────────────
+
+func (h *Handler) adminChannelList(c tele.Context) error {
+	ctx := context.Background()
+	channels, _ := h.store.ListForceJoinChannels(ctx)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("📡 <b>کانال‌های جوین اجباری</b> (%d)\n\n", len(channels)))
+
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	for _, ch := range channels {
+		sb.WriteString(fmt.Sprintf("• %s (`%d`)\n", ch.Title, ch.ChatID))
+		rows = append(rows, kb.Row(
+			kb.Data("🗑 "+ch.Title, "channel_delete:"+ch.ID.String()),
+		))
+	}
+	rows = append(rows, kb.Row(kb.Data("➕ افزودن کانال", "channel_add")))
+	rows = append(rows, kb.Row(kb.Data("🔙 بازگشت", "admin_main")))
+	kb.Inline(rows...)
+
+	return c.Send(sb.String(), tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminAddChannelSave(ctx context.Context, c tele.Context, text string) error {
+	h.clearState(ctx, c.Sender().ID)
+	// text = chat_id یا @username
+	var chatID int64
+	if strings.HasPrefix(text, "@") {
+		chat, err := c.Bot().ChatByUsername(text)
+		if err != nil {
+			return c.Send("❌ کانال یافت نشد.", kbAdmin())
+		}
+		chatID = chat.ID
+		ch := &models.ForceJoinChannel{
+			ChatID: chatID, Title: chat.Title, Username: strings.TrimPrefix(text, "@"),
+		}
+		h.store.AddForceJoinChannel(ctx, ch)
+	} else {
+		fmt.Sscan(text, &chatID)
+		if chatID == 0 {
+			return c.Send("❌ فرمت نادرست. @username یا chat_id ارسال کنید.", kbAdmin())
+		}
+		h.store.AddForceJoinChannel(ctx, &models.ForceJoinChannel{
+			ChatID: chatID, Title: fmt.Sprintf("Channel %d", chatID),
+		})
+	}
+	return c.Send(fmt.Sprintf("✅ کانال %d اضافه شد.", chatID), kbAdmin())
+}
+
+func (h *Handler) adminChannelDelete(ctx context.Context, c tele.Context, idStr string) error {
+	id, _ := uuid.Parse(idStr)
+	h.store.RemoveForceJoinChannel(ctx, id)
+	return c.Edit("🗑 کانال حذف شد.")
+}
+
+// ── اشتراک ────────────────────────────────────────────────────
+
+func (h *Handler) adminSubPlans(c tele.Context) error {
+	ctx := context.Background()
+	plans, _ := h.store.ListSubPlans(ctx)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("💎 <b>پلن‌های اشتراک</b> (%d)\n\n", len(plans)))
+
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	for _, p := range plans {
+		sb.WriteString(fmt.Sprintf("• %s — %.0f تومان / %d روز\n", p.Name, p.Price, p.Days))
+		rows = append(rows, kb.Row(kb.Data("🗑 "+p.Name, "plan_delete:"+p.ID.String())))
+	}
+	rows = append(rows, kb.Row(kb.Data("➕ پلن جدید", "plan_new")))
+	rows = append(rows, kb.Row(kb.Data("🔙 بازگشت", "admin_main")))
+	kb.Inline(rows...)
+
+	return c.Send(sb.String(), tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminNewPlanStep(ctx context.Context, c tele.Context, st userState, text string) error {
+	uid := c.Sender().ID
+	data := st.Data
+	if data == nil {
+		data = map[string]string{}
+	}
+
+	switch {
+	case data["name"] == "":
+		data["name"] = text
+		h.setState(ctx, uid, userState{Step: stepNewPlan, Data: data})
+		return c.Send("💰 قیمت پلن را به تومان وارد کنید:")
+	case data["price"] == "":
+		data["price"] = text
+		h.setState(ctx, uid, userState{Step: stepNewPlan, Data: data})
+		return c.Send("📅 مدت پلن را به روز وارد کنید:")
+	default:
+		h.clearState(ctx, uid)
+		days, _ := strconv.Atoi(text)
+		price, _ := strconv.ParseFloat(data["price"], 64)
+		plan := &models.SubPlan{Name: data["name"], Price: price, Days: days}
+		if err := h.store.CreateSubPlan(ctx, plan); err != nil {
+			return c.Send("❌ خطا در ایجاد پلن.", kbAdmin())
+		}
+		return c.Send(fmt.Sprintf("✅ پلن «%s» ایجاد شد.", plan.Name), kbAdmin())
+	}
+}
+
+func (h *Handler) adminPlanDelete(ctx context.Context, c tele.Context, idStr string) error {
+	id, _ := uuid.Parse(idStr)
+	h.store.DeleteSubPlan(ctx, id)
+	return c.Edit("🗑 پلن حذف شد.")
+}
+
+func (h *Handler) userBuyPlan(ctx context.Context, c tele.Context, planIDStr string) error {
+	defer c.Respond()
+	id, _ := uuid.Parse(planIDStr)
+	plans, _ := h.store.ListSubPlans(ctx)
+	var plan *models.SubPlan
+	for i := range plans {
+		if plans[i].ID == id {
+			plan = &plans[i]
+			break
+		}
+	}
+	if plan == nil {
+		return c.Edit("❌ پلن یافت نشد.")
+	}
+
 	kb := &tele.ReplyMarkup{}
 	kb.Inline(
-		kb.Row(
-			kb.Data("🗑 حذف شود", "del_code:"+codeStr),
-			kb.Data("❌ انصراف", "cancel"),
-		),
+		kb.Row(kb.Data("💳 کارت به کارت", fmt.Sprintf("pay_card:%s", planIDStr))),
+		kb.Row(kb.Data("💎 TON", fmt.Sprintf("pay_ton:%s", planIDStr))),
+		kb.Row(kb.Data("🔙 بازگشت", "plans")),
 	)
-
-	return c.Send(
-		fmt.Sprintf("کد <code>%s</code> حذف شود؟\n(%d فایل)",
-			codeStr, len(code.FileIDs)),
+	return c.Edit(
+		fmt.Sprintf("💎 <b>%s</b>\n💰 قیمت: %.0f تومان\n📅 مدت: %d روز\n\nروش پرداخت را انتخاب کنید:",
+			plan.Name, plan.Price, plan.Days),
 		tele.ModeHTML, kb,
 	)
 }
 
-// ════════════════════════════════════════════════════════════
-// آمار
-// ════════════════════════════════════════════════════════════
+// ── کاربران ───────────────────────────────────────────────────
 
-func (h *Handler) adminStats(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
-	}
+func (h *Handler) adminUsers(c tele.Context) error {
 	ctx := context.Background()
+	stats := h.store.GetStats(ctx)
 
-	totalUsers, _ := h.users.Count(ctx)
-	totalCodes, _ := h.codes.Count(ctx)
-	activeCodes, _ := h.codes.CountActive(ctx)
-	totalFiles, _ := h.files.Count(ctx)
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.Data("🔍 جستجوی کاربر", "search_user")),
+		kb.Row(kb.Data("🔙 بازگشت", "admin_main")),
+	)
+	return c.Send(
+		fmt.Sprintf("👥 <b>کاربران</b>\n\nکل: %d\nامروز: %d\nاشتراک فعال: %d",
+			stats.TotalUsers, stats.TodayUsers, stats.ActiveSubs),
+		tele.ModeHTML, kb,
+	)
+}
+
+func (h *Handler) adminSearchUserResult(ctx context.Context, c tele.Context, query string) error {
+	h.clearState(ctx, c.Sender().ID)
+	user, err := h.store.SearchUser(ctx, query)
+	if err != nil || user == nil {
+		return c.Send("❌ کاربر یافت نشد.", kbAdmin())
+	}
+
+	sub := "ندارد"
+	if user.HasActiveSub() {
+		sub = "✅ فعال تا " + user.SubExpiresAt.Format("2006-01-02")
+	}
+
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(
+			kb.Data("🚫 مسدود", fmt.Sprintf("block_user:%d", user.TelegramID)),
+			kb.Data("💎 تغییر اشتراک", fmt.Sprintf("change_sub:%d", user.TelegramID)),
+		),
+		kb.Row(kb.Data("🔙 بازگشت", "admin_users")),
+	)
 
 	return c.Send(
+		fmt.Sprintf("👤 <b>اطلاعات کاربر</b>\n\n🆔 %d\n👤 %s @%s\n💎 اشتراک: %s\n📥 دانلودها: %d\n🚫 مسدود: %v",
+			user.TelegramID, user.FirstName, user.Username,
+			sub, user.FreeDownloads, user.IsBlocked),
+		tele.ModeHTML, kb,
+	)
+}
+
+// ── آمار ──────────────────────────────────────────────────────
+
+func (h *Handler) adminStats(c tele.Context) error {
+	ctx := context.Background()
+	stats := h.store.GetStats(ctx)
+	return c.Send(
 		fmt.Sprintf(
-			"<b>📊 آمار ربات</b>\n\n"+
-				"👥 کل کاربران: <b>%d</b>\n"+
-				"📋 کل کدها: <b>%d</b> (فعال: %d)\n"+
-				"📁 کل فایل‌ها: <b>%d</b>\n\n"+
-				"⏰ آخرین به‌روزرسانی: %s",
-			totalUsers, totalCodes, activeCodes, totalFiles,
-			time.Now().Format("15:04:05"),
+			"📊 <b>آمار ربات</b>\n\n"+
+				"👥 کاربران: %d\n"+
+				"📤 رسانه‌ها: %d\n"+
+				"📁 فایل‌ها: %d\n"+
+				"👤 کاربر امروز: %d\n"+
+				"💎 اشتراک فعال: %d",
+			stats.TotalUsers, stats.TotalCodes,
+			stats.TotalFiles, stats.TodayUsers, stats.ActiveSubs,
 		),
 		tele.ModeHTML, kbAdmin(),
 	)
 }
 
-// ════════════════════════════════════════════════════════════
-// کاربران
-// ════════════════════════════════════════════════════════════
-
-func (h *Handler) adminUsers(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
-	}
-	ctx := context.Background()
-
-	users, err := h.users.List(ctx, 30)
-	if err != nil {
-		return c.Send("❌ خطا.")
-	}
-	if len(users) == 0 {
-		return c.Send("هیچ کاربری ثبت‌نام نکرده.", kbAdmin())
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("<b>👥 کاربران (%d)</b>\n\n", len(users)))
-	for _, u := range users {
-		blocked := ""
-		if u.IsBlocked {
-			blocked = " 🚫"
-		}
-		uname := ""
-		if u.Username != "" {
-			uname = " @" + u.Username
-		}
-		sb.WriteString(fmt.Sprintf("• <b>%s</b>%s%s — <code>%d</code>\n",
-			u.FirstName, uname, blocked, u.TelegramID))
-	}
-	sb.WriteString("\n/block &lt;tid&gt; — بلاک\n/unblock &lt;tid&gt; — آنبلاک")
-
-	return c.Send(sb.String(), tele.ModeHTML, kbAdmin())
-}
-
-// /block <telegram_id>
-func (h *Handler) adminBlock(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
-	}
-	var tid int64
-	if _, err := fmt.Sscanf(c.Message().Payload, "%d", &tid); err != nil || tid == 0 {
-		return c.Send("استفاده: /block <telegram_id>")
-	}
-	ctx := context.Background()
-	if err := h.users.SetBlocked(ctx, tid, true); err != nil {
-		return c.Send("❌ خطا.")
-	}
-	return c.Send(fmt.Sprintf("🚫 کاربر <code>%d</code> بلاک شد.", tid), tele.ModeHTML, kbAdmin())
-}
-
-// /unblock <telegram_id>
-func (h *Handler) adminUnblock(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
-	}
-	var tid int64
-	if _, err := fmt.Sscanf(c.Message().Payload, "%d", &tid); err != nil || tid == 0 {
-		return c.Send("استفاده: /unblock <telegram_id>")
-	}
-	ctx := context.Background()
-	if err := h.users.SetBlocked(ctx, tid, false); err != nil {
-		return c.Send("❌ خطا.")
-	}
-	return c.Send(fmt.Sprintf("✅ کاربر <code>%d</code> آنبلاک شد.", tid), tele.ModeHTML, kbAdmin())
-}
-
-// ════════════════════════════════════════════════════════════
-// تنظیمات
-// ════════════════════════════════════════════════════════════
+// ── تنظیمات ───────────────────────────────────────────────────
 
 func (h *Handler) adminSettings(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
+	ctx := context.Background()
+	settings := h.store.GetAllSettings(ctx)
+	return c.Send("⚙️ <b>تنظیمات</b>", tele.ModeHTML, kbSettings(settings))
+}
+
+func (h *Handler) adminToggleSetting(ctx context.Context, c tele.Context, key string) error {
+	current := h.getSetting(ctx, key, "false")
+	newVal := "true"
+	if current == "true" {
+		newVal = "false"
 	}
+	h.store.SetSetting(ctx, key, newVal)
+	settings := h.store.GetAllSettings(ctx)
+	return c.Edit("⚙️ <b>تنظیمات</b>", tele.ModeHTML, kbSettings(settings))
+}
+
+func (h *Handler) adminSetSettingSave(ctx context.Context, c tele.Context, key, value string) error {
+	h.clearState(ctx, c.Sender().ID)
+	h.store.SetSetting(ctx, key, value)
+	return c.Send("✅ تنظیم ذخیره شد.", kbAdmin())
+}
+
+// ── بکاپ ──────────────────────────────────────────────────────
+
+func (h *Handler) adminBackup(c tele.Context) error {
 	ctx := context.Background()
 	uid := c.Sender().ID
 
-	welcome, _ := h.eng.Settings.Get(ctx, "welcome_text")
-	notMember, _ := h.eng.Settings.Get(ctx, "not_member_text")
-	channel, _ := h.eng.Settings.Get(ctx, "channel_username")
+	_ = c.Send("⏳ در حال ساخت بکاپ...")
 
-	if welcome == "" {
-		welcome = "(پیش‌فرض)"
+	// جمع‌آوری داده‌ها
+	codes, _, _ := h.store.ListCodes(ctx, nil, 1, 99999)
+	settings := h.store.GetAllSettings(ctx)
+
+	backupData := map[string]any{
+		"version":   "3.0",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"codes":     codes,
+		"settings":  settings,
 	}
-	if notMember == "" {
-		notMember = "(پیش‌فرض)"
+
+	// ساخت ZIP
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, _ := zw.Create("backup.json")
+	json.NewEncoder(w).Encode(backupData)
+	zw.Close()
+
+	// ارسال فایل
+	doc := &tele.Document{
+		File:     tele.FromReader(bytes.NewReader(buf.Bytes())),
+		FileName: fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405")),
+		Caption:  fmt.Sprintf("💾 بکاپ\n📦 رسانه‌ها: %d\n⏰ %s", len(codes), time.Now().Format("2006-01-02 15:04")),
 	}
-	if channel == "" {
-		channel = "(تنظیم نشده)"
-	}
 
-	text := fmt.Sprintf(
-		"<b>⚙️ تنظیمات</b>\n\n"+
-			"👋 متن خوشامد:\n%s\n\n"+
-			"🚫 متن عدم عضویت:\n%s\n\n"+
-			"📢 کانال اجباری: %s\n\n"+
-			"یکی از دکمه‌های زیر را انتخاب کنید:",
-		welcome, notMember, channel,
-	)
-
-	h.setStep(ctx, uid, stepSettingKey)
-	return c.Send(text, tele.ModeHTML, kbSettings())
-}
-
-func settingKeyFromBtn(text string) string {
-	m := map[string]string{
-		btnSetWelcome:   "welcome_text",
-		btnSetNotMember: "not_member_text",
-		btnSetNotFound:  "not_found_text",
-		btnSetBlocked:   "blocked_text",
-		btnSetChannel:   "channel_username",
-	}
-	return m[text]
-}
-
-// ════════════════════════════════════════════════════════════
-// پیام همگانی
-// ════════════════════════════════════════════════════════════
-
-func (h *Handler) adminBroadcast(c tele.Context) error {
-	if !h.isAdmin(c) {
-		return nil
-	}
-	ctx := context.Background()
-	h.setStep(ctx, c.Sender().ID, stepBroadcast)
-	return c.Send("پیام مورد نظر را ارسال کنید:\n(متن، عکس، فایل — هر نوع پیام)", kbCancel())
-}
-
-func (h *Handler) doBroadcast(ctx context.Context, c tele.Context, text string) error {
-	users, err := h.users.List(ctx, 0) // همه کاربران
+	msg, err := c.Bot().Send(c.Recipient(), doc)
 	if err != nil {
-		return c.Send("❌ خطا در دریافت کاربران.")
+		h.log.Error("backup send", ports.F("err", err))
+		return c.Send("❌ خطا در ارسال بکاپ.")
 	}
+
+	// ذخیره اطلاعات بکاپ
+	h.store.CreateBackup(ctx, &models.Backup{
+		FileID:     msg.Document.FileID,
+		TotalCodes: len(codes),
+		CreatedBy:  uid,
+	})
+
+	return nil
+}
+
+// ── ارسال همگانی ──────────────────────────────────────────────
+
+func (h *Handler) adminBroadcastStart(c tele.Context) error {
+	ctx := context.Background()
+	uid := c.Sender().ID
+	h.setStep(ctx, uid, stepBroadcast)
+	return c.Send(
+		"📢 <b>ارسال همگانی</b>\n\nپیام یا فایل مورد نظر را ارسال کنید:",
+		tele.ModeHTML, kbCancelOnly(),
+	)
+}
+
+func (h *Handler) adminBroadcastSend(ctx context.Context, c tele.Context, text string) error {
+	h.clearState(ctx, c.Sender().ID)
+	users, _, _ := h.store.ListUsers(ctx, 1, 99999)
 
 	sent, failed := 0, 0
-	for _, u := range users {
-		if u.IsBlocked {
+	for _, user := range users {
+		if user.IsBlocked {
 			continue
 		}
-		if err := h.sender.Send(ctx, u.TelegramID, text); err != nil {
+		_, err := c.Bot().Send(&tele.User{ID: user.TelegramID}, text)
+		if err != nil {
 			failed++
 		} else {
 			sent++
 		}
+		time.Sleep(50 * time.Millisecond) // anti-spam
 	}
 
 	return c.Send(
-		fmt.Sprintf("📣 پیام همگانی ارسال شد.\n\n✅ موفق: %d\n❌ ناموفق: %d", sent, failed),
+		fmt.Sprintf("✅ ارسال همگانی تمام شد\n✉️ موفق: %d\n❌ ناموفق: %d", sent, failed),
 		kbAdmin(),
 	)
+}
+
+// ── ادمین‌ها ──────────────────────────────────────────────────
+
+func (h *Handler) adminAdminList(c tele.Context) error {
+	ctx := context.Background()
+	admins, _ := h.store.ListAdmins(ctx)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("👑 <b>ادمین‌ها</b> (%d)\n\n", len(admins)))
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
+
+	for _, a := range admins {
+		sb.WriteString(fmt.Sprintf("• @%s (%d)", a.Username, a.TelegramID))
+		if a.IsOwner {
+			sb.WriteString(" 👑")
+		}
+		sb.WriteString("\n")
+		if !a.IsOwner {
+			rows = append(rows, kb.Row(
+				kb.Data("🗑 حذف @"+a.Username,
+					fmt.Sprintf("remove_admin:%d", a.TelegramID)),
+			))
+		}
+	}
+
+	rows = append(rows, kb.Row(kb.Data("➕ افزودن ادمین", "add_admin")))
+	rows = append(rows, kb.Row(kb.Data("🔙 بازگشت", "admin_main")))
+	kb.Inline(rows...)
+
+	return c.Send(sb.String(), tele.ModeHTML, kb)
+}
+
+func (h *Handler) adminAddAdminSave(ctx context.Context, c tele.Context, text string) error {
+	h.clearState(ctx, c.Sender().ID)
+	var tgID int64
+	username := ""
+	if strings.HasPrefix(text, "@") {
+		username = strings.TrimPrefix(text, "@")
+	} else {
+		fmt.Sscan(text, &tgID)
+	}
+	if tgID == 0 && username == "" {
+		return c.Send("❌ فرمت نادرست.", kbAdmin())
+	}
+	h.store.AddAdmin(ctx, tgID, username)
+	return c.Send("✅ ادمین اضافه شد.", kbAdmin())
+}
+
+// ── User Upload ───────────────────────────────────────────────
+
+func (h *Handler) userUploadMedia(c tele.Context) error {
+	// کاربر می‌تواند فایل آپلود کند اگه تنظیم فعال باشه
+	ctx := context.Background()
+	uid := c.Sender().ID
+
+	// بررسی auto approve
+	autoApprove := h.getSetting(ctx, models.SettingAutoApproveFiles, "false") == "true"
+
+	fi := extractFile(c)
+	if fi == nil {
+		return nil
+	}
+
+	f := &models.File{
+		FileID: fi.FileID, FileType: fi.FileType, Caption: fi.Caption,
+	}
+	h.store.CreateFile(ctx, f)
+
+	if autoApprove {
+		code := &models.Code{
+			Code:       h.store.GenerateUniqueCode(ctx),
+			Type:       models.CodeUnlimited,
+			UploaderID: uid,
+		}
+		h.store.CreateCode(ctx, code)
+		h.store.AddFileToCode(ctx, code.ID, f.ID, 0)
+		return c.Send(fmt.Sprintf("✅ فایل آپلود شد.\n🆔 کد: <code>%s</code>", code.Code), tele.ModeHTML)
+	}
+
+	// منتظر تأیید ادمین
+	return c.Send("⏳ فایل شما آپلود شد و در انتظار تأیید ادمین است.")
 }

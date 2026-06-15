@@ -4,6 +4,7 @@ package tgbot
 
 import (
 	"context"
+	"time"
 	"fmt"
 	"strings"
 
@@ -230,6 +231,8 @@ func (h *Handler) provision(
 	token, serviceType, invoiceCode string,
 ) error {
 	uid := c.Sender().ID
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	_ = c.Edit("⏳ در حال راه‌اندازی سرویس...")
 
 	server, err := h.store.SelectLeastLoadedServer(ctx)

@@ -136,3 +136,10 @@ func (s *Store) DeactivateBotByID(ctx context.Context, botIDStr string) error {
 		Where("id::text = ?", botIDStr).
 		Update("is_active", false).Error
 }
+
+// DeleteBotByID یک check-bot را از DB حذف می‌کند.
+func (s *Store) DeleteBotByID(ctx context.Context, botIDStr string) error {
+	return s.db.Conn().WithContext(ctx).
+		Where("id = ?", botIDStr).
+		Delete(&models.CheckBot{}).Error
+}

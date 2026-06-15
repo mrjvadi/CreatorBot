@@ -103,6 +103,12 @@ func main() {
 		}
 	}()
 
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("panic recovered", ports.F("panic", r))
+		}
+	}()
+
 	<-shutCtx.Done()
 	log.Info("shutting down...")
 	timeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)

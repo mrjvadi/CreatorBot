@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 	"os/exec"
 	"os/signal"
 	"strings"
@@ -68,6 +70,16 @@ func main() {
 		ports.F("server_id", cfg.ServerID),
 		ports.F("nats", cfg.NatsURL))
 
+	// metrics + health server
+	metrics.ServeMetrics(":9093")
+	go func() {
+		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"ok":true,"service":"agentmanager"}`))
+		})
+		http.ListenAndServe(":8091", nil)
+	}()
+
 	<-ctx.Done()
 	log.Info("agentmanager stopped")
 }
@@ -120,9 +132,16 @@ func handleCommand(ctx context.Context, nc *natsclient.Client, serverID string,
 	if execErr != nil {
 		log.Error("command failed",
 			ports.F("type", cmd.Type), ports.F("err", execErr))
+		if cmd.Type == protocol.MsgDeploy {
+			metrics.IncDeploy("bot", "failed")
+		}
 	} else {
 		log.Info("command done",
 			ports.F("type", cmd.Type), ports.F("container", cmd.ContainerName))
+	if cmd.Type == protocol.MsgDeploy {
+		metrics.IncDeploy("bot", "success")
+		metrics.ActiveInstances.Inc()
+	}
 	}
 	return result.Output, finalErr
 }

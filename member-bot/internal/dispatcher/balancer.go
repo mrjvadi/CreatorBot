@@ -158,3 +158,52 @@ func (b *Balancer) selectLeastLoaded(bots []models.CheckBot, loads map[string]in
 	}
 	return selected
 }
+
+// HealthCheck بررسی می‌کند کدام bot ها واقعاً آنلاین هستند.
+// اگه bot ای از Redis پاسخ ندهد، OnBotDown صدا زده می‌شود.
+func (b *Balancer) HealthCheck(ctx context.Context) error {
+	bots, err := b.store.FindActiveBots(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, bot := range bots {
+		heartbeatKey := "bot:heartbeat:" + bot.ID.String()
+		_, err := b.cache.Get(ctx, heartbeatKey)
+		if err != nil {
+			// bot پاسخ نداده — offline
+			b.log.Warn("bot appears offline",
+				ports.F("bot", bot.ID),
+				ports.F("username", bot.Username))
+			_ = b.OnBotDown(ctx, bot.ID.String())
+		}
+	}
+	return nil
+}
+
+// ScaleUp یک check-bot جدید اضافه می‌کند و rebalance می‌کند.
+func (b *Balancer) ScaleUp(ctx context.Context, token, encryptedToken string) error {
+	// ثبت bot جدید
+	newBot := &models.CheckBot{
+		Token:     encryptedToken,
+		IsActive:  true,
+		RateLimit: 20,
+	}
+	if err := b.store.CreateCheckBot(ctx, newBot); err != nil {
+		return fmt.Errorf("scale up: create bot: %w", err)
+	}
+
+	b.log.Info("new check-bot registered, rebalancing",
+		ports.F("bot", newBot.ID))
+
+	// rebalance با bot جدید
+	return b.Rebalance(ctx)
+}
+
+// ScaleDown یک check-bot را حذف می‌کند.
+func (b *Balancer) ScaleDown(ctx context.Context, botID string) error {
+	if err := b.OnBotDown(ctx, botID); err != nil {
+		return err
+	}
+	return b.store.DeleteBotByID(ctx, botID)
+}

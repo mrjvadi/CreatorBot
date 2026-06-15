@@ -24,9 +24,7 @@ func (h *Handler) adminPlansList(ctx context.Context, c tele.Context) error {
 	} else {
 		for _, p := range plans {
 			priceStr := fmt.Sprintf("%.2f", p.Price)
-			if p.IsFree {
-				priceStr = "رایگان"
-			}
+			if p.IsFree { priceStr = "رایگان" }
 			lines = append(lines, fmt.Sprintf("💎 <b>%s</b> — %s TON | %d روز | %d ربات",
 				p.Name, priceStr, p.DurationDay, p.MaxBots))
 		}
@@ -90,6 +88,13 @@ func (h *Handler) adminPlanAdd(ctx context.Context, c tele.Context, tmplID, name
 		h.clearState(ctx, uid)
 		h.log.Error("adminPlanAdd", h.F("err", err))
 		return h.sendMain(c, h.t(ctx, uid, i18n.KeyPlanAddError))
+	}
+
+	// config.updated — bot های در حال اجرا را آپدیت کن
+	if h.nc != nil {
+		_ = h.nc.PublishCore("config.updated", map[string]any{
+			"type": "plan", "id": plan.ID.String(),
+		})
 	}
 
 	// مرحله بعد: limit به تفکیک نوع ربات

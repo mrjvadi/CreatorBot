@@ -44,6 +44,9 @@ func (h *Handler) Register(r *gin.Engine) {
 	api := r.Group("/api/v1/pay")
 	api.Use(h.authMiddleware())
 
+	api.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true, "service": "botpay"})
+	})
 	api.POST("/balance",         h.getBalance)
 	api.POST("/deduct",          h.deduct)
 	api.POST("/invoice/create",  h.createInvoice)

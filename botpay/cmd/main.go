@@ -23,6 +23,7 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 )
 
 type Config struct {
@@ -52,6 +53,7 @@ type Config struct {
 func main() {
 	var cfg Config
 	config.MustLoad(&cfg)
+	var err error
 	log := logger.MustNew(false)
 
 	// ── PostgreSQL ────────────────────────────────────────
@@ -65,15 +67,24 @@ func main() {
 	st := store.New(db)
 
 	// ── NATS ─────────────────────────────────────────────
-	nc, err := natsclient.New(natsclient.Config{
-		URL:      cfg.NatsURL,
-		Username: cfg.NatsUser,
-		Password: cfg.NatsPass,
-	})
-	if err != nil {
-		log.Fatal("nats", ports.F("err", err))
+	// NATS اختیاری است — اگه down باشد، botpay بدون event publishing ادامه می‌دهد
+	var nc *natsclient.Client
+	if cfg.NatsURL != "" {
+		nc, err = natsclient.New(natsclient.Config{
+			URL:      cfg.NatsURL,
+			Username: cfg.NatsUser,
+			Password: cfg.NatsPass,
+		})
+		if err != nil {
+			log.Error("nats unavailable — running in standalone mode", ports.F("err", err))
+			nc = nil
+		} else {
+			defer nc.Close()
+			log.Info("nats connected")
+		}
+	} else {
+		log.Warn("NATS_URL not set — event publishing disabled")
 	}
-	defer nc.Close()
 
 	// ── Consensus Engine ────────────────────────────────────
 	dbDir := cfg.ConsensusDBDir
@@ -149,6 +160,7 @@ func main() {
 	}()
 	go func() { <-ctx.Done(); rawBot.Stop() }()
 
+	metrics.ServeMetrics(":9091")
 	log.Info("botpay started",
 		ports.F("bot", rawBot.Me.Username),
 		ports.F("api", apiAddr),

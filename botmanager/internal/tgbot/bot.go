@@ -19,6 +19,7 @@ package tgbot
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
@@ -76,6 +77,18 @@ func NewHandler(
 }
 
 // Register همه handler ها را روی bot وصل می‌کند.
+// safeHandler هر handler را در panic recovery wrap می‌کند.
+func safeHandler(name string, fn tele.HandlerFunc) tele.HandlerFunc {
+	return func(c tele.Context) (retErr error) {
+		defer func() {
+			if r := recover(); r != nil {
+				retErr = fmt.Errorf("panic in %s: %v", name, r)
+			}
+		}()
+		return fn(c)
+	}
+}
+
 func Register(b *tele.Bot, h *Handler) {
 	b.Handle("/start",  h.onStart)
 	b.Handle("/cancel", h.onCancel)

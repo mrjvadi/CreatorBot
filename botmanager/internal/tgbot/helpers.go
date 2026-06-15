@@ -2,6 +2,7 @@ package tgbot
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -187,4 +188,22 @@ func genToken() string {
 
 func joinLines(lines []string) string {
 	return strings.Join(lines, "\n")
+}
+
+// ── Audit Log Helper ──────────────────────────────────────
+
+// auditLog یک رکورد audit ثبت می‌کند.
+func (h *Handler) auditLog(ctx context.Context, actorID uuid.UUID, actorRole,
+	targetID, targetType string, action models.AuditAction, meta string) {
+	log := &models.AuditLog{
+		ActorID:    actorID,
+		ActorRole:  actorRole,
+		TargetID:   targetID,
+		TargetType: targetType,
+		Action:      action,
+		Description: meta,
+	}
+	if err := h.store.CreateAuditLog(ctx, log); err != nil {
+		h.log.Error("audit log failed", h.F("err", err))
+	}
 }

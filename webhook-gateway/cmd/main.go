@@ -119,6 +119,7 @@ func main() {
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
+	engine.Use(middleware.GlobalRateLimit())
 
 	// management با InternalKey
 	engine.Group("/internal").Use(middleware.InternalAuth(cfg.InternalKey))

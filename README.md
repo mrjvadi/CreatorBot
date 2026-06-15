@@ -1,140 +1,117 @@
 # CreatorBot V3
 
-پلتفرم مدیریت ربات‌های تلگرام — Go 1.22 + go.work + Ports & Adapters
+پلتفرم SaaS برای ساخت و مدیریت ربات‌های تلگرام — کاملاً self-service.
 
-## ساختار
+## معماری
 
 ```
-CreatorBot/
-├── go.work                 ← workspace root (همه ماژول‌ها اینجا ثبت می‌شن)
-├── shared/                 ← کد مشترک بین همه سرویس‌ها
-│   └── pkg/
-│       ├── ports/          ← ← ← Interface ها (قرارداد)
-│       │   ├── db.go           DB interface
-│       │   ├── cache.go        Cache interface
-│       │   ├── bot.go          BotSender interface
-│       │   ├── payment.go      PaymentGateway interface
-│       │   ├── vpn_panel.go    VPNPanel interface
-│       │   └── notifier.go     Notifier + Logger interfaces
-│       ├── adapters/       ← ← ← پیاده‌سازی‌ها (قابل جایگزینی)
-│       │   ├── postgres/       implements ports.DB
-│       │   ├── redis/          implements ports.Cache
-│       │   ├── telebot/        implements ports.BotSender
-│       │   ├── zarinpal/       implements ports.PaymentGateway
-│       │   ├── nowpayments/    implements ports.PaymentGateway
-│       │   ├── marzban/        implements ports.VPNPanel
-│       │   └── centrifugo/     implements ports.Notifier
-│       ├── config/         generic env loader (viper)
-│       ├── auth/           JWT + AES-256-GCM
-│       └── logger/         implements ports.Logger (zap)
-│
-├── botmanager/             ← پلتفرم مرکزی
-├── uploader-bot/           ← ربات آپلودر فایل
-├── vpn-bot/                ← ربات فروش VPN
-├── archive-bot/            ← ربات آرشیو با جستجوی فازی
-├── member-bot/             ← ربات فروش ممبر + worker pool
-└── source-service/         ← سرویس آرشیو مرجع (userbot)
+Telegram
+   │ webhook
+   ▼
+webhook-gateway (:8090)
+   │
+   ├── botmanager     ← ربات اصلی فروش
+   ├── botpay (:8087) ← کیف پول TON
+   └── bot engines    ← ربات‌های کاربران
+         │
+   apimanager (:8080)
+         │ NATS JetStream
+         │
+   agentmanager → Docker
+         │
+   ┌─────┼──────────────┐
+   │     │              │
+fraud  revenue  community-service
+(:8092) (:8088)  (:8093)
 ```
 
-## چطور یک سرویس را جایگزین کنید
+## سرویس‌ها
 
-### مثال: تغییر دیتابیس از PostgreSQL به MySQL
+| سرویس | پورت | توضیح |
+|-------|------|-------|
+| botmanager | - | ربات اصلی — فروش و مدیریت |
+| apimanager | 8080 | REST API + JWT auth |
+| botpay | 8087 | کیف پول TON |
+| agentmanager | - | Docker orchestration |
+| webhook-gateway | 8090 | دریافت webhook تلگرام |
+| revenue-service | 8088 | تقسیم درآمد |
+| community-service | 8093 | مدیریت کامیونیتی |
+| fraud-engine | 8092 | تشخیص تقلب |
 
-```go
-// shared/pkg/adapters/mysql/mysql.go
-package mysql
+## نوع‌های ربات پشتیبانی‌شده
 
-import (
-    "gorm.io/driver/mysql"
-    "github.com/mrjvadi/creatorbot/shared/pkg/ports"
-)
+- 🌐 **VPN** — Marzban، MarzNeshin، Hiddify، 3x-ui
+- 📤 **Uploader** — آپلود و مدیریت فایل
+- 🔒 **Member** — قفل ممبرشیپ کانال/گروه
+- 📦 **Archive** — آرشیو فایل با جستجو
 
-type DB struct { db *gorm.DB }
-var _ ports.DB = (*DB)(nil) // compile-time check
-
-func New(dsn string) (*DB, error) { ... }
-// implement Conn(), Ping(), Migrate(), Close()
-```
-
-سپس فقط در `main.go` سرویس مورد نظر:
-```go
-// قبل:
-db, _ := postgres.New(postgres.Config{DSN: cfg.DSN})
-// بعد:
-db, _ := mysql.New(cfg.DSN)
-```
-
-**هیچ فایل دیگری نیاز به تغییر ندارد.**
-
----
-
-### مثال: اضافه کردن پنل VPN جدید (مثلاً Hiddify)
-
-```go
-// shared/pkg/adapters/hiddify/hiddify.go
-package hiddify
-
-type Panel struct { ... }
-var _ ports.VPNPanel = (*Panel)(nil)
-
-func New(baseURL, apiKey string) *Panel { ... }
-// implement Name(), Login(), CreateUser(), ...
-```
-
-سپس در `vpn-bot/cmd/bot/main.go`:
-```go
-case "hiddify":
-    panel = hiddify.New(cfg.PanelURL, cfg.PanelKey)
-```
-
----
-
-### مثال: تغییر سیستم notification از Centrifugo به NATS
-
-```go
-// shared/pkg/adapters/nats/nats.go
-package nats
-
-type Notifier struct { ... }
-var _ ports.Notifier = (*Notifier)(nil)
-
-func New(url string) *Notifier { ... }
-func (n *Notifier) Publish(ctx context.Context, channel string, payload any) error { ... }
-```
-
-فقط در `botmanager/cmd/bot/main.go`:
-```go
-// قبل:
-var notifier ports.Notifier = centrifugo.New(...)
-// بعد:
-var notifier ports.Notifier = nats.New(cfg.NatsURL)
-```
-
-## راه‌اندازی
+## راه‌اندازی سریع
 
 ```bash
-# کلون و اجرا
-git clone ...
-cd CreatorBot
-
-# هر سرویس
-cd uploader-bot
+# ۱. کپی env
 cp .env.example .env
-# ویرایش .env
-go run ./cmd/bot
+# ویرایش .env با مقادیر واقعی
 
-# یا با docker
-docker compose -f deploy/docker-compose.yml up -d
+# ۲. راه‌اندازی services
+docker compose up -d
+
+# ۳. migration
+make install-migrate
+make migrate-up
+
+# ۴. بررسی وضعیت
+docker compose ps
+curl http://localhost:8080/health
 ```
 
-## استک فنی
+## Kubernetes
 
-| بخش | پیاده‌سازی پیش‌فرض | جایگزین‌پذیر با |
-|-----|----------|---------|
-| Database | PostgreSQL (GORM) | MySQL, SQLite, ... |
-| Cache/Queue | Redis | Memcached, in-memory, ... |
-| Telegram | telebot.v4 | telegram-bot-api, ... |
-| پرداخت | Zarinpal / NowPayments | هر gateway دیگری |
-| پنل VPN | Marzban | Hiddify, 3x-ui, ... |
-| Notification | Centrifugo | NATS, gRPC, WebSocket |
-| Logging | Zap | slog, logrus, ... |
+```bash
+# ویرایش secrets
+vim deploy/k8s/base/secret.yaml
+
+# deploy
+kubectl apply -k deploy/k8s/
+
+# بررسی
+kubectl get pods -n creatorbot
+```
+
+## تست
+
+```bash
+# unit tests
+go test ./...
+
+# integration tests (نیاز به service های واقعی)
+E2E=true go test ./tests/e2e/...
+
+# VPN adapter tests
+go test ./shared/pkg/adapters/...
+```
+
+## متریک‌ها
+
+- Prometheus: `http://localhost:9090/metrics` (هر سرویس)
+- Grafana: `http://localhost:3000`
+- Loki logs: از طریق Grafana
+
+## قوانین معماری
+
+1. bot ها هرگز `apimanager` را صدا نمی‌زنند — مستقیم به DB وصل می‌شوند
+2. `instance_id = bot_<BotID>` از توکن تلگرام
+3. fraud-engine از NATS request/reply
+4. همه event ها از NATS JetStream
+5. هر تراکنش مالی double-entry ledger دارد
+
+## NATS Events
+
+| Event | Publisher | Subscriber |
+|-------|-----------|------------|
+| `service.creation.*` | botmanager | agentmanager |
+| `agent.*.deploy` | apimanager | agentmanager |
+| `plan.upgraded` | botmanager | همه سرویس‌ها |
+| `wallet.deposit` | botpay | revenue-service |
+| `campaign.revenue.generated` | ads-bot | community-service |
+| `config.updated` | botmanager | همه سرویس‌ها |
+| `fraud.*.score.*` | fraud-engine | botmanager |

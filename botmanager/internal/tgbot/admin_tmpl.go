@@ -56,6 +56,10 @@ func (h *Handler) adminTemplateAdd(ctx context.Context, c tele.Context, botType,
 		h.log.Error("adminTemplateAdd", h.F("err", err))
 		return h.sendMain(c, h.t(ctx, uid, i18n.KeyTemplateAddError))
 	}
+	// config.updated publish
+	if h.nc != nil {
+		_ = h.nc.PublishCore("config.updated", map[string]any{"type": "template"})
+	}
 
 	return c.Send(
 		h.t(ctx, uid, i18n.KeyTemplateAdded,

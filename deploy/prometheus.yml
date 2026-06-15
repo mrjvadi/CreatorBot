@@ -3,22 +3,23 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: "botmanager"
+  - job_name: 'apimanager'
     static_configs:
-      - targets: ["botmanager:9100"]
+      - targets: ['apimanager:9090']
+    metrics_path: '/metrics'
 
-  - job_name: "apimanager"
+  - job_name: 'botpay'
     static_configs:
-      - targets: ["apimanager:9100"]
+      - targets: ['botpay:9091']
 
-  - job_name: "agentmanager"
+  - job_name: 'revenue-service'
     static_configs:
-      - targets: ["agentmanager:9100"]
+      - targets: ['revenue-service:9092']
 
-  - job_name: "postgres"
+  - job_name: 'agentmanager'
     static_configs:
-      - targets: ["postgres:5432"]
+      - targets: ['agentmanager:9093']
 
-  - job_name: "redis"
+  - job_name: 'fraud-engine'
     static_configs:
-      - targets: ["redis:6379"]
+      - targets: ['fraud-engine:9094']

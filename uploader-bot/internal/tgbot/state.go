@@ -5,101 +5,102 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type step string
 
 const (
-	stepIdle step = ""
-
-	// ادمین - ساخت کد
-	stepCodeType    step = "code:type"
-	stepCodeLimit   step = "code:limit"
-	stepCodeExpiry  step = "code:expiry"
-	stepCodeFiles   step = "code:files"   // جمع‌آوری فایل‌های آلبوم
-	stepCodeConfirm step = "code:confirm"
-
-	// ادمین - تنظیمات
-	stepSettingKey   step = "setting:key"
-	stepSettingValue step = "setting:value"
-
-	// ادمین - broadcast
-	stepBroadcast step = "broadcast:msg"
+	stepIdle        step = ""
+	stepCodeFiles   step = "code:files"
+	stepCodeCaption step = "code:caption"
+	stepPassword    step = "password"
+	stepSearch      step = "search"
+	stepNewFolder   step = "folder:new"
+	stepEditCaption step = "edit:caption"
+	stepSetPassword step = "set:password"
+	stepSetLimit    step = "set:limit"
+	stepEditSetting step = "edit:setting"
+	stepAddChannel  step = "channel:add"
+	stepNewPlan     step = "plan:new"
+	stepBroadcast   step = "broadcast"
+	stepAddAdmin    step = "admin:add"
+	stepSearchUser  step = "search:user"
 )
 
-type state struct {
+type userState struct {
 	Step step              `json:"s"`
 	Data map[string]string `json:"d,omitempty"`
 }
 
-const ttl = 15 * time.Minute
-
-func stateKey(uid int64) string { return fmt.Sprintf("ul:s:%d", uid) }
-
-func (h *Handler) getState(ctx context.Context, uid int64) state {
-	raw, err := h.eng.Cache.Get(ctx, stateKey(uid))
-	if err != nil || raw == "" {
-		return state{Step: stepIdle, Data: map[string]string{}}
-	}
-	var s state
-	if err := json.Unmarshal([]byte(raw), &s); err != nil {
-		return state{Step: stepIdle, Data: map[string]string{}}
-	}
-	if s.Data == nil {
-		s.Data = map[string]string{}
-	}
-	return s
+func (h *Handler) stateKey(uid int64) string {
+	return fmt.Sprintf("upl:state:%s:%d", h.instanceID, uid)
 }
 
-func (h *Handler) setState(ctx context.Context, uid int64, s state) {
-	data, _ := json.Marshal(s)
-	h.eng.Cache.Set(ctx, stateKey(uid), string(data), ttl)
+func (h *Handler) getState(ctx context.Context, uid int64) userState {
+	if h.cache == nil {
+		return userState{}
+	}
+	raw, _ := h.cache.Get(ctx, h.stateKey(uid))
+	if raw == "" {
+		return userState{}
+	}
+	var st userState
+	json.Unmarshal([]byte(raw), &st)
+	return st
+}
+
+func (h *Handler) setState(ctx context.Context, uid int64, st userState) {
+	if h.cache == nil {
+		return
+	}
+	b, _ := json.Marshal(st)
+	h.cache.Set(ctx, h.stateKey(uid), string(b), 15*time.Minute)
+}
+
+func (h *Handler) setStep(ctx context.Context, uid int64, s step) {
+	h.setState(ctx, uid, userState{Step: s, Data: make(map[string]string)})
+}
+
+func (h *Handler) setStepData(ctx context.Context, uid int64, s step, key, val string) {
+	st := h.getState(ctx, uid)
+	if st.Data == nil {
+		st.Data = make(map[string]string)
+	}
+	st.Step = s
+	st.Data[key] = val
+	h.setState(ctx, uid, st)
 }
 
 func (h *Handler) clearState(ctx context.Context, uid int64) {
-	h.eng.Cache.Del(ctx, stateKey(uid))
-}
-
-func (h *Handler) setStep(ctx context.Context, uid int64, st step, kv ...string) {
-	s := h.getState(ctx, uid)
-	s.Step = st
-	for i := 0; i+1 < len(kv); i += 2 {
-		s.Data[kv[i]] = kv[i+1]
+	if h.cache != nil {
+		h.cache.Del(ctx, h.stateKey(uid))
 	}
-	h.setState(ctx, uid, s)
 }
 
-// albumKey کلید cache برای جمع‌آوری فایل‌های آلبوم.
-func albumKey(uid int64) string { return fmt.Sprintf("ul:album:%d", uid) }
-
-type albumData struct {
-	FileIDs []string `json:"ids"`
+// album buffer — برای آپلود چند فایل
+func (h *Handler) albumKey(uid int64) string {
+	return fmt.Sprintf("upl:album:%s:%d", h.instanceID, uid)
 }
 
 func (h *Handler) albumAdd(ctx context.Context, uid int64, fileID string) []string {
-	raw, _ := h.eng.Cache.Get(ctx, albumKey(uid))
-	var d albumData
-	if raw != "" {
-		json.Unmarshal([]byte(raw), &d)
-	}
-	d.FileIDs = append(d.FileIDs, fileID)
-	data, _ := json.Marshal(d)
-	h.eng.Cache.Set(ctx, albumKey(uid), string(data), ttl)
-	return d.FileIDs
+	raw, _ := h.cache.Get(ctx, h.albumKey(uid))
+	var ids []string
+	json.Unmarshal([]byte(raw), &ids)
+	ids = append(ids, fileID)
+	b, _ := json.Marshal(ids)
+	h.cache.Set(ctx, h.albumKey(uid), string(b), 15*time.Minute)
+	return ids
 }
 
 func (h *Handler) albumGet(ctx context.Context, uid int64) []string {
-	raw, _ := h.eng.Cache.Get(ctx, albumKey(uid))
-	var d albumData
-	json.Unmarshal([]byte(raw), &d)
-	return d.FileIDs
+	raw, _ := h.cache.Get(ctx, h.albumKey(uid))
+	var ids []string
+	json.Unmarshal([]byte(raw), &ids)
+	return ids
 }
 
 func (h *Handler) albumClear(ctx context.Context, uid int64) {
-	h.eng.Cache.Del(ctx, albumKey(uid))
+	if h.cache != nil {
+		h.cache.Del(ctx, h.albumKey(uid))
+	}
 }
-
-// suppress unused
-var _ = ports.F

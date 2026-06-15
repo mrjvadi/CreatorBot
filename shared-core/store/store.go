@@ -8,10 +8,10 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"errors"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -394,20 +394,27 @@ func (s *Store) FindPlan(ctx context.Context, id string) (*models.Plan, error) {
 	return &plan, err
 }
 
+
 // ---- Capacity Engine ----
 
 // CountInstancesByOwnerAndType تعداد ربات‌های فعال یک کاربر از یک نوع.
 func (s *Store) CountInstancesByOwnerAndType(ctx context.Context, ownerID uuid.UUID, botType string) (int, error) {
+	// پیدا کردن template_id های این نوع سرویس
+	var templateIDs []string
+	if err := s.db.Conn().WithContext(ctx).
+		Model(&models.BotTemplate{}).
+		Where("type = ? AND is_active = true", botType).
+		Pluck("id::text", &templateIDs).Error; err != nil || len(templateIDs) == 0 {
+		return 0, err
+	}
+
+	// شمارش instance های این کاربر با این template ها
 	var count int64
-	// raw SQL - از JOIN uuid مستقیم استفاده می‌کند
-	err := s.db.Conn().WithContext(ctx).Raw(`
-		SELECT COUNT(*)
-		FROM bot_instances bi
-		INNER JOIN bot_templates bt ON bt.id = bi.template_id
-		WHERE bi.owner_id = ?::uuid
-		  AND bt.type = ?
-		  AND bi.deleted_at IS NULL
-	`, ownerID.String(), botType).Scan(&count).Error
+	err := s.db.Conn().WithContext(ctx).
+		Model(&models.BotInstance{}).
+		Where("owner_id = ?", ownerID).
+		Where("template_id::text IN ?", templateIDs).
+		Count(&count).Error
 	return int(count), err
 }
 
@@ -506,22 +513,70 @@ func (s *Store) FindInstanceByContainerName(ctx context.Context, name string) (*
 }
 
 func (s *Store) ListPlansByType(ctx context.Context, serviceType string) ([]models.Plan, error) {
+	// پیدا کردن template های این نوع
+	var tmplIDs []string
+	if err := s.db.Conn().WithContext(ctx).
+		Model(&models.BotTemplate{}).
+		Where("type = ? AND is_active = true", serviceType).
+		Pluck("id::text", &tmplIDs).Error; err != nil || len(tmplIDs) == 0 {
+		return nil, err
+	}
+
+	// پلن های این template ها
 	var plans []models.Plan
 	err := s.db.Conn().WithContext(ctx).
-		Joins("JOIN bot_templates ON bot_templates.id = plans.template_id").
-		Where("bot_templates.type = ? AND plans.is_active = true", serviceType).
-		Order("plans.price ASC").Find(&plans).Error
+		Where("is_active = true AND template_id::text IN ?", tmplIDs).
+		Order("price ASC").
+		Find(&plans).Error
 	return plans, err
 }
 
 func (s *Store) SelectLeastLoadedServer(ctx context.Context) (*models.Server, error) {
 	var server models.Server
 	err := s.db.Conn().WithContext(ctx).
-		Where("is_online = true").
-		Order("(SELECT COUNT(*) FROM bot_instances WHERE bot_instances.server_id = servers.id AND bot_instances.status != 'deleted') ASC").
-		First(&server).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
+		Raw(`
+		SELECT s.*
+		FROM servers s
+		WHERE s.is_online = true
+		  AND s.deleted_at IS NULL
+		ORDER BY (
+			SELECT COUNT(*) FROM bot_instances bi
+			WHERE bi.server_id::text = s.id::text
+			  AND bi.status != 'deleted'
+			  AND bi.deleted_at IS NULL
+		) ASC
+		LIMIT 1
+	`).First(&server).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
 	return &server, err
+}
+// ── Audit Log ─────────────────────────────────────────────
+
+// CreateAuditLog یک رکورد audit ایجاد می‌کند.
+func (s *Store) CreateAuditLog(ctx context.Context, log *models.AuditLog) error {
+	return s.db.Conn().WithContext(ctx).Create(log).Error
+}
+
+// ListAuditLogs لیست audit log های یک کاربر.
+func (s *Store) ListAuditLogs(ctx context.Context, actorID string, limit int) ([]models.AuditLog, error) {
+	var logs []models.AuditLog
+	err := s.db.Conn().WithContext(ctx).
+		Where("actor_id = ?", actorID).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&logs).Error
+	return logs, err
+}
+
+// ListAdminAuditLogs همه audit log ها برای ادمین.
+func (s *Store) ListAdminAuditLogs(ctx context.Context, action, targetType string, limit int) ([]models.AuditLog, error) {
+	var logs []models.AuditLog
+	q := s.db.Conn().WithContext(ctx).Order("created_at DESC").Limit(limit)
+	if action != "" {
+		q = q.Where("action = ?", action)
+	}
+	if targetType != "" {
+		q = q.Where("target_type = ?", targetType)
+	}
+	return logs, q.Find(&logs).Error
 }

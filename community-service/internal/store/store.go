@@ -208,3 +208,19 @@ func (s *Store) UpdateValidationWindow(ctx context.Context, id uuid.UUID, window
 	return s.pg.WithContext(ctx).Model(&Community{}).
 		Where("id = ?", id).Update("validation_window_sec", windowSec).Error
 }
+
+// DecrementMemberCount تعداد اعضا را یک واحد کاهش می‌دهد.
+func (s *Store) DecrementMemberCount(ctx context.Context, communityID string) error {
+	return s.pg.WithContext(ctx).
+		Model(&Community{}).
+		Where("id = ?", communityID).
+		UpdateColumn("member_count", gorm.Expr("GREATEST(member_count - 1, 0)")).Error
+}
+
+// IncrementMemberCount تعداد اعضا را یک واحد افزایش می‌دهد.
+func (s *Store) IncrementMemberCount(ctx context.Context, communityID string) error {
+	return s.pg.WithContext(ctx).
+		Model(&Community{}).
+		Where("id = ?", communityID).
+		UpdateColumn("member_count", gorm.Expr("member_count + 1")).Error
+}

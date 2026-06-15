@@ -228,3 +228,26 @@ func (s *Store) IncrementPanelCount(ctx context.Context, panelID uuid.UUID, delt
 		Where("id = ?", panelID).
 		UpdateColumn("active_count", gorm.Expr("active_count + ?", delta)).Error
 }
+
+// CreateDiscountCode یک کد تخفیف جدید ایجاد می‌کند.
+func (s *Store) CreateDiscountCode(ctx context.Context, code *models.DiscountCode) error {
+	return s.db.Conn().WithContext(ctx).Create(code).Error
+}
+
+// FindDiscountCode یک کد تخفیف را با کد رشته‌ای پیدا می‌کند.
+func (s *Store) FindDiscountCode(ctx context.Context, code string) (*models.DiscountCode, error) {
+	var dc models.DiscountCode
+	err := s.db.Conn().WithContext(ctx).
+		Where("code = ? AND is_active = true", code).First(&dc).Error
+	if err != nil {
+		return nil, err
+	}
+	return &dc, nil
+}
+
+// UseDiscountCode used_count را یک واحد افزایش می‌دهد.
+func (s *Store) UseDiscountCode(ctx context.Context, id interface{}) error {
+	return s.db.Conn().WithContext(ctx).Model(&models.DiscountCode{}).
+		Where("id = ?", id).
+		UpdateColumn("used_count", gorm.Expr("used_count + 1")).Error
+}

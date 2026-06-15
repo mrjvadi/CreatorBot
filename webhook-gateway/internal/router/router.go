@@ -55,11 +55,11 @@ func (r *Router) Register(engine *gin.Engine) {
 
 	// مدیریت bot ها (internal — با API key)
 	mgmt := engine.Group("/internal")
-	mgmt.POST("/register",   r.registerBot)
+	mgmt.POST("/register", r.registerBot)
 	mgmt.POST("/unregister", r.unregisterBot)
-	mgmt.GET("/bots",        r.listBots)
-	mgmt.GET("/stats",       r.getStats)
-	mgmt.GET("/health",      r.health)
+	mgmt.GET("/bots", r.listBots)
+	mgmt.GET("/stats", r.getStats)
+	mgmt.GET("/health", r.health)
 }
 
 // ── Webhook handler ────────────────────────────────────────

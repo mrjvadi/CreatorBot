@@ -304,7 +304,31 @@ func (h *Handler) doBroadcast(ctx context.Context, c tele.Context, text string) 
 
 func (h *Handler) handleDiscountInput(ctx context.Context, c tele.Context, st wizardState, text string) error {
 	h.clearState(ctx, c.Sender().ID)
-	// TODO: parse و ذخیره کد تخفیف
-	_ = text
-	return c.Send("✅ کد تخفیف ذخیره شد.", kbAdminMain())
+
+	// format: CODE:PERCENT:MAX مثال: SUMMER50:50:100
+	parts := strings.SplitN(strings.TrimSpace(text), ":", 3)
+	if len(parts) < 2 {
+		return c.Send("❌ فرمت نادرست\nمثال: CODE:50:100 (کد:درصد:حداکثر_استفاده)")
+	}
+
+	var percent float64
+	fmt.Sscan(parts[1], &percent)
+	if percent <= 0 || percent > 100 {
+		return c.Send("❌ درصد تخفیف باید بین ۱ تا ۱۰۰ باشد.")
+	}
+
+	maxUse := 1
+	if len(parts) == 3 {
+		fmt.Sscan(parts[2], &maxUse)
+	}
+
+	dc := &models.DiscountCode{
+		Code:    strings.ToUpper(parts[0]),
+		Percent: percent,
+		MaxUse:  maxUse,
+	}
+	if err := h.store.CreateDiscountCode(ctx, dc); err != nil {
+		return c.Send("❌ خطا در ذخیره کد تخفیف.")
+	}
+	return c.Send(fmt.Sprintf("✅ کد تخفیف \"%s\" با %g%% ایجاد شد.", dc.Code, dc.Percent), kbAdminMain())
 }

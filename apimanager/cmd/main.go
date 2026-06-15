@@ -16,6 +16,7 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
@@ -146,7 +147,9 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Info("apimanager started", ports.F("addr", addr))
+		metrics.ServeMetrics(":9090")
+	log.Info("metrics server started", ports.F("addr", ":9090"))
+	log.Info("apimanager started", ports.F("addr", addr))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal("api server", ports.F("err", err))
 		}

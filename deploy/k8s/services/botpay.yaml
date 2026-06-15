@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: botpay
+  namespace: creatorbot
+  labels:
+    app: botpay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: botpay
+  template:
+    metadata:
+      labels:
+        app: botpay
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: botpay
+        image: creatorbot/botpay:latest
+        imagePullPolicy: Always
+        env:
+        - name: POSTGRES_DSN
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: POSTGRES_DSN}}
+        - name: NATS_URL
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: NATS_URL}}
+        - name: NATS_USERNAME
+          valueFrom: {configMapKeyRef: {name: creatorbot-config, key: NATS_USERNAME}}
+        - name: NATS_PASSWORD
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: NATS_PASSWORD}}
+        - name: REDIS_ADDR
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: REDIS_ADDR}}
+        - name: REDIS_PASSWORD
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: REDIS_PASSWORD}}
+        - name: ENCRYPTION_KEY
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: ENCRYPTION_KEY}}
+        - name: BOTPAY_TOKEN
+          valueFrom: {secretKeyRef: {name: creatorbot-secrets, key: BOTPAY_TOKEN}}
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8087
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8087
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: botpay
+  namespace: creatorbot
+spec:
+  selector:
+    app: botpay
+  ports:
+  - port: 8087
+    targetPort: 8087
+  type: ClusterIP

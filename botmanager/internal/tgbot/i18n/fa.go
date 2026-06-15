@@ -364,7 +364,7 @@ var fa = map[Key]string{
 	// ── ادمین — کاربران
 	KeyUsersTitle:       "👥 <b>کاربران</b> (%d نفر)",
 	KeyUsersEmpty:       "👥 <b>کاربران</b>\n\nهیچ کاربری یافت نشد.",
-	KeyAdminUserSummary: "%s <b>%s</b> (@%s) — %s",
+	KeyAdminUserSummary: "👑 %d مالک | 🛡 %d ادمین | 👤 %d عادی | 🚫 %d مسدود",
 	KeyUserBlocked:      "🚫 کاربر <b>%s</b> مسدود شد.",
 	KeyUserUnblocked:    "✅ کاربر <b>%s</b> رفع مسدودیت شد.",
 	KeyUserMadeAdmin:    "🛡 کاربر <b>%s</b> ادمین شد.",
