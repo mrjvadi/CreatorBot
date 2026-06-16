@@ -66,141 +66,141 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # ── Core Services ──────────────────────────────────────
-  botmanager:
-    build:
-      context: .
-      dockerfile: botmanager/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres: {condition: service_healthy}
-      redis:    {condition: service_healthy}
-      nats:     {condition: service_healthy}
-    env_file: botmanager/.env
-    environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      NATS_URL: nats://nats:4222
-      NATS_USERNAME: ${NATS_USERNAME}
-      NATS_PASSWORD: ${NATS_PASSWORD}
-
-  apimanager:
-    build:
-      context: .
-      dockerfile: apimanager/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres: {condition: service_healthy}
-      redis:    {condition: service_healthy}
-      nats:     {condition: service_healthy}
-    env_file: apimanager/.env
-    environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      NATS_URL: nats://nats:4222
-
-  botpay:
-    build:
-      context: .
-      dockerfile: botpay/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8087:8087"
-    depends_on:
-      postgres: {condition: service_healthy}
-      nats:     {condition: service_healthy}
-    env_file: botpay/.env
-    environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
-      NATS_URL: nats://nats:4222
-      NATS_USERNAME: ${NATS_USERNAME}
-      NATS_PASSWORD: ${NATS_PASSWORD}
-    volumes:
-      - botpay_data:/app/data
-
-  agentmanager:
-    build:
-      context: .
-      dockerfile: agentmanager/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      nats: {condition: service_healthy}
-    env_file: agentmanager/.env
-    environment:
-      NATS_URL: nats://nats:4222
-      NATS_USERNAME: ${NATS_USERNAME}
-      NATS_PASSWORD: ${NATS_PASSWORD}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-
-  webhook-gateway:
-    build:
-      context: .
-      dockerfile: webhook-gateway/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8090:8090"
-    depends_on:
-      nats: {condition: service_healthy}
-    env_file: webhook-gateway/.env
-    environment:
-      NATS_URL: nats://nats:4222
-
-  # ── Analytics & Monetization ───────────────────────────
-  revenue-service:
-    build:
-      context: .
-      dockerfile: revenue-service/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8088:8088"
-    depends_on:
-      postgres: {condition: service_healthy}
-      nats:     {condition: service_healthy}
-    env_file: revenue-service/.env
-    environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
-      NATS_URL: nats://nats:4222
-
-  community-service:
-    build:
-      context: .
-      dockerfile: community-service/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8093:8093"
-    depends_on:
-      postgres: {condition: service_healthy}
-      mongo:    {condition: service_healthy}
-      nats:     {condition: service_healthy}
-    env_file: community-service/.env
-    environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
-      MONGO_URI: mongodb://mongouser:${MONGO_PASSWORD}@mongo:27017/creatorbot?authSource=admin
-      NATS_URL: nats://nats:4222
-
-  fraud-engine:
-    build:
-      context: .
-      dockerfile: fraud-engine/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8092:8092"
-    depends_on:
-      postgres: {condition: service_healthy}
-      redis:    {condition: service_healthy}
-      nats:     {condition: service_healthy}
-    env_file: fraud-engine/.env
-    environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      NATS_URL: nats://nats:4222
+#
+#  # ── Core Services ──────────────────────────────────────
+#  botmanager:
+#    build:
+#      context: .
+#      dockerfile: botmanager/Dockerfile
+#    restart: unless-stopped
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      redis:    {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#    env_file: botmanager/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#
+#  apimanager:
+#    build:
+#      context: .
+#      dockerfile: apimanager/Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "8080:8080"
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      redis:    {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#    env_file: apimanager/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#
+#  botpay:
+#    build:
+#      context: .
+#      dockerfile: botpay/Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "8087:8087"
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#    env_file: botpay/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    volumes:
+#      - botpay_data:/app/data
+#
+#  agentmanager:
+#    build:
+#      context: .
+#      dockerfile: agentmanager/Dockerfile
+#    restart: unless-stopped
+#    depends_on:
+#      nats: {condition: service_healthy}
+#    env_file: agentmanager/.env
+#    environment:
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#
+#  webhook-gateway:
+#    build:
+#      context: .
+#      dockerfile: webhook-gateway/Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "8090:8090"
+#    depends_on:
+#      nats: {condition: service_healthy}
+#    env_file: webhook-gateway/.env
+#    environment:
+#      NATS_URL: nats://nats:4222
+#
+#  # ── Analytics & Monetization ───────────────────────────
+#  revenue-service:
+#    build:
+#      context: .
+#      dockerfile: revenue-service/Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "8088:8088"
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#    env_file: revenue-service/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#
+#  community-service:
+#    build:
+#      context: .
+#      dockerfile: community-service/Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "8093:8093"
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      mongo:    {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#    env_file: community-service/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+#      MONGO_URI: mongodb://mongouser:${MONGO_PASSWORD}@mongo:27017/creatorbot?authSource=admin
+#      NATS_URL: nats://nats:4222
+#
+#  fraud-engine:
+#    build:
+#      context: .
+#      dockerfile: fraud-engine/Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "8092:8092"
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      redis:    {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#    env_file: fraud-engine/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
 
   loki:
     image: grafana/loki:2.9.0

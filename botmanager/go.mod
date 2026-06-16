@@ -4,8 +4,6 @@ go 1.25.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/mrjvadi/creatorbot/shared v0.0.0
-	github.com/mrjvadi/creatorbot/shared-core v0.0.0
 	github.com/nats-io/nats.go v1.52.0
 	github.com/redis/go-redis/v9 v9.20.1
 	gopkg.in/telebot.v4 v4.0.0-beta.9

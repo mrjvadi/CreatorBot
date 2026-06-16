@@ -2,28 +2,27 @@ package tgbot
 
 import (
 	"fmt"
-
 	tele "gopkg.in/telebot.v4"
 )
 
 // ── دکمه‌های ثابت ────────────────────────────────────────────
 const (
-	btnNewCode   = "📤 آپلود رسانه"
-	btnCodeList  = "📋 لیست رسانه‌ها"
-	btnFolders   = "📁 پوشه‌ها"
-	btnUsers     = "👥 کاربران"
-	btnStats     = "📊 آمار"
-	btnSettings  = "⚙️ تنظیمات"
+	btnNewCode  = "📤 آپلود رسانه"
+	btnCodeList = "📋 لیست رسانه‌ها"
+	btnFolders  = "📁 پوشه‌ها"
+	btnUsers    = "👥 کاربران"
+	btnStats    = "📊 آمار"
+	btnSettings = "⚙️ تنظیمات"
 	btnBroadcast = "📢 ارسال همگانی"
-	btnBackup    = "💾 بکاپ"
-	btnChannels  = "📡 کانال‌ها"
-	btnSubPlans  = "💎 اشتراک‌ها"
-	btnAdmins    = "👑 ادمین‌ها"
-	btnCancel    = "❌ لغو"
-	btnBack      = "🔙 بازگشت"
-	btnSearch    = "🔍 جستجو"
-	btnHelp      = "❓ راهنما"
-	btnSupport   = "💬 پشتیبانی"
+	btnBackup   = "💾 بکاپ"
+	btnChannels = "📡 کانال‌ها"
+	btnSubPlans = "💎 اشتراک‌ها"
+	btnAdmins   = "👑 ادمین‌ها"
+	btnCancel   = "❌ لغو"
+	btnBack     = "🔙 بازگشت"
+	btnSearch   = "🔍 جستجو"
+	btnHelp     = "❓ راهنما"
+	btnSupport  = "💬 پشتیبانی"
 )
 
 // ── Admin Keyboard ────────────────────────────────────────────
@@ -43,12 +42,14 @@ func kbAdmin() *tele.ReplyMarkup {
 
 // ── User Keyboard ─────────────────────────────────────────────
 
-func kbUser() *tele.ReplyMarkup {
+func kbUser(showSearch bool) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
-		kb.Row(kb.Text(btnSearch)),
-		kb.Row(kb.Text(btnHelp), kb.Text(btnSupport)),
-	)
+	rows := []tele.Row{}
+	if showSearch {
+		rows = append(rows, kb.Row(kb.Text(btnSearch)))
+	}
+	rows = append(rows, kb.Row(kb.Text(btnHelp), kb.Text(btnSupport)))
+	kb.Reply(rows...)
 	return kb
 }
 
@@ -154,12 +155,12 @@ func kbSettings(settings map[string]string) *tele.ReplyMarkup {
 
 // constants برای avoid circular import
 const (
-	models_SettingBotActive          = "bot_active"
-	models_SettingSubRequired        = "sub_required"
-	models_SettingUserUpload         = "user_upload"
-	models_SettingShowSearch         = "show_search"
+	models_SettingBotActive         = "bot_active"
+	models_SettingSubRequired       = "sub_required"
+	models_SettingUserUpload        = "user_upload"
+	models_SettingShowSearch        = "show_search"
 	models_SettingForwardLockDefault = "forward_lock_default"
-	models_SettingFreeDownloads      = "free_downloads"
-	models_SettingAutoDeleteDefault  = "auto_delete_default"
-	models_SettingSignature          = "signature"
+	models_SettingFreeDownloads     = "free_downloads"
+	models_SettingAutoDeleteDefault = "auto_delete_default"
+	models_SettingSignature         = "signature"
 )

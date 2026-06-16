@@ -81,7 +81,7 @@ func (h *Handler) onStart(c tele.Context) error {
 	if h.isAdmin(c) {
 		welcome := h.store.GetSetting(ctx, "admin_welcome")
 		if welcome == "" {
-			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", c.Bot().Me.Username)
+			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", "test")
 		}
 		return c.Send(welcome, kbAdmin())
 	}
@@ -203,6 +203,13 @@ func (h *Handler) onCallback(c tele.Context) error {
 	case "code_resend":
 		user, _ := h.store.GetUser(ctx, c.Sender().ID)
 		return h.userDeliverCode(ctx, c, user, arg)
+	case "react_like":
+		return c.Respond(&tele.CallbackResponse{Text: "👍 ثبت شد"})
+	case "react_dislike":
+		return c.Respond(&tele.CallbackResponse{Text: "👎 ثبت شد"})
+	case "report":
+		h.notifyAdminsReport(ctx, c, arg)
+		return c.Respond(&tele.CallbackResponse{Text: "⚠️ گزارش شما ثبت شد. ممنون!"})
 	}
 
 	return nil
@@ -401,10 +408,23 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 
 	var msgIDs []int
 
-	// caption آخرین فایل + امضا
+	// caption آخرین فایل + امضا + شمارنده fake views
 	caption := code.Caption
+	if code.FakeViews > 0 {
+		caption += fmt.Sprintf("\n\n👁 %d بازدید", code.FakeViews)
+	}
 	if signature != "" {
 		caption += "\n\n" + signature
+	}
+
+	// تنظیمات نمایش دکمه‌ها
+	showLikes := h.store.GetSetting(ctx, models.SettingShowLikesButtons) == "true"
+	showReport := h.store.GetSetting(ctx, models.SettingShowReportButton) == "true"
+
+	// قفل فوروارد واقعی (Protected) — نه Silent
+	var protect tele.Option
+	if code.ForwardLock {
+		protect = tele.Protected
 	}
 
 	// آلبوم
@@ -420,28 +440,42 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 			}
 			album = append(album, inp)
 		}
-		msgs, err := c.Bot().SendAlbum(c.Recipient(), album, tele.ModeHTML)
+		opts := []any{tele.ModeHTML}
+		if protect != nil {
+			opts = append(opts, protect)
+		}
+		msgs, err := c.Bot().SendAlbum(c.Recipient(), album, opts...)
 		if err == nil {
 			for _, m := range msgs {
 				msgIDs = append(msgIDs, m.ID)
+			}
+			// دکمه‌ها زیر یک پیام جداگانه بعد از آلبوم
+			if showLikes || showReport {
+				kb := kbMediaButtons(code, showLikes, showReport)
+				if bm, e := c.Bot().Send(c.Recipient(), "⬆️ رسانه بالا", kb); e == nil {
+					msgIDs = append(msgIDs, bm.ID)
+				}
 			}
 		}
 		return msgIDs
 	}
 
-	// تک فایل
+	// تک یا چند فایل غیرآلبوم
 	for i, f := range files {
 		var cap string
+		var opts []any
 		if i == len(files)-1 {
 			cap = caption
+			// دکمه‌ها فقط روی آخرین فایل
+			if showLikes || showReport {
+				opts = append(opts, kbMediaButtons(code, showLikes, showReport))
+			}
+		}
+		if protect != nil {
+			opts = append(opts, protect)
 		}
 
-		opts := []any{tele.ModeHTML}
-		if code.ForwardLock {
-			opts = append(opts, tele.Silent)
-		}
-
-		msg, err := sendSingleFile(c, f, cap)
+		msg, err := sendSingleFile(c, f, cap, opts...)
 		if err != nil {
 			h.log.Error("sendFiles", ports.F("err", err))
 			continue

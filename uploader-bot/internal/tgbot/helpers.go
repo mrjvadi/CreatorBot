@@ -3,177 +3,202 @@ package tgbot
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
 
-	"github.com/mrjvadi/creatorbot/shared-core/documents"
+	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
 )
 
-// ── عضویت اجباری ──────────────────────────────────────────
+// ── Force Join ────────────────────────────────────────────────
 
-// checkMembership بررسی می‌کند کاربر عضو کانال اجباری است.
-// اگه عضو نبود پیام مناسب می‌فرستد و error برمی‌گرداند.
-func (h *Handler) checkMembership(ctx context.Context, c tele.Context) error {
-	if h.channelID == 0 {
-		return nil // force_join غیرفعال
+// checkForceJoin بررسی می‌کند کاربر در کانال‌های اجباری عضو است.
+// لیست کانال‌هایی که عضو نیست را برمی‌گرداند.
+func (h *Handler) checkForceJoin(ctx context.Context, c tele.Context) []models.ForceJoinChannel {
+	channels, _ := h.store.ListForceJoinChannels(ctx)
+	var notJoined []models.ForceJoinChannel
+
+	for _, ch := range channels {
+		member, err := c.Bot().ChatMemberOf(
+			&tele.Chat{ID: ch.ChatID},
+			c.Sender(),
+		)
+		if err != nil || member == nil ||
+			member.Role == tele.Kicked || member.Role == tele.Left {
+			notJoined = append(notJoined, ch)
+		}
 	}
-	status, err := h.sender.GetChatMember(ctx, h.channelID, c.Sender().ID)
-	if err != nil || !status.IsActive() {
-		chUsername, _ := h.eng.Settings.Get(ctx, "channel_username")
-		notMemberText := h.setting(ctx, "not_member_text",
-			"⛔️ برای استفاده از ربات باید در کانال عضو باشید.")
-		return c.Send(notMemberText,
-			kbJoinChannel(chUsername, fmt.Sprintf("%d", h.channelID)))
-	}
-	return nil
+	return notJoined
 }
 
-// ── ارسال فایل ────────────────────────────────────────────
-
-func sendFile(c tele.Context, f documents.File) error {
-	file := tele.FromFileID(f.TelegramFileID)
-	switch f.FileType {
-	case "video":
-		return c.Send(&tele.Video{File: file, Caption: f.Caption}, tele.ModeHTML)
-	case "audio":
-		return c.Send(&tele.Audio{File: file, Caption: f.Caption}, tele.ModeHTML)
-	case "photo":
-		return c.Send(&tele.Photo{File: file, Caption: f.Caption}, tele.ModeHTML)
-	case "voice":
-		return c.Send(&tele.Voice{File: file})
-	case "animation":
-		return c.Send(&tele.Animation{File: file, Caption: f.Caption}, tele.ModeHTML)
-	case "video_note":
-		return c.Send(&tele.VideoNote{File: file})
-	default:
-		return c.Send(&tele.Document{File: file, Caption: f.Caption}, tele.ModeHTML)
+func (h *Handler) sendJoinRequest(c tele.Context, channels []models.ForceJoinChannel) error {
+	notMemberText := h.store.GetSetting(context.Background(), models.SettingNotMemberText)
+	if notMemberText == "" {
+		notMemberText = "⚠️ <b>برای دریافت فایل باید در کانال‌های زیر عضو شوید:</b>"
 	}
+
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
+	for _, ch := range channels {
+		url := ch.InviteURL
+		if ch.Username != "" {
+			url = "https://t.me/" + ch.Username
+		}
+		rows = append(rows, kb.Row(kb.URL("📢 "+ch.Title, url)))
+	}
+	rows = append(rows, kb.Row(kb.Data("✅ عضو شدم", "check_join")))
+	kb.Inline(rows...)
+
+	return c.Send(notMemberText, tele.ModeHTML, kb)
 }
 
-// ── استخراج فایل از پیام ──────────────────────────────────
+// ── File Helpers ──────────────────────────────────────────────
 
 type fileInfo struct {
-	ID       string
-	Type     string
-	Caption  string
+	fileID   string
+	fileType string
 }
 
-func extractFile(c tele.Context) *fileInfo {
-	m := c.Message()
+func extractFileInfo(c tele.Context) *fileInfo {
+	msg := c.Message()
 	switch {
-	case m.Document != nil:
-		return &fileInfo{m.Document.FileID, "document", m.Caption}
-	case m.Video != nil:
-		return &fileInfo{m.Video.FileID, "video", m.Caption}
-	case m.Audio != nil:
-		return &fileInfo{m.Audio.FileID, "audio", m.Caption}
-	case m.Voice != nil:
-		return &fileInfo{m.Voice.FileID, "voice", ""}
-	case m.Animation != nil:
-		return &fileInfo{m.Animation.FileID, "animation", m.Caption}
-	case m.VideoNote != nil:
-		return &fileInfo{m.VideoNote.FileID, "video_note", ""}
-	case m.Photo != nil:
-		p := m.Photo
-		return &fileInfo{p[len(p)-1].FileID, "photo", m.Caption}
+	case msg.Photo != nil:
+		return &fileInfo{msg.Photo.FileID, "photo"}
+	case msg.Video != nil:
+		return &fileInfo{msg.Video.FileID, "video"}
+	case msg.Document != nil:
+		return &fileInfo{msg.Document.FileID, "document"}
+	case msg.Audio != nil:
+		return &fileInfo{msg.Audio.FileID, "audio"}
+	case msg.Animation != nil:
+		return &fileInfo{msg.Animation.FileID, "animation"}
+	case msg.Voice != nil:
+		return &fileInfo{msg.Voice.FileID, "voice"}
+	case msg.Sticker != nil:
+		return &fileInfo{msg.Sticker.FileID, "sticker"}
 	}
 	return nil
 }
 
-// ── parse helpers ──────────────────────────────────────────
-
-func parseCodeType(text string) documents.CodeType {
-	switch text {
-	case btnOnce:
-		return documents.CodeOnce
-	case btnLimited:
-		return documents.CodeLimited
-	case btnUnlimited:
-		return documents.CodeUnlimited
-	case btnExpiry:
-		return documents.CodeExpiry
+func fileToInput(f models.File) tele.InputMedia {
+	file := tele.File{FileID: f.FileID}
+	switch f.FileType {
+	case "photo":
+		return &tele.Photo{File: file, Caption: f.Caption}
+	case "video":
+		v := &tele.Video{File: file, Caption: f.Caption}
+		if f.Thumbnail != "" {
+			v.Thumbnail = &tele.Photo{File: tele.File{FileID: f.Thumbnail}}
+		}
+		return v
+	case "audio":
+		return &tele.Audio{File: file, Caption: f.Caption}
+	case "document":
+		return &tele.Document{File: file, Caption: f.Caption}
+	case "animation":
+		return &tele.Animation{File: file, Caption: f.Caption}
 	}
-	return ""
+	return nil
 }
 
-func parseDuration(text string) (*time.Time, error) {
-	// فرمت: 1d, 2h, 30m یا عدد به روز
-	text = strings.TrimSpace(text)
-	var dur time.Duration
-
-	if strings.HasSuffix(text, "d") {
-		n, err := strconv.Atoi(strings.TrimSuffix(text, "d"))
-		if err != nil {
-			return nil, fmt.Errorf("invalid format")
-		}
-		dur = time.Duration(n) * 24 * time.Hour
-	} else if strings.HasSuffix(text, "h") {
-		n, err := strconv.Atoi(strings.TrimSuffix(text, "h"))
-		if err != nil {
-			return nil, fmt.Errorf("invalid format")
-		}
-		dur = time.Duration(n) * time.Hour
-	} else {
-		n, err := strconv.Atoi(text)
-		if err != nil {
-			return nil, fmt.Errorf("invalid format")
-		}
-		dur = time.Duration(n) * 24 * time.Hour
+func sendSingleFile(c tele.Context, f models.File, caption string, opts ...any) (*tele.Message, error) {
+	file := tele.File{FileID: f.FileID}
+	if caption == "" {
+		caption = f.Caption
 	}
 
-	t := time.Now().Add(dur)
-	return &t, nil
-}
+	sendOpts := append([]any{tele.ModeHTML}, opts...)
 
-// ── code token generator ───────────────────────────────────
-
-func genCode() string {
-	// ۶ کاراکتر عددی قابل تشخیص
-	return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
-}
-
-func genAlphaCode() string {
-	// ۸ کاراکتر ترکیبی برای کدهای غیرعددی
-	chars := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	code := make([]byte, 8)
-	seed := time.Now().UnixNano()
-	for i := range code {
-		code[i] = chars[seed%int64(len(chars))]
-		seed = seed*6364136223846793005 + 1442695040888963407
+	switch f.FileType {
+	case "photo":
+		return c.Bot().Send(c.Recipient(), &tele.Photo{File: file, Caption: caption}, sendOpts...)
+	case "video":
+		v := &tele.Video{File: file, Caption: caption}
+		if f.Thumbnail != "" {
+			v.Thumbnail = &tele.Photo{File: tele.File{FileID: f.Thumbnail}}
+		}
+		return c.Bot().Send(c.Recipient(), v, sendOpts...)
+	case "audio":
+		return c.Bot().Send(c.Recipient(), &tele.Audio{File: file, Caption: caption}, sendOpts...)
+	case "animation":
+		return c.Bot().Send(c.Recipient(), &tele.Animation{File: file, Caption: caption}, sendOpts...)
+	case "voice":
+		return c.Bot().Send(c.Recipient(), &tele.Voice{File: file, Caption: caption}, sendOpts...)
+	case "sticker":
+		return c.Bot().Send(c.Recipient(), &tele.Sticker{File: file})
+	default:
+		return c.Bot().Send(c.Recipient(), &tele.Document{File: file, Caption: caption}, sendOpts...)
 	}
-	return string(code)
 }
 
-// fileTypeIcon آیکون نوع فایل.
+// kbMediaButtons دکمه‌های زیر رسانه را می‌سازد: لایک/دیسلایک (با شمارنده fake)،
+// گزارش، ارسال مجدد. بر اساس تنظیمات نمایش داده می‌شوند.
+func kbMediaButtons(code *models.Code, showLikes, showReport bool) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
+
+	if showLikes {
+		likes := code.FakeLikes
+		rows = append(rows, kb.Row(
+			kb.Data(fmt.Sprintf("👍 %d", likes), "react_like:"+code.Code),
+			kb.Data("👎", "react_dislike:"+code.Code),
+		))
+	}
+
+	var bottomRow []tele.Btn
+	bottomRow = append(bottomRow, kb.Data("🔄 ارسال مجدد", "code_resend:"+code.Code))
+	if showReport {
+		bottomRow = append(bottomRow, kb.Data("⚠️ گزارش", "report:"+code.Code))
+	}
+	rows = append(rows, kb.Row(bottomRow...))
+
+	kb.Inline(rows...)
+	return kb
+}
+
 func fileTypeIcon(t string) string {
-	m := map[string]string{
-		"document":   "📄",
-		"video":      "🎬",
-		"audio":      "🎵",
-		"photo":      "🖼",
-		"voice":      "🎤",
-		"animation":  "🎞",
-		"video_note": "🎥",
+	icons := map[string]string{
+		"photo": "🖼", "video": "🎬", "audio": "🎵",
+		"document": "📄", "animation": "🎭", "voice": "🎤",
+		"sticker": "😊",
 	}
-	if icon, ok := m[t]; ok {
+	if icon, ok := icons[t]; ok {
 		return icon
 	}
-	return "📎"
+	return "📁"
 }
 
-// codeTypeLabel نام فارسی نوع کد.
-func codeTypeLabel(t documents.CodeType) string {
-	m := map[documents.CodeType]string{
-		documents.CodeOnce:      "یک‌بار",
-		documents.CodeLimited:   "محدود",
-		documents.CodeUnlimited: "نامحدود",
-		documents.CodeExpiry:    "زمان‌دار",
+// ── Backup/Restore ────────────────────────────────────────────
+
+// BackupData ساختار داده بکاپ.
+type BackupData struct {
+	Version   int                      `json:"version"`
+	CreatedAt time.Time                `json:"created_at"`
+	Codes     []models.Code            `json:"codes"`
+	Settings  map[string]string        `json:"settings"`
+	Channels  []models.ForceJoinChannel `json:"channels"`
+}
+
+// ── Format ────────────────────────────────────────────────────
+
+func formatSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
 	}
-	if l, ok := m[t]; ok {
-		return l
-	}
-	return string(t)
+}
+
+func formatTime(t time.Time) string {
+	return t.Format("2006/01/02 15:04")
 }
