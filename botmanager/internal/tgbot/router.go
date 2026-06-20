@@ -30,6 +30,18 @@ func (h *Handler) onCallback(c tele.Context) error {
 
 	switch action {
 
+	case "lang":
+		return h.setLanguage(ctx, c, arg)
+	case "back_main":
+		_ = c.Respond()
+		return h.sendMain(c, h.t(ctx, uid, i18n.KeyDone))
+	case "wallet_topup", "redeem_promo", "bc_text", "bc_forward",
+		"bc_filtered", "sys_notif":
+		return c.Respond(&tele.CallbackResponse{Text: h.t(ctx, uid, i18n.KeyComingSoon)})
+	case "sys_lang":
+		_ = c.Respond()
+		return h.userLanguageMenu(ctx, c)
+
 	// ── پلن‌ها ────────────────────────────────────────────
 	case "show_plans":
 		return h.userPlans(ctx, c)
@@ -165,20 +177,32 @@ func (h *Handler) onText(c tele.Context) error {
 			return h.adminTemplatesList(ctx, c)
 		case h.btn(ctx, uid, i18n.KeyMenuStats):
 			return h.adminStats(ctx, c)
+		case h.btn(ctx, uid, i18n.KeyMenuBroadcast):
+			return h.adminBroadcastMenu(ctx, c)
+		case h.btn(ctx, uid, i18n.KeyMenuSystem):
+			return h.adminSystemMenu(ctx, c)
+		case h.btn(ctx, uid, i18n.KeyMenuExitAdmin):
+			return h.sendMain(c, h.t(ctx, uid, i18n.KeyDone))
 		}
 		return nil
 	}
 
 	// ── کاربر ────────────────────────────────────────────
 	switch text {
+	case h.btn(ctx, uid, i18n.KeyMenuCreateBot):
+		return h.userPlans(ctx, c)
 	case h.btn(ctx, uid, i18n.KeyMenuMyBots):
 		return h.userBotsList(ctx, c)
+	case h.btn(ctx, uid, i18n.KeyMenuAccount):
+		return h.userAccount(ctx, c)
 	case h.btn(ctx, uid, i18n.KeyMenuPlans):
 		return h.userPlans(ctx, c)
-	case h.btn(ctx, uid, i18n.KeyMenuHelp):
+	case h.btn(ctx, uid, i18n.KeyMenuTutorials):
 		return h.onHelp(c)
 	case h.btn(ctx, uid, i18n.KeyMenuSupport):
 		return h.userSupport(c)
+	case h.btn(ctx, uid, i18n.KeyMenuLanguage):
+		return h.userLanguageMenu(ctx, c)
 	}
 
 	return nil

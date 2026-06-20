@@ -117,11 +117,10 @@ func (h *Handler) onGatewaySelected(ctx context.Context, c tele.Context, gw stri
 		resp, err := h.gateway.CreatePayment(ctx, ports.PaymentRequest{
 			Amount: amount, Description: "خرید VPN", UserID: uid,
 		})
-		if err == nil {
-			payURL, refID := resp.PaymentURL, resp.RefID
 		if err != nil {
 			return c.Edit("❌ خطا در ایجاد لینک پرداخت.")
 		}
+		payURL, refID := resp.PaymentURL, resp.RefID
 		h.setStep(ctx, uid, stepBuyPayment, "gw", gw,
 			"plan_id", st.Data["plan_id"],
 			"ref_id", refID,
@@ -324,14 +323,14 @@ func (h *Handler) notifyAdmin(ctx context.Context, msg string) {
 	if h.ownerID == 0 {
 		return
 	}
-	h.sender.Send(ctx, h.ownerID, msg, ports.WithHTML())
+	h.bot.Send(&tele.User{ID: h.ownerID}, msg, tele.ModeHTML)
 }
 
 func (h *Handler) sendPhotoToAdmin(ctx context.Context, fileID, caption string) {
 	if h.ownerID == 0 {
 		return
 	}
-	h.sender.SendPhoto(ctx, h.ownerID, fileID, caption)
+	h.bot.Send(&tele.User{ID: h.ownerID}, &tele.Photo{File: tele.File{FileID: fileID}, Caption: caption})
 }
 
 func getUserID(ctx context.Context, h *Handler, c tele.Context) uuid.UUID {
@@ -392,5 +391,4 @@ func (h *Handler) activateSubscription(ctx context.Context, c tele.Context, user
 	}
 
 	return c.Send(sb.String(), tele.ModeHTML, kbSubscription(sub.ID.String()))
-}
 }

@@ -5,20 +5,22 @@ import (
 	"fmt"
 	"time"
 
+	tele "gopkg.in/telebot.v4"
+
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/store"
 )
 
 type Scheduler struct {
-	store  *store.Store
-	panel  ports.VPNPanel
-	sender ports.BotSender
-	log    ports.Logger
+	store *store.Store
+	panel ports.VPNPanel
+	bot   *tele.Bot
+	log   ports.Logger
 }
 
-func New(st *store.Store, panel ports.VPNPanel, sender ports.BotSender, log ports.Logger) *Scheduler {
-	return &Scheduler{store: st, panel: panel, sender: sender, log: log}
+func New(st *store.Store, panel ports.VPNPanel, bot *tele.Bot, log ports.Logger) *Scheduler {
+	return &Scheduler{store: st, panel: panel, bot: bot, log: log}
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
@@ -50,7 +52,7 @@ func (s *Scheduler) notifyExpiring(ctx context.Context) {
 		remaining := time.Until(sub.ExpiresAt).Round(time.Hour)
 		msg := fmt.Sprintf("⚠️ اشتراک شما در <b>%s</b> منقضی می‌شود.\n\n/renew برای تمدید", remaining)
 		// FIX 10: sub.User is populated by Preload
-		if err := s.sender.Send(ctx, sub.User.TelegramID, msg, ports.WithHTML()); err != nil {
+		if _, err := s.bot.Send(&tele.User{ID: sub.User.TelegramID}, msg, tele.ModeHTML); err != nil {
 			s.log.Error("notifyExpiring: send failed", ports.F("err", err))
 		}
 	}

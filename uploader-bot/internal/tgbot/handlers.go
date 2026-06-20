@@ -14,25 +14,25 @@ import (
 
 // ── Setting helpers ───────────────────────────────────────────
 
-//func (h *Handler) getSetting(ctx context.Context, key, def string) string {
-//	v := h.store.GetSetting(ctx, key)
-//	if v == "" {
-//		return def
-//	}
-//	return v
-//}
-//
-//func (h *Handler) getSettingInt(ctx context.Context, key string, def int) int {
-//	v := h.getSetting(ctx, key, "")
-//	if v == "" {
-//		return def
-//	}
-//	n, err := strconv.Atoi(v)
-//	if err != nil {
-//		return def
-//	}
-//	return n
-//}
+func (h *Handler) getSetting(ctx context.Context, key, def string) string {
+	v := h.store.GetSetting(ctx, key)
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+func (h *Handler) getSettingInt(ctx context.Context, key string, def int) int {
+	v := h.getSetting(ctx, key, "")
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
 
 // ── handleStep — مسیریابی state machine ──────────────────────
 
@@ -540,7 +540,7 @@ func (h *Handler) adminDoBroadcast(ctx context.Context, c tele.Context, text str
 		if u.IsBlocked {
 			continue
 		}
-		if _, err := c.Bot().Send(&tele.User{ID: u.TelegramID}, text); err != nil {
+		if _, err := h.bot.Send(&tele.User{ID: u.TelegramID}, text); err != nil {
 			failed++
 		} else {
 			sent++
@@ -594,10 +594,10 @@ func (h *Handler) notifyAdminsReport(ctx context.Context, c tele.Context, codeSt
 	admins, _ := h.store.ListAdmins(ctx)
 	msg := fmt.Sprintf("⚠️ گزارش رسانه\n\n📛 کد: %s\n👤 گزارش‌دهنده: %d", codeStr, c.Sender().ID)
 	for _, a := range admins {
-		c.Bot().Send(&tele.User{ID: a.TelegramID}, msg)
+		h.bot.Send(&tele.User{ID: a.TelegramID}, msg)
 	}
 	// اگر هیچ ادمینی نبود، به owner
 	if len(admins) == 0 && h.ownerID != 0 {
-		c.Bot().Send(&tele.User{ID: h.ownerID}, msg)
+		h.bot.Send(&tele.User{ID: h.ownerID}, msg)
 	}
 }

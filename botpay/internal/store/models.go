@@ -20,6 +20,10 @@ type Wallet struct {
 	// TelegramID شناسه یکتای کاربر در تلگرام
 	TelegramID int64   `gorm:"uniqueIndex;not null"`
 
+	// PayHandle آدرس محلی کوتاه و یکتا برای دریافت انتقال از کاربران دیگر
+	// مثال: u_a1b2c3 — کاربر این را به دیگران می‌دهد تا برایش پول بفرستند
+	PayHandle  string  `gorm:"uniqueIndex"`
+
 	// TONBalance موجودی واقعی TON (nano-TON در DB)
 	// همیشه از blockchain sync می‌شود
 	TONBalance int64   `gorm:"default:0"` // nano-TON (1 TON = 1e9)
@@ -96,6 +100,8 @@ type Transaction struct {
 	// Ref شناسه مرجع در سرویس
 	Ref         string
 	Description string
+	// Metadata اطلاعات شفاف دلخواه سرویس (JSON) — مثلا {"plan":"pro","duration":30}
+	Metadata    string `gorm:"type:text"`
 
 	ConfirmedAt *time.Time
 }
@@ -202,6 +208,13 @@ type LedgerEntry struct {
 	Type          EntryType `gorm:"not null"`        // debit یا credit
 	AmountNano    int64     `gorm:"not null"`        // همیشه مثبت
 	BalanceAfter  int64     // موجودی بعد از این entry
+
+	// ── Hash chain (blockchain-style) ─────────────────────────
+	// هر entry به entry قبلی زنجیر می‌شود. تغییر هر entry، hash
+	// آن و همه‌ی entryهای بعد را خراب می‌کند → دستکاری قابل‌کشف است.
+	Seq      int64  `gorm:"uniqueIndex;autoIncrement"` // شماره ترتیبی بلوک در زنجیره
+	PrevHash string `gorm:"index"`                     // hash بلوک قبلی
+	Hash     string `gorm:"index"`                     // SHA256(محتوا + PrevHash)
 
 	// برای auditing
 	Ref     string

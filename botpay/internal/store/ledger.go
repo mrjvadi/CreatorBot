@@ -74,6 +74,15 @@ func (s *Store) RecordTransfer(ctx context.Context,
 			Note:          note,
 		}
 
+		// ── زنجیره‌ی هش: آخرین بلوک را با قفل بگیر ─────────
+		prevSeq, prevHash, cerr := s.lastChainEntryTx(tx)
+		if cerr != nil {
+			return fmt.Errorf("chain tip: %w", cerr)
+		}
+		// debit به انتهای زنجیره، credit به debit وصل می‌شود
+		linkEntry(&pair.Debit, prevSeq, prevHash)
+		linkEntry(&pair.Credit, pair.Debit.Seq, pair.Debit.Hash)
+
 		// ── ذخیره هر دو entry ─────────────────────────────
 		if err := tx.Create(&pair.Debit).Error; err != nil {
 			return fmt.Errorf("create debit: %w", err)
@@ -129,6 +138,13 @@ func (s *Store) RecordDeposit(ctx context.Context,
 			Ref:           txHash,
 			Note:          "deposit from " + fromAddr,
 		}
+
+		// زنجیره‌ی هش
+		prevSeq, prevHash, cerr := s.lastChainEntryTx(tx)
+		if cerr != nil {
+			return fmt.Errorf("chain tip: %w", cerr)
+		}
+		linkEntry(&entry, prevSeq, prevHash)
 
 		if err := tx.Create(&entry).Error; err != nil {
 			return err

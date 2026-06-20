@@ -104,7 +104,7 @@ func (h *Handler) doBroadcast(ctx context.Context, c tele.Context, text string) 
 		if o.IsBlocked {
 			continue
 		}
-		if err := h.sender.Send(ctx, o.TelegramID, text, ports.WithHTML()); err != nil {
+		if _, err := h.bot.Send(&tele.User{ID: o.TelegramID}, text, tele.ModeHTML); err != nil {
 			failed++
 		} else {
 			sent++

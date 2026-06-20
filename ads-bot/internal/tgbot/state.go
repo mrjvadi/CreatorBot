@@ -25,6 +25,10 @@ const (
 
 	stepAdminBroadcast step = "admin:broadcast"
 	stepRejectNote     step = "admin:reject_note"
+
+	stepRentChannel step = "rent:channel"
+	stepRentBudget  step = "rent:budget"
+	stepRentReward  step = "rent:reward"
 )
 
 type wizardState struct {

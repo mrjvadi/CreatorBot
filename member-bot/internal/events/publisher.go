@@ -3,6 +3,7 @@
 package events
 
 import (
+	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -51,7 +52,15 @@ func (p *Publisher) onChatMember(c tele.Context) error {
 	isOutside := newStatus == tele.Left || newStatus == tele.Kicked
 
 	if wasOutside && isInside {
-		p.publishJoin(userID, chatID, update.NewChatMember.User.Username, "organic", "")
+		source, inviteHash := "organic", ""
+		// تلگرام وقتی کاربر از طریق یک invite link مشخص join کند، آن لینک را
+		// در update.InviteLink برمی‌گرداند (فقط وقتی bot ادمین کانال/گروه است).
+		// از این، attribution واقعی (به‌جای "organic" هاردکد) ساخته می‌شود.
+		if update.InviteLink != nil && update.InviteLink.InviteLink != "" {
+			source = "invite_link"
+			inviteHash = extractInviteHash(update.InviteLink.InviteLink)
+		}
+		p.publishJoin(userID, chatID, update.NewChatMember.User.Username, source, inviteHash)
 	} else if wasInside && isOutside {
 		p.publishLeave(userID, chatID)
 	}
@@ -59,7 +68,24 @@ func (p *Publisher) onChatMember(c tele.Context) error {
 	return nil
 }
 
+// extractInviteHash از URL کامل لینک دعوت تلگرام (مثلا
+// "https://t.me/+AbCdEfGhIjK" یا ".../joinchat/AbCdEfGhIjK") فقط بخش
+// hash را استخراج می‌کند — همان مقداری که community-service موقع ساخت
+// لینک ذخیره کرده (InviteHash).
+func extractInviteHash(url string) string {
+	for _, sep := range []string{"/+", "/joinchat/"} {
+		if idx := strings.LastIndex(url, sep); idx != -1 {
+			return url[idx+len(sep):]
+		}
+	}
+	// لینک عمومی (t.me/channelusername) — hash اختصاصی ندارد
+	return ""
+}
+
 // onUserJoined برای group ها (ساده‌تر از ChatMember).
+// نکته: برخلاف onChatMember، این رویداد هیچ اطلاعات invite-link ندارد
+// (تلگرام آن را در new_chat_members نمی‌فرستد) — پس "organic" واقعاً
+// درست است، نه یک مقدار هاردکدشده‌ی جایگزین.
 func (p *Publisher) onUserJoined(c tele.Context) error {
 	for _, user := range c.Message().UsersJoined {
 		p.publishJoin(user.ID, c.Chat().ID, user.Username, "organic", "")
@@ -77,12 +103,12 @@ func (p *Publisher) onUserLeft(c tele.Context) error {
 
 // ── publish helpers ────────────────────────────────────────
 
-func (p *Publisher) publishJoin(telegramID, chatID int64, username, source, campaignID string) {
+func (p *Publisher) publishJoin(telegramID, chatID int64, username, source, inviteHash string) {
 	payload := map[string]any{
 		"telegram_id":  telegramID,
 		"community_id": chatID,
 		"source":       source,
-		"campaign_id":  campaignID,
+		"invite_hash":  inviteHash,
 		"joined_at":    time.Now().Unix(),
 		"username":     username,
 	}
@@ -90,9 +116,13 @@ func (p *Publisher) publishJoin(telegramID, chatID int64, username, source, camp
 	// به همه مصرف‌کنندگان
 	p.nc.PublishCore("membership.joined", payload)
 
-	// مستقیم به fraud-engine (fire-and-forget)
+	// مستقیم به fraud-engine (fire-and-forget).
+	// نکته: ReportJoin پارامتر چهارم را campaign_id می‌نامد ولی فعلاً
+	// تنها attribution که داریم invite_hash (گروه) است، نه campaign_id
+	// (تبلیغ ads-bot) — این دو مفهوم متفاوتند و فاز بعد باید campaign_id
+	// واقعی را هم به این مسیر متصل کند.
 	if p.fraud != nil {
-		p.fraud.ReportJoin(telegramID, chatID, source, campaignID)
+		p.fraud.ReportJoin(telegramID, chatID, source, inviteHash)
 	}
 
 	p.log.Info("membership.joined published",

@@ -14,6 +14,11 @@ const (
 	KeyLoading   Key = "loading"
 	KeyNotFound  Key = "not_found"
 	KeyNoAccess  Key = "no_access"
+	KeyComingSoon Key = "coming_soon"
+	KeyAccountTitle   Key = "account_title"
+	KeyLanguageSelect Key = "language_select"
+	KeyBroadcastMenu  Key = "broadcast_menu"
+	KeySystemMenu     Key = "system_menu"
 
 	// ── منوی اصلی کاربر ──────────────────────────────────
 	KeyMenuWallet        Key = "menu_wallet"
@@ -27,6 +32,10 @@ const (
 	KeyMenuHelp          Key = "menu_help"
 	KeyMenuSupport       Key = "menu_support"
 	KeyMenuMyBots        Key = "menu_my_bots"
+	KeyMenuCreateBot     Key = "menu_create_bot"
+	KeyMenuAccount       Key = "menu_account"
+	KeyMenuLanguage      Key = "menu_language"
+	KeyMenuTutorials     Key = "menu_tutorials"
 
 	// ── منوی اصلی ادمین ──────────────────────────────────
 	KeyMenuUsers     Key = "menu_users"
@@ -35,6 +44,8 @@ const (
 	KeyMenuFraud     Key = "menu_fraud"
 	KeyMenuStats     Key = "menu_stats"
 	KeyMenuSystem    Key = "menu_system"
+	KeyMenuBroadcast Key = "menu_broadcast"
+	KeyMenuExitAdmin Key = "menu_exit_admin"
 	// ادمین هم از KeyMenuServices و KeyMenuCommunities استفاده می‌کند
 
 	// ── قدیمی (backward compat) ───────────────────────────

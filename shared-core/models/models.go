@@ -101,11 +101,36 @@ type BotInstance struct {
 	// مثال توکن: 8442959411:AAGOZ...  →  BotID = 8442959411
 	BotID         int64          `gorm:"uniqueIndex;not null"`
 
+	// PlanID پلنی که این instance با آن ساخته شده (می‌تواند خالی باشد
+	// اگر از یک قالب رایگان مستقیم ساخته شده، نه از مسیر خرید پلن).
+	PlanID    *uuid.UUID `gorm:"index"`
+
+	// LockMode نوع قفل کانال این instance:
+	//   "free"   → قفل کانال خود پلتفرم (تبلیغ رایگان ما)
+	//   "rented" → قفل کانالی که کسی برایش اجاره پرداخت کرده (از طریق ads-bot)
+	//   "none"   → بدون قفل کانال
+	LockMode  InstanceLockMode `gorm:"default:'none'"`
+
 	Status        InstanceStatus `gorm:"default:'pending'"`
 	ExpiresAt     *time.Time
 	DBSchema      string         `gorm:"uniqueIndex"`
 	EnvOverrides  string         `gorm:"type:text"` // JSON: {"CHANNEL_ID": "123"}
 }
+
+// InstanceLockMode نوع قفل کانال یک instance.
+type InstanceLockMode string
+
+const (
+	LockModeFree   InstanceLockMode = "free"
+	LockModeRented InstanceLockMode = "rented"
+	LockModeNone   InstanceLockMode = "none"
+)
+
+// IsFreeLock یعنی این instance بخشی از تبلیغ رایگان خود پلتفرم است.
+func (b *BotInstance) IsFreeLock() bool { return b.LockMode == LockModeFree }
+
+// IsRentedLock یعنی قفل این instance به یک کمپین اجاره‌ای وصل است.
+func (b *BotInstance) IsRentedLock() bool { return b.LockMode == LockModeRented }
 
 // BotIDFromToken Bot ID را از توکن استخراج می‌کند.
 // توکن فرمت "12345678:AAGOZ..." دارد — عدد قبل از ':' Bot ID است.

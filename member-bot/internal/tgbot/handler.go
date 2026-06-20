@@ -20,7 +20,7 @@ import (
 )
 
 type Handler struct {
-	sender     ports.BotSender
+	bot        *tele.Bot
 	store      *store.Store
 	cache      ports.Cache
 	log        ports.Logger
@@ -29,7 +29,7 @@ type Handler struct {
 }
 
 func NewHandler(
-	sender ports.BotSender,
+	bot *tele.Bot,
 	st *store.Store,
 	cache ports.Cache,
 	log ports.Logger,
@@ -37,54 +37,58 @@ func NewHandler(
 	encryptKey string,
 ) *Handler {
 	return &Handler{
-		sender: sender, store: st, cache: cache,
+		bot: bot, store: st, cache: cache,
 		log: log, ownerID: ownerID, encryptKey: encryptKey,
 	}
 }
 
 func Register(b *tele.Bot, h *Handler) {
-	b.Handle("/start",    h.onStart)
-	b.Handle("/help",     h.onHelp)
-	b.Handle("/mylocks",  h.onMyLocks)
-	b.Handle("/newlock",  h.onNewLock)
-	b.Handle("/mybots",   h.onMyBots)
-	b.Handle("/addbot",   h.onAddBot)
-	b.Handle("/balance",  h.onBalance)
-	b.Handle("/admin",    h.onAdmin)
-	b.Handle("/cancel",   h.onCancel)
+	b.Handle("/start", h.onStart)
+	b.Handle("/help", h.onHelp)
+	b.Handle("/admin", h.onAdmin)
+	b.Handle("/cancel", h.onCancel)
 
-	b.Handle(tele.OnText,            h.onText)
-	b.Handle(tele.OnChannelPost,     h.onChannelPost) // forward از کانال
-	b.Handle(tele.OnCallback,        h.onCallback)
+	// ── دستورات قدیمی owner — این ربات دیگر مستقیماً توسط کاربر
+	// نهایی استفاده نمی‌شود. اجاره‌ی قفل کانال از طریق ads-bot
+	// انجام می‌شود (/rentlock آنجا). این دستورات فقط یک راهنما
+	// نشان می‌دهند تا کاربران سردرگم نشوند.
+	b.Handle("/mylocks", h.onDeprecatedRedirect)
+	b.Handle("/newlock", h.onDeprecatedRedirect)
+	b.Handle("/mybots", h.onDeprecatedRedirect)
+	b.Handle("/addbot", h.onDeprecatedRedirect)
+	b.Handle("/balance", h.onDeprecatedRedirect)
+
+	b.Handle(tele.OnText, h.onText)
+	b.Handle(tele.OnChannelPost, h.onChannelPost) // forward از کانال
+	b.Handle(tele.OnCallback, h.onCallback)
+}
+
+// onDeprecatedRedirect پیام راهنما برای دستورات قدیمی owner. ادمین پلتفرم
+// (h.isAdmin) از این محدودیت مستثنی است چون ممکن است برای دیباگ نیاز
+// داشته باشد.
+func (h *Handler) onDeprecatedRedirect(c tele.Context) error {
+	if h.isAdmin(c) {
+		return nil // ادمین می‌تواند با دستورات قدیمی کار کند (دیباگ)
+	}
+	return c.Send(
+		"ℹ️ این ربات دیگر مستقیماً در دسترس کاربران نیست.\n\n" +
+			"برای اجاره‌ی قفل کانال روی ربات‌های رایگان پلتفرم، " +
+			"از دستور /rentlock در ربات تبلیغات استفاده کنید.",
+	)
 }
 
 func (h *Handler) onStart(c tele.Context) error {
-	ctx := context.Background()
-
-	owner, err := h.store.FindOwnerByTelegramID(ctx, c.Sender().ID)
-	if err != nil {
-		return c.Send("❌ خطا. دوباره امتحان کنید.")
-	}
-	if owner == nil {
-		owner, err = h.createOwner(ctx, c)
-		if err != nil {
-			return c.Send("❌ خطا در ثبت‌نام.")
-		}
-	}
-	if owner.IsBlocked {
-		return c.Send("⛔️ دسترسی شما محدود شده است.")
-	}
-
 	if h.isAdmin(c) {
 		return c.Send("👑 پنل ادمین:", kbAdminMain())
 	}
 
-	locks, _ := h.store.FindLocksByOwnerID(ctx, owner.ID)
+	// این ربات دیگر مستقیماً توسط کاربر نهایی استفاده نمی‌شود — زیرساخت
+	// داخلی چک عضویت است. مدیریت اجاره‌ی قفل از طریق ads-bot انجام می‌شود.
 	return c.Send(
-		"🔒 <b>Member Lock Bot</b>\n\n"+
-			"با این ربات می‌توانید قفل ممبرشیپ برای کانال‌های خود بسازید.\n\n"+
-			"🔒 قفل‌های فعال: <b>"+countStr(locks)+"</b>",
-		tele.ModeHTML, kbMain(),
+		"ℹ️ این ربات زیرساخت داخلی پلتفرم برای مدیریت عضویت کانال‌هاست و "+
+			"مستقیماً توسط کاربران استفاده نمی‌شود.\n\n"+
+			"برای اجاره‌ی قفل کانال روی ربات‌های رایگان، از ربات تبلیغات "+
+			"(/rentlock) استفاده کنید.",
 	)
 }
 
@@ -120,11 +124,29 @@ func (h *Handler) onText(c tele.Context) error {
 	}
 
 	switch text {
-	case btnMyLocks:  return h.onMyLocks(c)
-	case btnNewLock:  return h.onNewLock(c)
-	case btnMyBots:   return h.onMyBots(c)
-	case btnAddBot:   return h.onAddBot(c)
-	case btnBalance:  return h.onBalance(c)
+	case btnMyLocks, btnNewLock, btnMyBots, btnAddBot, btnBalance:
+		// این دکمه‌ها مربوط به منطق owner کاربرپسند قدیمی‌اند که دیگر
+		// در دسترس کاربر نهایی نیست (نگاه کنید به onDeprecatedRedirect).
+		// فقط برای ادمین (دیباگ) فعال می‌مانند.
+		if !h.isAdmin(c) {
+			return c.Send(
+				"ℹ️ این ربات دیگر مستقیماً در دسترس کاربران نیست.\n\n" +
+					"برای اجاره‌ی قفل کانال روی ربات‌های رایگان پلتفرم، " +
+					"از دستور /rentlock در ربات تبلیغات استفاده کنید.",
+			)
+		}
+		switch text {
+		case btnMyLocks:
+			return h.onMyLocks(c)
+		case btnNewLock:
+			return h.onNewLock(c)
+		case btnMyBots:
+			return h.onMyBots(c)
+		case btnAddBot:
+			return h.onAddBot(c)
+		case btnBalance:
+			return h.onBalance(c)
+		}
 	case btnHelp:     return h.onHelp(c)
 	case btnCancel, btnBack:
 		h.clearState(ctx, uid)

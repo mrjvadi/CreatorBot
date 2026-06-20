@@ -74,7 +74,24 @@ type Engine struct {
 	Config *configstore.Store
 
 	Log ports.Logger
+
+	// InstanceInfo اطلاعات این instance از جدول bot_instances (PlanID, LockMode).
+	// در Start() پر می‌شود. اگر هنوز خوانده نشده یا یافت نشد، nil است.
+	InstanceInfo *InstanceInfo
 }
+
+// InstanceInfo زیرمجموعه‌ی فیلدهای BotInstance که bot فرعی به آن نیاز دارد
+// تا بفهمد قفل کانالش رایگان است یا اجاره‌ای (بدون import مدل کامل botmanager).
+type InstanceInfo struct {
+	PlanID   string // uuid به‌صورت رشته، خالی = بدون پلن
+	LockMode string // "free" | "rented" | "none"
+}
+
+// IsFreeLock یعنی این instance بخشی از تبلیغ رایگان پلتفرم است.
+func (i *InstanceInfo) IsFreeLock() bool { return i != nil && i.LockMode == "free" }
+
+// IsRentedLock یعنی قفل این instance به یک کمپین اجاره‌ای وصل است.
+func (i *InstanceInfo) IsRentedLock() bool { return i != nil && i.LockMode == "rented" }
 
 // New یک engine جدید می‌سازد.
 // همه connection ها را برقرار می‌کند.
@@ -163,6 +180,9 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 
 // Start heartbeat را شروع می‌کند (اگه NATS وصل باشد).
 func (e *Engine) Start(ctx context.Context) {
+	// ── خواندن PlanID/LockMode این instance از bot_instances ──
+	e.loadInstanceInfo(ctx)
+
 	// ── بارگذاری config از MongoDB ────────────────────────────
 	if _, err := e.Config.Load(ctx); err != nil {
 		e.Log.Error("config load failed", ports.F("err", err))
@@ -203,6 +223,37 @@ func (e *Engine) Close(ctx context.Context) {
 }
 
 // heartbeatLoop وضعیت bot را به apimanager ارسال می‌کند.
+// loadInstanceInfo از جدول bot_instances، PlanID و LockMode این bot را
+// با BotID خودش پیدا می‌کند. عمداً raw query است (نه import مدل botmanager)
+// تا engine به shared-core/models وابسته نشود.
+func (e *Engine) loadInstanceInfo(ctx context.Context) {
+	if e.DB == nil {
+		return
+	}
+	var row struct {
+		PlanID   *string
+		LockMode string
+	}
+	err := e.DB.Conn().WithContext(ctx).
+		Table("bot_instances").
+		Select("plan_id, lock_mode").
+		Where("bot_id = ?", e.BotID).
+		Take(&row).Error
+	if err != nil {
+		e.Log.Warn("instance info not found — running without plan context",
+			ports.F("bot_id", e.BotID), ports.F("err", err))
+		return
+	}
+
+	info := &InstanceInfo{LockMode: row.LockMode}
+	if row.PlanID != nil {
+		info.PlanID = *row.PlanID
+	}
+	e.InstanceInfo = info
+	e.Log.Info("instance info loaded",
+		ports.F("bot_id", e.BotID), ports.F("lock_mode", info.LockMode))
+}
+
 func (e *Engine) heartbeatLoop(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

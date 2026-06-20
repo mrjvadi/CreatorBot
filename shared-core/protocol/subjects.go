@@ -168,3 +168,172 @@ type ServiceProvisionPayload struct {
 	AmountNano  int64  `json:"amount_nano,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
+
+// ══════════════════════════════════════════════════════════════
+// Pay subjects (NATS request/reply) — botpay به‌عنوان responder
+// همه‌ی سرویس‌ها برای موجودی و پرداخت از این‌ها استفاده می‌کنند.
+// هیچ سرویسی مستقیم به DB کیف پول دست نمی‌زند.
+// ══════════════════════════════════════════════════════════════
+
+const (
+	// SubjPayBalance — گرفتن موجودی یک کاربر (request/reply)
+	SubjPayBalance = "pay.balance"
+	// SubjPayAuthorize — تأیید دسترسی یک سرویس به حساب کاربر
+	SubjPayAuthorize = "pay.authorize"
+	// SubjPayDeduct — کسر از حساب (پرداخت)؛ همه سرویس‌ها از این استفاده می‌کنند
+	SubjPayDeduct = "pay.deduct"
+	// SubjPayCredit — افزودن اعتبار (فقط admin/داخلی)
+	SubjPayCredit = "pay.credit"
+	// SubjPayTransfer — انتقال بین دو کاربر
+	SubjPayTransfer = "pay.transfer"
+	// SubjPayQueue — queue group برای load balancing بین instanceهای botpay
+	SubjPayQueue = "botpay-workers"
+	// SubjWalletUpdated — رویداد تغییر موجودی (botpay → همه سرویس‌ها)
+	// کلاینت‌ها با شنیدن این، کش Redis خود را باطل می‌کنند.
+	SubjWalletUpdated = "wallet.updated"
+)
+
+// WalletUpdatedEvent رویداد تغییر موجودی یک کاربر.
+type WalletUpdatedEvent struct {
+	TelegramID int64  `json:"telegram_id"`
+	Reason     string `json:"reason"` // deposit | payment | refund | transfer
+}
+
+// PayCompletedSubject رویداد اتمام پرداخت برای یک سرویس خاص.
+// هر سرویس به pay.completed.<service_id> خودش گوش می‌دهد.
+func PayCompletedSubject(serviceID string) string {
+	return "pay.completed." + serviceID
+}
+
+// PayCompletedEvent جزئیات یک پرداخت تکمیل‌شده برای سرویس درخواست‌کننده.
+type PayCompletedEvent struct {
+	ServiceID  string  `json:"service_id"`
+	TelegramID int64   `json:"telegram_id"`
+	AmountTON  float64 `json:"amount_ton"`
+	Reason     string  `json:"reason"`   // مثلا "plan:pro"
+	Ref        string  `json:"ref"`      // شناسه مرجع سرویس
+	Metadata   string  `json:"metadata"` // JSON آزاد
+	TxID       string  `json:"tx_id"`
+	Success    bool    `json:"success"`
+}
+
+// ── Request/Response contracts ────────────────────────────────
+
+// PayRequest پایه‌ی همه‌ی درخواست‌های pay — شامل احراز هویت سرویس.
+type PayRequest struct {
+	ServiceID  string `json:"service_id"`  // مثلا "botmanager", "uploader"
+	ServiceKey string `json:"service_key"` // کلید احراز هویت سرویس
+	TelegramID int64  `json:"telegram_id"` // کاربر هدف
+}
+
+// BalanceRequest درخواست موجودی.
+type BalanceRequest struct {
+	PayRequest
+}
+
+// BalanceResponse پاسخ موجودی (واحدها TON، نه nano).
+type BalanceResponse struct {
+	TelegramID int64   `json:"telegram_id"`
+	TONBalance float64 `json:"ton_balance"`
+	Credit     float64 `json:"credit"`
+	Total      float64 `json:"total"`
+	Frozen     float64 `json:"frozen"`
+	TONAddress string  `json:"ton_address"`
+	Error      string  `json:"error,omitempty"`
+}
+
+// AuthorizeRequest درخواست تأیید دسترسی سرویس به حساب کاربر.
+type AuthorizeRequest struct {
+	PayRequest
+}
+
+// AuthorizeResponse نتیجه‌ی تأیید.
+type AuthorizeResponse struct {
+	Authorized bool   `json:"authorized"`
+	Error      string `json:"error,omitempty"`
+}
+
+// DeductRequest درخواست کسر (پرداخت).
+type DeductRequest struct {
+	PayRequest
+	AmountTON      float64 `json:"amount_ton"`
+	Reason         string  `json:"reason"`          // مثلا "plan:starter", "vpn:monthly"
+	Ref            string  `json:"ref"`             // شناسه مرجع در سرویس درخواست‌کننده
+	Metadata       string  `json:"metadata"`        // JSON آزاد برای شفافیت
+	IdempotencyKey string  `json:"idempotency_key"` // جلوگیری از کسر دوباره
+}
+
+// DeductResponse نتیجه‌ی کسر.
+type DeductResponse struct {
+	Success    bool    `json:"success"`
+	NewBalance float64 `json:"new_balance"`
+	Error      string  `json:"error,omitempty"`
+}
+
+// ══════════════════════════════════════════════════════════════
+// Member subjects (NATS request/reply) — member-bot به‌عنوان
+// زیرساخت متمرکز چک عضویت. bot های فرعی به‌جای ادمین‌شدن در هر
+// کانال، از این مسیر می‌پرسند «کاربر X عضو کانال Y هست؟».
+// ══════════════════════════════════════════════════════════════
+
+const (
+	// SubjMemberCheck — درخواست چک عضویت (request/reply)
+	SubjMemberCheck = "member.check"
+	// SubjMemberQueue — queue group برای load balancing
+	SubjMemberQueue = "memberbot-workers"
+)
+
+// MemberCheckRequest درخواست چک عضویت یک کاربر در یک کانال.
+type MemberCheckRequest struct {
+	ChannelID  int64 `json:"channel_id"`
+	UserID     int64 `json:"user_id"`
+}
+
+// MemberCheckResponse نتیجه‌ی چک عضویت.
+type MemberCheckResponse struct {
+	IsMember bool   `json:"is_member"`
+	Cached   bool   `json:"cached"`
+	Error    string `json:"error,omitempty"`
+}
+
+// ══════════════════════════════════════════════════════════════
+// FreeBot subjects — وقتی botmanager یک instance با LockMode=free
+// می‌سازد، ads-bot باید آن را در FreeBotSlot ثبت کند تا بعداً بتواند
+// به یک کمپین اجاره‌ای وصلش کند.
+// ══════════════════════════════════════════════════════════════
+
+const SubjFreeBotCreated = "freebot.created"
+
+// FreeBotCreatedEvent رویداد ساخت یک instance رایگان.
+type FreeBotCreatedEvent struct {
+	InstanceID string `json:"instance_id"` // uuid از shared-core/models.BotInstance.ID
+	BotID      int64  `json:"bot_id"`
+}
+
+// MembershipJoinedEvent — همان payload که member-bot/internal/events/publisher.go
+// روی subject "membership.joined" می‌فرستد.
+const SubjMembershipJoined = "membership.joined"
+
+type MembershipJoinedEvent struct {
+	TelegramID  int64  `json:"telegram_id"`
+	CommunityID int64  `json:"community_id"` // chatID تلگرام
+	Source      string `json:"source"`       // "organic" | "invite_link"
+	InviteHash  string `json:"invite_hash"`
+	JoinedAt    int64  `json:"joined_at"`
+	Username    string `json:"username"`
+}
+
+// SubjConfirmChannelAdmin — وقتی bot فرعی (مثلا uploader) تشخیص داد که در
+// کانال هدف ادمین شده، این را به ads-bot اطلاع می‌دهد تا قفل‌کردن شروع شود.
+const SubjConfirmChannelAdmin = "ads.confirm_channel_admin"
+
+// ConfirmChannelAdminRequest درخواست تأیید ادمین‌شدن در کانال.
+type ConfirmChannelAdminRequest struct {
+	BotID int64 `json:"bot_id"`
+}
+
+// ConfirmChannelAdminResponse پاسخ ساده موفق/ناموفق.
+type ConfirmChannelAdminResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}

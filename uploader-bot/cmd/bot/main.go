@@ -8,7 +8,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/telebot"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -30,7 +30,9 @@ type Config struct {
 	RedisDB     int    `mapstructure:"REDIS_DB"`
 
 	// NATS — فقط برای heartbeat و events
-	NatsURL  string `mapstructure:"NATS_URL"`
+	NatsURL    string `mapstructure:"NATS_URL"`
+	BotMode    string `mapstructure:"BOT_MODE"`
+	GatewayURL string `mapstructure:"GATEWAY_URL"`
 	ServerID string `mapstructure:"SERVER_ID"`
 
 	HeartbeatSec int `mapstructure:"HEARTBEAT_INTERVAL_SEC"`
@@ -59,9 +61,14 @@ func main() {
 	}
 
 	// ── Telegram Bot ──────────────────────────────────────────
+	mode := webhook.ParseMode(cfg.BotMode)
+	poller := webhook.BuildPoller(webhook.PollerConfig{
+		Mode: mode, BotID: eng.BotID, Token: cfg.BotToken,
+		GatewayURL: cfg.GatewayURL, NATS: eng.Nats, Log: log,
+	})
 	settings := tele.Settings{
 		Token:  cfg.BotToken,
-		Poller: &tele.LongPoller{Timeout: 10},
+		Poller: poller,
 	}
 	if cfg.LocalBotAPI != "" {
 		settings.URL = cfg.LocalBotAPI
@@ -70,8 +77,13 @@ func main() {
 	if err != nil {
 		log.Fatal("bot init failed", ports.F("err", err))
 	}
-	var sender ports.BotSender = telebot.New(rawBot)
-
+	if err == nil {
+		if e := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
+			Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
+		}); e != nil {
+			log.Error("webhook setup", ports.F("err", e))
+		}
+	}
 	log.Info("uploader-bot starting",
 		ports.F("bot_id", eng.BotID),
 		ports.F("instance_id", eng.InstanceID))
@@ -79,7 +91,7 @@ func main() {
 	// ── Wire ──────────────────────────────────────────────────
 	h := tgbot.NewHandler(tgbot.Deps{
 		Engine:    eng,
-		Sender:    sender,
+		Bot:       rawBot,
 		OwnerID:   cfg.OwnerID,
 		ChannelID: cfg.ChannelID,
 	})

@@ -11,7 +11,7 @@ import (
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
-	"github.com/mrjvadi/creatorbot/shared-core/payclient"
+	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared-core/ton"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot"
@@ -110,14 +110,16 @@ func main() {
 		APIKey:        cfg.TONAPIKey,
 		Network:       cfg.TONNetwork,
 	})
-	var payClient *payclient.Client
-	if cfg.BotpayURL != "" {
-		payClient = payclient.New(payclient.Config{
-			URL:       cfg.BotpayURL,
-			APIKey:    cfg.BotpayKey,
-			ServiceID: cfg.BotpaySvcID,
+	var payClient *natspayclient.Client
+	if nc != nil {
+		payClient = natspayclient.New(nc, cache, natspayclient.Config{
+			ServiceID:  "botmanager",
+			ServiceKey: cfg.BotpayKey,
 		})
-		log.Info("botpay connected", ports.F("url", cfg.BotpayURL))
+		log.Info("botpay connected via NATS")
+		if err := payClient.SubscribeWalletUpdates(); err != nil {
+			log.Error("wallet updates subscription failed", ports.F("err", err))
+		}
 	}
 	h := tgbot.NewHandler(rawBot, st, cache, dockerManager, log, cfg.OwnerID, cfg.EncryptKey, tonClient, payClient, nc)
 	tgbot.Register(rawBot, h)

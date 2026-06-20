@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +16,39 @@ import (
 type Store struct{ db *gorm.DB }
 
 func New(db *gorm.DB) *Store { return &Store{db: db} }
+
+// DB دسترسی خام به gorm (برای queryهای cross-table مثل validation سرویس).
+func (s *Store) DB() *gorm.DB { return s.db }
+
+// ValidateServiceID بررسی می‌کند که یک service_id معتبر است.
+// سرویس‌های اصلی (botmanager, apimanager) همیشه معتبرند.
+// سرویس‌های bot instance با فرمت "bot_<BotID>" باید یک instance فعال در DB داشته باشند.
+func (s *Store) ValidateServiceID(ctx context.Context, serviceID string) bool {
+	if serviceID == "" {
+		return false
+	}
+	// سرویس‌های اصلی پلتفرم
+	switch serviceID {
+	case "botmanager", "apimanager", "botpay":
+		return true
+	}
+	// bot instance: "bot_<BotID>"
+	if !strings.HasPrefix(serviceID, "bot_") {
+		return false
+	}
+	botIDStr := strings.TrimPrefix(serviceID, "bot_")
+	botID, err := strconv.ParseInt(botIDStr, 10, 64)
+	if err != nil {
+		return false
+	}
+	// چک وجود instance با این BotID (وضعیت deleted نباشد)
+	var count int64
+	s.db.WithContext(ctx).
+		Table("bot_instances").
+		Where("bot_id = ? AND status <> ?", botID, "deleted").
+		Count(&count)
+	return count > 0
+}
 
 // ── Wallet ─────────────────────────────────────────────────
 

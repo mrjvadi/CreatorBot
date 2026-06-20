@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	tele "gopkg.in/telebot.v4"
+
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
@@ -15,14 +17,14 @@ import (
 type CardGateway struct {
 	cardNumber string
 	cardOwner  string
-	sender     ports.BotSender
+	bot        *tele.Bot
 	adminID    int64
 }
 
 var _ ports.PaymentGateway = (*CardGateway)(nil)
 
-func NewCardGateway(cardNumber, cardOwner string, sender ports.BotSender, adminID int64) *CardGateway {
-	return &CardGateway{cardNumber: cardNumber, cardOwner: cardOwner, sender: sender, adminID: adminID}
+func NewCardGateway(cardNumber, cardOwner string, bot *tele.Bot, adminID int64) *CardGateway {
+	return &CardGateway{cardNumber: cardNumber, cardOwner: cardOwner, bot: bot, adminID: adminID}
 }
 
 func (g *CardGateway) Name() string { return "card" }
@@ -33,7 +35,7 @@ func (g *CardGateway) CreatePayment(ctx context.Context, req ports.PaymentReques
 		"💳 پرداخت کارت‌به‌کارت\n\nمبلغ: <b>%g تومان</b>\nشماره کارت: <code>%s</code>\nصاحب حساب: %s\n\nپس از پرداخت تصویر رسید را ارسال کنید.",
 		req.Amount, g.cardNumber, g.cardOwner,
 	)
-	if err := g.sender.Send(ctx, req.UserID, msg, ports.WithHTML()); err != nil {
+	if _, err := g.bot.Send(&tele.User{ID: req.UserID}, msg, tele.ModeHTML); err != nil {
 		return nil, err
 	}
 	return &ports.PaymentResponse{RefID: req.OrderID}, nil
