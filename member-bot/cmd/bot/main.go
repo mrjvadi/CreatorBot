@@ -9,13 +9,15 @@ import (
 
 	"github.com/mrjvadi/creatorbot/member-bot/internal/dispatcher"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/lock"
+	"github.com/mrjvadi/creatorbot/member-bot/internal/memberresponder"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/scheduler"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/tgbot"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/telebot"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -35,6 +37,8 @@ type Config struct {
 	LockAPIKey  string `mapstructure:"LOCK_API_SECRET"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	EncryptKey  string `mapstructure:"ENCRYPTION_KEY"`
+	BotMode     string `mapstructure:"BOT_MODE"`
+	GatewayURL  string `mapstructure:"GATEWAY_URL"`
 }
 
 func main() {
@@ -57,21 +61,39 @@ func main() {
 		log.Fatal("redis", ports.F("err", err))
 	}
 
-	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: &tele.LongPoller{Timeout: 10}})
+	mode := webhook.ParseMode(cfg.BotMode)
+	botID := webhook.BotIDFromToken(cfg.BotToken)
+	var wnc *natsclient.Client
+	if mode == webhook.ModeWebhook {
+		wnc, err = natsclient.New(natsclient.Config{URL: cfg.NatsURL, Username: cfg.NatsUser, Password: cfg.NatsPass})
+		if err != nil {
+			log.Fatal("nats connect (webhook mode)", ports.F("err", err))
+		}
+	}
+	poller := webhook.BuildPoller(webhook.PollerConfig{
+		Mode: mode, BotID: botID, Token: cfg.BotToken,
+		GatewayURL: cfg.GatewayURL, NATS: wnc, Log: log,
+	})
+	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: poller})
+	if err == nil {
+		if e := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
+			Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
+		}); e != nil {
+			log.Error("webhook setup", ports.F("err", e))
+		}
+	}
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
 	}
-	var sender ports.BotSender = telebot.New(rawBot)
-
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, cache, log, cfg.OwnerID, cfg.EncryptKey)
+	h := tgbot.NewHandler(rawBot, st, cache, log, cfg.OwnerID, cfg.EncryptKey)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	// FIX 17: start scheduler
-	sched := scheduler.New(st, sender, log)
+	sched := scheduler.New(st, rawBot, log)
 	sched.Start(ctx)
 
 	// Lock HTTP API
@@ -81,6 +103,14 @@ func main() {
 			log.Fatal("lock api", ports.F("err", err))
 		}
 	}()
+
+	// NATS responder (member.check) — مسیر متمرکز چک عضویت برای bot های فرعی
+	if wnc != nil {
+		mresp := memberresponder.New(wnc, cache, log)
+		if err := mresp.Start(); err != nil {
+			log.Error("member responder start failed", ports.F("err", err))
+		}
+	}
 
 	// Worker dispatcher
 	disp := dispatcher.New(db, st, cache, log, cfg.EncryptKey)

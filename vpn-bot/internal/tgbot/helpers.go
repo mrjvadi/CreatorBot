@@ -19,8 +19,9 @@ func (h *Handler) checkMembership(ctx context.Context, c tele.Context) error {
 	if h.channelID == 0 {
 		return nil
 	}
-	status, err := h.sender.GetChatMember(ctx, h.channelID, c.Sender().ID)
-	if err != nil || !status.IsActive() {
+	member, err := h.bot.ChatMemberOf(&tele.Chat{ID: h.channelID}, c.Sender())
+	isActive := err == nil && (member.Role == tele.Member || member.Role == tele.Administrator || member.Role == tele.Creator)
+	if !isActive {
 		kb := &tele.ReplyMarkup{}
 		kb.Inline(kb.Row(kb.URL("📢 عضویت در کانال", fmt.Sprintf("https://t.me/c/%d", h.channelID))))
 		return c.Send("⛔️ برای استفاده از ربات باید در کانال عضو باشید.", kb)

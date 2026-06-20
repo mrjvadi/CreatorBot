@@ -23,8 +23,10 @@ func (h *Handler) b(ctx context.Context, uid int64, k i18n.Key) tele.Btn {
 func (h *Handler) kbUser(ctx context.Context, uid int64) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
 	kb.Reply(
-		kb.Row(h.b(ctx, uid, i18n.KeyMenuMyBots), h.b(ctx, uid, i18n.KeyMenuPlans)),
-		kb.Row(h.b(ctx, uid, i18n.KeyMenuHelp),   h.b(ctx, uid, i18n.KeyMenuSupport)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuCreateBot), h.b(ctx, uid, i18n.KeyMenuMyBots)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuAccount), h.b(ctx, uid, i18n.KeyMenuPlans)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuTutorials), h.b(ctx, uid, i18n.KeyMenuSupport)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuLanguage)),
 	)
 	return kb
 }
@@ -38,10 +40,11 @@ func (h *Handler) kbUserFull(ctx context.Context, uid int64, sub *models.Subscri
 func (h *Handler) kbAdmin(ctx context.Context, uid int64) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
 	kb.Reply(
-		kb.Row(h.b(ctx, uid, i18n.KeyMenuUsers),     h.b(ctx, uid, i18n.KeyMenuBots)),
-		kb.Row(h.b(ctx, uid, i18n.KeyMenuPlans),     h.b(ctx, uid, i18n.KeyMenuLinks)),
-		kb.Row(h.b(ctx, uid, i18n.KeyMenuServers),   h.b(ctx, uid, i18n.KeyMenuTemplates)),
-		kb.Row(h.b(ctx, uid, i18n.KeyMenuStats)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuUsers), h.b(ctx, uid, i18n.KeyMenuBots)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuServers), h.b(ctx, uid, i18n.KeyMenuTemplates)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuPlans), h.b(ctx, uid, i18n.KeyMenuStats)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuBroadcast), h.b(ctx, uid, i18n.KeyMenuSystem)),
+		kb.Row(h.b(ctx, uid, i18n.KeyMenuExitAdmin)),
 	)
 	return kb
 }

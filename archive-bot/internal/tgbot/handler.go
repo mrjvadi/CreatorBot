@@ -11,7 +11,7 @@ import (
 )
 
 type Handler struct {
-	sender      ports.BotSender
+	bot         *tele.Bot
 	store       *store.Store
 	db          ports.DB
 	cache       ports.Cache
@@ -20,8 +20,8 @@ type Handler struct {
 	botUsername string
 }
 
-func NewHandler(sender ports.BotSender, st *store.Store, db ports.DB, cache ports.Cache, log ports.Logger, ownerID int64, botUsername string) *Handler {
-	return &Handler{sender: sender, store: st, db: db, cache: cache, log: log, ownerID: ownerID}
+func NewHandler(bot *tele.Bot, st *store.Store, db ports.DB, cache ports.Cache, log ports.Logger, ownerID int64, botUsername string) *Handler {
+	return &Handler{bot: bot, store: st, db: db, cache: cache, log: log, ownerID: ownerID}
 }
 
 func Register(b *tele.Bot, h *Handler) {

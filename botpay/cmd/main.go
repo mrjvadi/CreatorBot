@@ -14,12 +14,15 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mrjvadi/creatorbot/botpay/internal/api"
+	"github.com/mrjvadi/creatorbot/botpay/internal/chainguard"
+	"github.com/mrjvadi/creatorbot/botpay/internal/payresponder"
 	"github.com/mrjvadi/creatorbot/botpay/internal/consensus"
 	"github.com/mrjvadi/creatorbot/botpay/internal/store"
 	"github.com/mrjvadi/creatorbot/botpay/internal/tgbot"
 	"github.com/mrjvadi/creatorbot/botpay/internal/ton"
 	"github.com/mrjvadi/creatorbot/botpay/internal/wallet"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -36,6 +39,11 @@ type Config struct {
 	NatsURL  string `mapstructure:"NATS_URL"`
 	NatsUser string `mapstructure:"NATS_USERNAME"`
 	NatsPass string `mapstructure:"NATS_PASSWORD"`
+
+	// Redis — botpay موجودی را مستقیم در Redis می‌نویسد
+	RedisAddr string `mapstructure:"REDIS_ADDR"`
+	RedisPass string `mapstructure:"REDIS_PASSWORD"`
+	RedisDB   int    `mapstructure:"REDIS_DB"`
 
 	// TON
 	TONMasterAddress string `mapstructure:"TON_MASTER_ADDRESS"`
@@ -123,6 +131,30 @@ func main() {
 		"uploader":   cfg.UploaderKey,
 		"vpn":        cfg.VPNKey,
 	}
+
+	// ── NATS Responder (pay.* request/reply) ──────────────
+	// همه‌ی سرویس‌ها برای موجودی/پرداخت از این طریق با botpay حرف می‌زنند.
+	if nc != nil {
+		// Redis اختیاری — اگر در دسترس نباشد، botpay بدون cache ادامه می‌دهد
+		var payCache ports.Cache
+		if cfg.RedisAddr != "" {
+			rc, rerr := sharedredis.New(sharedredis.Config{
+				Addr: cfg.RedisAddr, Password: cfg.RedisPass, DB: cfg.RedisDB,
+			})
+			if rerr != nil {
+				log.Error("redis unavailable — balance cache disabled", ports.F("err", rerr))
+			} else {
+				payCache = rc
+			}
+		}
+		resp := payresponder.New(nc, walletSvc, payCache, log)
+		if err := resp.Start(); err != nil {
+			log.Error("payresponder start failed", ports.F("err", err))
+		}
+	} else {
+		log.Warn("NATS unavailable — pay request/reply disabled")
+	}
+
 	apiHandler := api.New(walletSvc, api.Config{
 		ServiceKeys: serviceKeys,
 		AdminKey:    cfg.AdminAPIKey,
@@ -150,6 +182,13 @@ func main() {
 	// ── Start ─────────────────────────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// ── ChainGuard: پایش یکپارچگی زنجیره‌ی پرداخت‌ها ────────
+	cg := chainguard.New(st, nc, log, cfg.OwnerID)
+	cg.SetNotifier(func(telegramID int64, msg string) {
+		_, _ = rawBot.Send(&tele.User{ID: telegramID}, msg)
+	})
+	go cg.Start(ctx)
 
 	go watcher.Run(ctx)
 	go func() {

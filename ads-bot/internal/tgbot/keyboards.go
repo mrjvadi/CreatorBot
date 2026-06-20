@@ -72,6 +72,17 @@ func kbReview(campID string) *tele.ReplyMarkup {
 	return kb
 }
 
+func kbRentReview(rentalID string) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(
+			kb.Data("✅ تأیید اجاره", "rent_approve:"+rentalID),
+			kb.Data("❌ رد", "rent_reject:"+rentalID),
+		),
+	)
+	return kb
+}
+
 func statusLabel(s store.CampaignStatus) string {
 	m := map[store.CampaignStatus]string{
 		store.CampaignDraft:    "📝 پیش‌نویس",

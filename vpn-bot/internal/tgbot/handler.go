@@ -22,7 +22,7 @@ import (
 
 // Handler handler اصلی vpn-bot.
 type Handler struct {
-	sender     ports.BotSender
+	bot        *tele.Bot
 	store      *store.Store
 	panel      ports.VPNPanel
 	gateway    ports.PaymentGateway
@@ -34,7 +34,7 @@ type Handler struct {
 }
 
 func NewHandler(
-	sender ports.BotSender,
+	bot *tele.Bot,
 	st *store.Store,
 	panel ports.VPNPanel,
 	gateway ports.PaymentGateway,
@@ -45,7 +45,7 @@ func NewHandler(
 	encryptKey string,
 ) *Handler {
 	return &Handler{
-		sender: sender, store: st, panel: panel,
+		bot: bot, store: st, panel: panel,
 		gateway: gateway, cache: cache, log: log,
 		channelID: channelID, ownerID: ownerID,
 		encryptKey: encryptKey,

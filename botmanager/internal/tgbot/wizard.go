@@ -10,6 +10,7 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
+	"github.com/google/uuid"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
@@ -250,6 +251,17 @@ func (h *Handler) provision(
 	botID, _ := extractBotID(token)
 	containerName := fmt.Sprintf("%s_%d", serviceType, botID)
 
+	// LockMode اولیه: پلن رایگان → free (تبلیغ خودمان)، در غیر این صورت none
+	// (در فاز اجاره، ads-bot می‌تواند بعداً LockMode را به rented تغییر دهد)
+	lockMode := models.LockModeNone
+	var planID *uuid.UUID
+	if plan != nil {
+		planID = &plan.ID
+		if plan.IsFree {
+			lockMode = models.LockModeFree
+		}
+	}
+
 	instance := &models.BotInstance{
 		OwnerID:       u.ID,
 		TemplateID:    tmpl.ID,
@@ -257,11 +269,22 @@ func (h *Handler) provision(
 		BotToken:      token,
 		ContainerName: containerName,
 		Status:        "pending",
+		PlanID:        planID,
+		LockMode:      lockMode,
 	}
 
 	if err := h.store.CreateInstance(ctx, instance); err != nil {
 		h.refundOnFailure(ctx, u, plan, invoiceCode)
 		return c.Send("❌ خطا در ایجاد سرویس.")
+	}
+
+	// اگر این instance قفل رایگان پلتفرم دارد، به ads-bot اطلاع بده تا آن را
+	// به‌عنوان یک FreeBotSlot ثبت کند (بعداً قابل اجاره به خریداران است).
+	if h.nc != nil && lockMode == models.LockModeFree {
+		h.nc.PublishCore(protocol.SubjFreeBotCreated, protocol.FreeBotCreatedEvent{
+			InstanceID: instance.ID.String(),
+			BotID:      botID,
+		})
 	}
 
 	if h.nc != nil {

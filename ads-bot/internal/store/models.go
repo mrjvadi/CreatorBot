@@ -257,3 +257,172 @@ func DefaultConfig() AdConfig {
 		IsActive:           true,
 	}
 }
+
+// ══════════════════════════════════════════════════════════════
+// Lock Rental — اجاره‌ی قفل کانال روی ربات‌های رایگان پلتفرم
+//
+// تفاوت با Campaign (CPJ) بالا: در آنجا advertiser پول می‌دهد تا تبلیغش را
+// در کانال *دیگران* نشان دهد و صاحب کانال پول می‌گیرد. اینجا برعکس است:
+// خریدار (owner کانال خودش) پول می‌دهد تا کانالش به‌عنوان قفل عضویت روی
+// ربات‌های رایگان ما قرار بگیرد، و این بار کاربری که عضو کانال او می‌شود
+// پاداش می‌گیرد (نه صاحب کانال). هزینه از موجودی خریدار کسر می‌شود.
+// ══════════════════════════════════════════════════════════════
+
+// LockRentalStatus وضعیت یک درخواست اجاره.
+type LockRentalStatus string
+
+const (
+	RentalPendingReview LockRentalStatus = "pending_review" // منتظر تأیید ادمین اصلی
+	RentalActive        LockRentalStatus = "active"          // تأیید شده و در حال اجرا
+	RentalPaused         LockRentalStatus = "paused"
+	RentalRejected       LockRentalStatus = "rejected"
+	RentalDone           LockRentalStatus = "done" // بودجه تمام شد یا منقضی شد
+)
+
+// LockRentalCampaign یک درخواست اجاره‌ی قفل کانال.
+type LockRentalCampaign struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	// خریدار — کسی که می‌خواهد کانالش به‌عنوان قفل روی ربات‌های رایگان قرار بگیرد
+	BuyerTelegramID int64 `gorm:"not null;index"`
+
+	// کانال هدف که کاربران باید عضوش شوند
+	TargetChannelID       int64  `gorm:"not null;index"`
+	TargetChannelUsername string
+
+	Status     LockRentalStatus `gorm:"default:'pending_review';index"`
+	ReviewNote string
+	ReviewedAt *time.Time
+	ReviewerID int64 // باید همیشه OWNER_ID پلتفرم باشد، نه ادمین معمولی
+
+	// اقتصاد — هزینه به ازای هر عضو واقعی که از طریق ربات‌های رایگان جذب می‌شود
+	RewardPerJoinTON float64 `gorm:"not null"` // پرداختی به کاربر عضوشونده
+	Budget           float64 `gorm:"not null"` // کل بودجه‌ای که خریدار کنار گذاشته (از کیف پولش کسر می‌شود)
+	Spent            float64 `gorm:"default:0"`
+
+	// FreeBotOwnerRewardPercent درصدی از کل بودجه که بین owner های واقعی
+	// ربات‌های رایگان (کسانی که از botmanager این bot ها را ساخته‌اند، نه
+	// خریدار اجاره) تقسیم می‌شود — جمعی، نه per-join. مثلا 5 یعنی 5% کل
+	// بودجه بین همه‌ی owner های slot های این کمپین تقسیم می‌شود.
+	FreeBotOwnerRewardPercent float64 `gorm:"default:5"`
+
+	TotalJoins int `gorm:"default:0"`
+	RealJoins  int `gorm:"default:0"`
+
+	StartAt *time.Time
+	EndAt   *time.Time
+}
+
+func (l *LockRentalCampaign) RemainingBudget() float64 { return l.Budget - l.Spent }
+func (l *LockRentalCampaign) IsActive() bool {
+	if l.Status != RentalActive {
+		return false
+	}
+	if l.RemainingBudget() <= 0 {
+		return false
+	}
+	if l.EndAt != nil && time.Now().After(*l.EndAt) {
+		return false
+	}
+	return true
+}
+
+// FreeBotSlot یک ربات رایگان پلتفرم که می‌تواند به یک LockRentalCampaign
+// وصل شود. وقتی RentalID خالی است یعنی این ربات فعلاً قفل تبلیغ خودِ
+// پلتفرم را دارد (رایگان)؛ وقتی پر است یعنی به یک کمپین اجاره‌ای وصل است.
+//
+// نکته: BotInstanceID به shared-core/models.BotInstance.ID اشاره می‌کند
+// (ads-bot عمداً مدل botmanager را import نمی‌کند تا coupling نداشته باشد؛
+// فقط uuid آن را نگه می‌دارد).
+type FreeBotSlot struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	BotInstanceID uuid.UUID `gorm:"uniqueIndex;not null"` // یک instance فقط یک slot دارد
+	BotID         int64     `gorm:"uniqueIndex;not null"` // BotID تلگرامی، برای lookup سریع
+
+	// RentalID — کمپین اجاره‌ای که این ربات الان به آن وصل است (nil = آزاد/رایگان پلتفرم)
+	RentalID *uuid.UUID `gorm:"index"`
+
+	// AssignedOwnerTelegramID — کسی که این ربات رایگان الان "در اختیارش" است
+	// (بعد از تأیید ادمین، ربات‌ها در اختیار خریدار قرار می‌گیرند طبق گفته‌ی کاربر)
+	AssignedOwnerTelegramID int64
+
+	// IsChannelAdminConfirmed — وقتی خریدار ربات را در کانال خودش ادمین کرد،
+	// این true می‌شود و از همان لحظه سرویس شروع به قفل‌کردن می‌کند.
+	IsChannelAdminConfirmed bool `gorm:"default:false"`
+}
+
+func (s *FreeBotSlot) IsFree() bool   { return s.RentalID == nil }
+func (s *FreeBotSlot) IsRented() bool { return s.RentalID != nil }
+
+// RentalJoinReward ثبت یک پاداش per-join که پرداخت شده — یونیک‌بودن
+// (RentalID, TelegramID) تضمین می‌کند هر کاربر برای یک کمپین فقط یک‌بار
+// پاداش بگیرد، حتی اگر membership.joined دوبار برسد (at-least-once NATS).
+// JoinRewardStatus وضعیت تسویه‌ی یک پاداش per-join.
+type JoinRewardStatus string
+
+const (
+	// RewardPending — join ثبت و از بودجه‌ی کمپین "رزرو" شده، ولی هنوز
+	// واقعاً به کاربر واریز نشده (در دوره‌ی انتظار برای تشخیص تقلب).
+	RewardPending JoinRewardStatus = "pending"
+	// RewardSettled — بعد از گذشت مهلت، واقعاً واریز شده.
+	RewardSettled JoinRewardStatus = "settled"
+	// RewardReversed — قبل از تسویه، fraud-engine این join را رد کرد؛
+	// هرگز واریز نمی‌شود (ولی بودجه‌ی رزروشده باید به کمپین برگردد).
+	RewardReversed JoinRewardStatus = "reversed"
+)
+
+// RentalJoinReward ثبت یک پاداش per-join — یونیک‌بودن (RentalID, TelegramID)
+// تضمین می‌کند هر کاربر برای یک کمپین فقط یک‌بار پاداش بگیرد، حتی اگر
+// membership.joined دوبار برسد (at-least-once NATS).
+//
+// تسویه با تأخیر است: لحظه‌ی join فقط بودجه "رزرو" می‌شود (Spent در
+// LockRentalCampaign بالا می‌رود تا بودجه‌ی باقی‌مانده درست حساب شود)،
+// ولی واریز واقعی به کیف پول کاربر تا SettleAt اتفاق نمی‌افتد — فرصتی
+// برای تشخیص تقلب قبل از پرداخت نهایی.
+// FreeBotOwnerReward ثبت سهم یک owner ربات رایگان از یک کمپین — یونیک‌بودن
+// (RentalID, SlotID) تضمین می‌کند هر slot برای یک کمپین فقط یک‌بار سهم
+// حساب شود. همان state machine تأخیری RentalJoinReward را دارد (طبق
+// انسجام حسابداری: کسر بودجه همان لحظه‌ی تأیید کمپین انجام شده، ولی واریز
+// واقعی به owner با همان تأخیر RewardSettlementDelay صورت می‌گیرد).
+// RentalJoinReward ثبت یک پاداش per-join — یونیک‌بودن (RentalID, TelegramID)
+// تضمین می‌کند هر کاربر برای یک کمپین فقط یک‌بار پاداش بگیرد، حتی اگر
+// membership.joined دوبار برسد (at-least-once NATS).
+//
+// تسویه با تأخیر است: لحظه‌ی join فقط بودجه "رزرو" می‌شود (Spent در
+// LockRentalCampaign بالا می‌رود تا بودجه‌ی باقی‌مانده درست حساب شود)،
+// ولی واریز واقعی به کیف پول کاربر تا SettleAt اتفاق نمی‌افتد — فرصتی
+// برای تشخیص تقلب قبل از پرداخت نهایی.
+type RentalJoinReward struct {
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CreatedAt  time.Time
+	RentalID   uuid.UUID `gorm:"uniqueIndex:idx_rental_user"`
+	TelegramID int64     `gorm:"uniqueIndex:idx_rental_user"`
+	AmountTON  float64
+
+	Status    JoinRewardStatus `gorm:"default:'pending';index"`
+	SettleAt  time.Time        `gorm:"index"` // CreatedAt + مهلت انتظار (پیش‌فرض 24h)
+	SettledAt *time.Time
+}
+
+// FreeBotOwnerReward ثبت سهم یک owner ربات رایگان از یک کمپین — یونیک‌بودن
+// (RentalID, SlotID) تضمین می‌کند هر slot برای یک کمپین فقط یک‌بار سهم
+// حساب شود. همان state machine تأخیری RentalJoinReward را دارد (طبق
+// انسجام حسابداری: کسر بودجه همان لحظه‌ی تأیید کمپین انجام شده، ولی واریز
+// واقعی به owner با همان تأخیر RewardSettlementDelay صورت می‌گیرد).
+type FreeBotOwnerReward struct {
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CreatedAt       time.Time
+	RentalID        uuid.UUID `gorm:"uniqueIndex:idx_rental_slot"`
+	SlotID          uuid.UUID `gorm:"uniqueIndex:idx_rental_slot"`
+	OwnerTelegramID int64
+	AmountTON       float64
+
+	Status    JoinRewardStatus `gorm:"default:'pending';index"`
+	SettleAt  time.Time        `gorm:"index"`
+	SettledAt *time.Time
+}

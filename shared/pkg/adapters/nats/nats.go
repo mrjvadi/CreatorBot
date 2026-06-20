@@ -159,3 +159,73 @@ func (c *Client) SubscribeWithRetry(subject string, maxRetries int, handler func
 	})
 	return err
 }
+
+// ══════════════════════════════════════════════════════════════
+// Request / Reply (sync) — برای ارتباط درخواست-پاسخ بین سرویس‌ها
+// از NATS core استفاده می‌کند (نه JetStream) چون sync و سریع است.
+// ══════════════════════════════════════════════════════════════
+
+// Request یک پیام JSON می‌فرستد و منتظر پاسخ می‌ماند.
+// out باید یک pointer باشد تا پاسخ در آن unmarshal شود.
+// اگر responder در دسترس نباشد، خطای timeout برمی‌گرداند (نه connection refused).
+func (c *Client) Request(ctx context.Context, subject string, payload any, out any, timeout time.Duration) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("nats request: marshal: %w", err)
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+
+	msg, err := c.nc.Request(subject, data, timeout)
+	if err != nil {
+		return fmt.Errorf("nats request %q: %w", subject, err)
+	}
+
+	// بررسی خطای سمت responder (در header یا body با فیلد error)
+	if out != nil {
+		if err := json.Unmarshal(msg.Data, out); err != nil {
+			return fmt.Errorf("nats request %q: unmarshal reply: %w", subject, err)
+		}
+	}
+	return nil
+}
+
+// Respond روی یک subject، درخواست‌ها را گرفته و پاسخ می‌دهد.
+// handler داده‌ی درخواست را می‌گیرد و (پاسخ، خطا) برمی‌گرداند.
+// اگر خطا برگردد، پاسخ به صورت JSON با فیلد "error" ارسال می‌شود.
+func (c *Client) Respond(subject string, handler func(data []byte) (any, error)) error {
+	_, err := c.nc.Subscribe(subject, func(msg *nats.Msg) {
+		resp, herr := handler(msg.Data)
+		var out []byte
+		if herr != nil {
+			out, _ = json.Marshal(map[string]string{"error": herr.Error()})
+		} else {
+			out, _ = json.Marshal(resp)
+		}
+		_ = msg.Respond(out)
+	})
+	if err != nil {
+		return fmt.Errorf("nats respond %q: %w", subject, err)
+	}
+	return nil
+}
+
+// QueueRespond مثل Respond ولی با queue group — برای load balancing
+// بین چند instance از یک سرویس (فقط یکی پاسخ می‌دهد).
+func (c *Client) QueueRespond(subject, queue string, handler func(data []byte) (any, error)) error {
+	_, err := c.nc.QueueSubscribe(subject, queue, func(msg *nats.Msg) {
+		resp, herr := handler(msg.Data)
+		var out []byte
+		if herr != nil {
+			out, _ = json.Marshal(map[string]string{"error": herr.Error()})
+		} else {
+			out, _ = json.Marshal(resp)
+		}
+		_ = msg.Respond(out)
+	})
+	if err != nil {
+		return fmt.Errorf("nats queue respond %q: %w", subject, err)
+	}
+	return nil
+}

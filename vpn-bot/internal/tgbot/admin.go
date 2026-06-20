@@ -249,7 +249,7 @@ func (h *Handler) approvePayment(ctx context.Context, c tele.Context, payIDStr s
 					for i, link := range vpnUser.Links {
 						sb.WriteString(fmt.Sprintf("<b>%d.</b> <code>%s</code>\n", i+1, link))
 					}
-					h.sender.Send(ctx, user.TelegramID, sb.String(), ports.WithHTML())
+					h.bot.Send(&tele.User{ID: user.TelegramID}, sb.String(), tele.ModeHTML)
 				}
 			}
 		}
@@ -266,7 +266,7 @@ func (h *Handler) rejectPayment(ctx context.Context, c tele.Context, payIDStr st
 	if payment != nil {
 		user, _ := h.store.FindUserByID(ctx, payment.UserID)
 		if user != nil {
-			h.sender.Send(ctx, user.TelegramID,
+			h.bot.Send(&tele.User{ID: user.TelegramID},
 				"❌ پرداخت شما رد شد. برای اطلاعات بیشتر با پشتیبانی تماس بگیرید.")
 		}
 	}
@@ -286,7 +286,7 @@ func (h *Handler) doBroadcast(ctx context.Context, c tele.Context, text string) 
 		if u.IsBlocked {
 			continue
 		}
-		if err := h.sender.Send(ctx, u.TelegramID, text, ports.WithHTML()); err != nil {
+		if _, err := h.bot.Send(&tele.User{ID: u.TelegramID}, text, tele.ModeHTML); err != nil {
 			failed++
 		} else {
 			sent++

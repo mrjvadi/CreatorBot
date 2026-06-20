@@ -10,6 +10,7 @@ import (
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/engine"
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 )
 
 type Handler struct {
@@ -19,6 +20,7 @@ type Handler struct {
 	cache   ports.Cache
 	log     ports.Logger
 	ownerID int64
+	pay     *natspayclient.Client // برای کسر بودجه‌ی اجاره‌ی قفل از کیف پول خریدار
 }
 
 func NewHandler(
@@ -28,8 +30,9 @@ func NewHandler(
 	cache ports.Cache,
 	log ports.Logger,
 	ownerID int64,
+	pay *natspayclient.Client,
 ) *Handler {
-	return &Handler{bot: bot, store: st, engine: eng, cache: cache, log: log, ownerID: ownerID}
+	return &Handler{bot: bot, store: st, engine: eng, cache: cache, log: log, ownerID: ownerID, pay: pay}
 }
 
 func Register(b *tele.Bot, h *Handler) {
@@ -40,6 +43,7 @@ func Register(b *tele.Bot, h *Handler) {
 	b.Handle("/channels",    h.onMyChannels)
 	b.Handle("/addchannel",  h.onAddChannel)
 	b.Handle("/balance",     h.onBalance)
+	b.Handle("/rentlock",    h.onRentLock)
 	b.Handle("/admin",       h.onAdmin)
 	b.Handle("/cancel",      h.onCancel)
 
@@ -143,9 +147,19 @@ func (h *Handler) onCallback(c tele.Context) error {
 	parts := strings.SplitN(data, ":", 2)
 	switch parts[0] {
 	case "approve":
-		if len(parts) == 2 { return h.approveCampaign(ctx, c, parts[1]) }
+		if len(parts) == 2 {
+			if !h.isAdmin(c) {
+				return c.Edit("⛔️ این عملیات فقط برای ادمین اصلی است.")
+			}
+			return h.approveCampaign(ctx, c, parts[1])
+		}
 	case "reject":
-		if len(parts) == 2 { return h.startReject(ctx, c, parts[1]) }
+		if len(parts) == 2 {
+			if !h.isAdmin(c) {
+				return c.Edit("⛔️ این عملیات فقط برای ادمین اصلی است.")
+			}
+			return h.startReject(ctx, c, parts[1])
+		}
 	case "camp_pause":
 		if len(parts) == 2 { return h.pauseCampaign(ctx, c, parts[1]) }
 	case "camp_del":
@@ -154,6 +168,20 @@ func (h *Handler) onCallback(c tele.Context) error {
 		if len(parts) == 2 { return h.verifyChannel(ctx, c, parts[1]) }
 	case "reject_ch":
 		if len(parts) == 2 { return h.rejectChannel(ctx, c, parts[1]) }
+	case "rent_approve":
+		if len(parts) == 2 {
+			if !h.isAdmin(c) {
+				return c.Edit("⛔️ تأیید اجاره‌ی قفل فقط با ادمین اصلی پلتفرم است.")
+			}
+			return h.approveLockRental(ctx, c, parts[1])
+		}
+	case "rent_reject":
+		if len(parts) == 2 {
+			if !h.isAdmin(c) {
+				return c.Edit("⛔️ این عملیات فقط برای ادمین اصلی است.")
+			}
+			return h.rejectLockRental(ctx, c, parts[1])
+		}
 	case "cancel":
 		h.clearState(ctx, c.Sender().ID)
 		return c.Edit("لغو شد.")
@@ -177,6 +205,9 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st wizardState
 	case stepChannelCPJ:  return h.handleChannelCPJ(ctx, c, st, text)
 	case stepAdminBroadcast: return h.doBroadcast(ctx, c, text)
 	case stepRejectNote:  return h.doReject(ctx, c, st, text)
+	case stepRentChannel: return h.handleRentChannel(ctx, c, st, text)
+	case stepRentBudget:  return h.handleRentBudget(ctx, c, st, text)
+	case stepRentReward:  return h.handleRentReward(ctx, c, st, text)
 	}
 	return nil
 }

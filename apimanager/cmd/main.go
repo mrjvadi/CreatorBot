@@ -9,20 +9,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"encoding/json"
-
 	"github.com/mrjvadi/creatorbot/apimanager/internal/handler"
 	"github.com/mrjvadi/creatorbot/apimanager/internal/middleware"
+	pgadapter "github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/config"
+	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
-	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
-	pgadapter "github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
-	"github.com/mrjvadi/creatorbot/shared/pkg/config"
-	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
-	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"encoding/json"
+
 )
 
 type Config struct {
@@ -30,7 +30,7 @@ type Config struct {
 	NatsURL       string `mapstructure:"NATS_URL"`
 	NatsUser      string `mapstructure:"NATS_USERNAME"`
 	NatsPass      string `mapstructure:"NATS_PASSWORD"`
-	Port          string `mapstructure:"API_PORT"`
+	Port          string `mapstructure:"PORT"`
 	AccessSecret  string `mapstructure:"JWT_ACCESS_SECRET"`
 	RefreshSecret string `mapstructure:"JWT_REFRESH_SECRET"`
 	EncryptionKey string `mapstructure:"ENCRYPTION_KEY"`
@@ -148,8 +148,8 @@ func main() {
 
 	go func() {
 		metrics.ServeMetrics(":9090")
-		log.Info("metrics server started", ports.F("addr", ":9090"))
-		log.Info("apimanager started", ports.F("addr", addr))
+	log.Info("metrics server started", ports.F("addr", ":9090"))
+	log.Info("apimanager started", ports.F("addr", addr))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal("api server", ports.F("err", err))
 		}

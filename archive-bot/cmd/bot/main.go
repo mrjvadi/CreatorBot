@@ -7,9 +7,10 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/telebot"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -27,6 +28,10 @@ type Config struct {
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
 	RedisDB     int    `mapstructure:"REDIS_DB"`
+
+	BotMode    string `mapstructure:"BOT_MODE"`
+	GatewayURL string `mapstructure:"GATEWAY_URL"`
+	NatsURL    string `mapstructure:"NATS_URL"`
 }
 
 func main() {
@@ -53,15 +58,32 @@ func main() {
 		log.Fatal("redis", ports.F("err", err))
 	}
 
-	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: &tele.LongPoller{Timeout: 10}})
+	mode := webhook.ParseMode(cfg.BotMode)
+	botID := webhook.BotIDFromToken(cfg.BotToken)
+	var nc *natsclient.Client
+	if mode == webhook.ModeWebhook {
+		nc, err = natsclient.New(natsclient.Config{URL: cfg.NatsURL})
+		if err != nil {
+			log.Fatal("nats connect (webhook mode)", ports.F("err", err))
+		}
+	}
+	poller := webhook.BuildPoller(webhook.PollerConfig{
+		Mode: mode, BotID: botID, Token: cfg.BotToken,
+		GatewayURL: cfg.GatewayURL, NATS: nc, Log: log,
+	})
+	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: poller})
+	if err == nil {
+		if e := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
+			Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
+		}); e != nil {
+			log.Error("webhook setup", ports.F("err", e))
+		}
+	}
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
 	}
-	// SWAP: replace telebot.New with any ports.BotSender
-	var sender ports.BotSender = telebot.New(rawBot)
-
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, db, cache, log, cfg.OwnerID, rawBot.Me.Username)
+	h := tgbot.NewHandler(rawBot, st, db, cache, log, cfg.OwnerID, rawBot.Me.Username)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

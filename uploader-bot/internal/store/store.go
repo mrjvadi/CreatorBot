@@ -78,7 +78,7 @@ func (s *Store) ListUsers(ctx context.Context, page, limit int) ([]models.User, 
 	s.db.Conn().WithContext(ctx).Model(&models.User{}).Count(&total)
 	err := s.db.Conn().WithContext(ctx).
 		Order("created_at DESC").
-		Offset((page - 1) * limit).Limit(limit).
+		Offset((page-1)*limit).Limit(limit).
 		Find(&users).Error
 	return users, total, err
 }
@@ -133,7 +133,7 @@ func (s *Store) ListCodes(ctx context.Context, folderID *uuid.UUID, page, limit 
 	}
 	q.Count(&total)
 	err := q.Order("created_at DESC").
-		Offset((page - 1) * limit).Limit(limit).
+		Offset((page-1)*limit).Limit(limit).
 		Find(&codes).Error
 	return codes, total, err
 }
@@ -321,11 +321,11 @@ func (s *Store) ListBackups(ctx context.Context, limit int) ([]models.Backup, er
 // ── Stats ─────────────────────────────────────────────────────
 
 type Stats struct {
-	TotalUsers int64
-	TotalCodes int64
-	TotalFiles int64
-	TodayUsers int64
-	ActiveSubs int64
+	TotalUsers    int64
+	TotalCodes    int64
+	TotalFiles    int64
+	TodayUsers    int64
+	ActiveSubs    int64
 }
 
 func (s *Store) GetStats(ctx context.Context) Stats {

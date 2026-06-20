@@ -10,6 +10,11 @@ var fa = map[Key]string{
 	KeyConfirm:   "✅ تأیید",
 	KeyLoading:   "⏳ در حال بارگذاری...",
 	KeyNotFound:  "❌ یافت نشد.",
+	KeyComingSoon:     "🚧 این بخش به‌زودی فعال می‌شود.",
+	KeyAccountTitle:   "👤 <b>پروفایل کاربری شما</b>\n🆔 شناسه: <code>%d</code>\n💰 موجودی: <b>%.2f TON</b>\n🎁 اعتبار: <b>%.2f TON</b>\n💵 مجموع: <b>%.2f TON</b>\n🌟 وضعیت: %s\n\nبرای ساخت ربات بیشتر و دسترسی به امکانات ویژه، حساب خود را شارژ کنید.",
+	KeyLanguageSelect: "🌐 <b>انتخاب زبان پلتفرم</b>\n🇮🇷 لطفاً زبان مورد نظر خود را انتخاب کنید:\n🇬🇧 Please select your preferred language:",
+	KeyBroadcastMenu:  "📢 <b>ماژول ارسال همگانی</b>\nپیام شما در صف قرار گرفته و به‌سرعت به همه کاربران هدف ارسال می‌شود:",
+	KeySystemMenu:     "⚙️ <b>تنظیمات کلی سیستم</b>\nترجیحات اصلی ربات و تنظیمات مرکز فرماندهی را اینجا پیکربندی کنید:",
 	KeyNoAccess:  "⛔ دسترسی ندارید.",
 
 	// ── منوی اصلی کاربر ──────────────────────────────────
@@ -24,6 +29,10 @@ var fa = map[Key]string{
 	KeyMenuHelp:          "❓ راهنما",
 	KeyMenuSupport:       "💬 پشتیبانی",
 	KeyMenuMyBots:        "🤖 ربات‌های من",
+	KeyMenuCreateBot:     "🚀 ساخت ربات جدید",
+	KeyMenuAccount:       "💳 حساب و موجودی",
+	KeyMenuLanguage:      "🌐 تغییر زبان",
+	KeyMenuTutorials:     "📚 راهنما و آموزش",
 
 	// ── منوی اصلی ادمین ──────────────────────────────────
 	KeyMenuUsers:     "👥 کاربران",
@@ -31,7 +40,9 @@ var fa = map[Key]string{
 	KeyMenuFinance:   "💰 مالی",
 	KeyMenuFraud:     "🚨 تقلب",
 	KeyMenuStats:     "📈 آمار",
-	KeyMenuSystem:    "⚙️ سیستم",
+	KeyMenuSystem:    "⚙️ تنظیمات سیستم",
+	KeyMenuBroadcast: "📢 پیام همگانی",
+	KeyMenuExitAdmin: "🚪 خروج از پنل ادمین",
 	KeyMenuBots:      "🤖 ربات‌ها",
 	KeyMenuLinks:     "🔗 لینک‌ها",
 	KeyMenuServers:   "🖥 سرورها",

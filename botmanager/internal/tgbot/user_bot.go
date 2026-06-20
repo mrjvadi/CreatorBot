@@ -10,9 +10,9 @@ import (
 
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
-	"github.com/mrjvadi/creatorbot/shared-core/payclient"
-	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
+	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 )
 
 // ════════════════════════════════════════════════════════════
@@ -105,12 +105,12 @@ func (h *Handler) userBotsList(ctx context.Context, c tele.Context) error {
 		case "running":
 			kb.Inline(
 				kb.Row(
-					kb.Data("📊 آمار", "svc_stats:"+id),
+					kb.Data("📊 آمار",      "svc_stats:"+id),
 					kb.Data("⚙️ تنظیمات", "svc_settings:"+id),
 				),
 				kb.Row(
 					kb.Data("🔄 ری‌استارت", "bot_restart:"+id),
-					kb.Data("⏸ توقف", "bot_stop:"+id),
+					kb.Data("⏸ توقف",      "bot_stop:"+id),
 				),
 				kb.Row(kb.Data("🗑 حذف سرویس", "bot_delete:"+id)),
 			)
@@ -118,7 +118,7 @@ func (h *Handler) userBotsList(ctx context.Context, c tele.Context) error {
 			kb.Inline(
 				kb.Row(
 					kb.Data("▶️ شروع", "bot_start:"+id),
-					kb.Data("🗑 حذف", "bot_delete:"+id),
+					kb.Data("🗑 حذف",  "bot_delete:"+id),
 				),
 			)
 		case "pending", "provisioning":
@@ -129,7 +129,7 @@ func (h *Handler) userBotsList(ctx context.Context, c tele.Context) error {
 			kb.Inline(
 				kb.Row(
 					kb.Data("🔄 تلاش مجدد", "bot_restart:"+id),
-					kb.Data("🗑 حذف", "bot_delete:"+id),
+					kb.Data("🗑 حذف",       "bot_delete:"+id),
 				),
 			)
 		default:
@@ -332,6 +332,7 @@ func (h *Handler) showPlanDetail(ctx context.Context, c tele.Context, u *models.
 // activateFreePlanInline پلن رایگان رو activate کن
 func (h *Handler) activateFreePlanInline(ctx context.Context, c tele.Context, u *models.User, plan *models.Plan) error {
 	uid := c.Sender().ID
+	uid := c.Sender().ID
 	var expiresAt *time.Time
 	if plan.DurationDay > 0 {
 		t := time.Now().AddDate(0, 0, plan.DurationDay)
@@ -389,7 +390,7 @@ func (h *Handler) executePlanPurchase(ctx context.Context, c tele.Context, planI
 	// کسر از botpay
 	_, err := h.pay.Deduct(ctx, u.TelegramID, plan.Price, plan.ID.String(), "خرید پلن "+plan.Name)
 	if err != nil {
-		if payclient.IsInsufficientBalance(err) {
+		if natspayclient.IsInsufficientBalance(err) {
 			kb := &tele.ReplyMarkup{}
 			kb.Inline(kb.Row(kb.Data("💎 شارژ کیف پول", "show_plans")))
 			return c.Edit("❌ موجودی کافی نیست.\n\nکیف پول خود را شارژ کنید.", kb)
@@ -414,11 +415,11 @@ func (h *Handler) executePlanPurchase(ctx context.Context, c tele.Context, planI
 	// plan.upgraded → سرویس‌ها quota را ریست می‌کنند
 	if h.nc != nil {
 		h.nc.PublishCore("plan.upgraded", map[string]any{
-			"user_id":     u.ID,
+			"user_id":    u.ID,
 			"telegram_id": u.TelegramID,
-			"plan_id":     plan.ID,
-			"plan_name":   plan.Name,
-			"max_bots":    plan.MaxBots,
+			"plan_id":    plan.ID,
+			"plan_name":  plan.Name,
+			"max_bots":   plan.MaxBots,
 		})
 	}
 
@@ -441,8 +442,9 @@ func (h *Handler) executePlanPurchase(ctx context.Context, c tele.Context, planI
 
 func (h *Handler) checkPlanAfterDeposit(ctx context.Context, c tele.Context, planID, invoiceCode string) error {
 	uid := c.Sender().ID
+	uid := c.Sender().ID
 	defer c.Respond()
-
+	
 	plan, _ := h.store.FindPlan(ctx, planID)
 	if plan == nil {
 		return c.Edit(h.t(ctx, uid, i18n.KeyNotFound))
@@ -561,6 +563,7 @@ func (h *Handler) userSupport(c tele.Context) error {
 	return c.Send(h.t(ctx, uid, i18n.KeySupportText), tele.ModeHTML, h.kbUser(ctx, uid))
 }
 
+
 // checkBuildCapacityForType بررسی ظرفیت به تفکیک نوع ربات (Capacity Engine).
 func (h *Handler) checkBuildCapacityForType(ctx context.Context, c tele.Context, botType string) (bool, error) {
 	uid := c.Sender().ID
@@ -656,11 +659,15 @@ func (h *Handler) instanceAction(ctx context.Context, c tele.Context, instIDStr,
 
 // ── Wallet Handlers ──────────────────────────────────────
 
+
 // ── Communities Handlers ─────────────────────────────────
+
 
 // ── Ads Handlers ─────────────────────────────────────────
 
+
 // ── Settings Handlers ─────────────────────────────────────
+
 
 // sendWalletHome نمایش صفحه کیف پول با موجودی.
 

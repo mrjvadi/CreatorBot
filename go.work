@@ -1,20 +1,20 @@
-go 1.25.0
+go 1.22
 
 use (
-	./ads-bot
-	./agentmanager
-	./apimanager
-	./archive-bot
-	./botmanager
-	./botpay
-	./community-service
-	./fraud-engine
-	./member-bot
-	./revenue-service
 	./shared
 	./shared-core
-	./source-service
+	./botmanager
+	./apimanager
+	./agentmanager
 	./uploader-bot
 	./vpn-bot
+	./archive-bot
+	./member-bot
+	./source-service
+	./botpay
+	./revenue-service
 	./webhook-gateway
+	./ads-bot
+	./fraud-engine
+	./community-service
 )

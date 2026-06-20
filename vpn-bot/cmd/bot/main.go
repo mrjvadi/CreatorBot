@@ -8,10 +8,11 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/marzban"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/nowpayments"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/telebot"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/zarinpal"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
@@ -44,6 +45,11 @@ type Config struct {
 	NowpaymentsKey   string `mapstructure:"NOWPAYMENTS_KEY"`
 	CardNumber       string `mapstructure:"CARD_NUMBER"`
 	CardOwner        string `mapstructure:"CARD_OWNER"`
+
+	// حالت دریافت update: polling (dev) یا webhook (production)
+	BotMode    string `mapstructure:"BOT_MODE"`
+	GatewayURL string `mapstructure:"GATEWAY_URL"`
+	NatsURL    string `mapstructure:"NATS_URL"`
 }
 
 func main() {
@@ -78,13 +84,33 @@ func main() {
 		log.Fatal("panel login failed", ports.F("err", err))
 	}
 
-	// Payment Gateway
-	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: &tele.LongPoller{Timeout: 10}})
+	// ── انتخاب حالت: polling (dev) یا webhook (production) ────
+	mode := webhook.ParseMode(cfg.BotMode)
+	botID := webhook.BotIDFromToken(cfg.BotToken)
+
+	var nc *natsclient.Client
+	if mode == webhook.ModeWebhook {
+		nc, err = natsclient.New(natsclient.Config{URL: cfg.NatsURL})
+		if err != nil {
+			log.Fatal("nats connect (webhook mode)", ports.F("err", err))
+		}
+	}
+
+	poller := webhook.BuildPoller(webhook.PollerConfig{
+		Mode: mode, BotID: botID, Token: cfg.BotToken,
+		GatewayURL: cfg.GatewayURL, NATS: nc, Log: log,
+	})
+
+	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: poller})
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
 	}
-	var sender ports.BotSender = telebot.New(rawBot)
-
+	// در حالت webhook روی تلگرام SetWebhook می‌زنیم؛ در polling webhook قبلی حذف می‌شود
+	if err := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
+		Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
+	}); err != nil {
+		log.Error("webhook setup", ports.F("err", err))
+	}
 	var gateway ports.PaymentGateway
 	switch cfg.PaymentGateway {
 	case "zarinpal":
@@ -92,20 +118,20 @@ func main() {
 	case "nowpayments":
 		gateway = nowpayments.New(cfg.NowpaymentsKey)
 	case "card":
-		gateway = payment.NewCardGateway(cfg.CardNumber, cfg.CardOwner, sender, cfg.AdminID)
+		gateway = payment.NewCardGateway(cfg.CardNumber, cfg.CardOwner, rawBot, cfg.AdminID)
 	default:
 		log.Fatal("unknown PAYMENT_GATEWAY", ports.F("type", cfg.PaymentGateway))
 	}
 
 	st := store.New(db)
-	h := tgbot.NewHandler(sender, st, panel, gateway, cache, log, cfg.ChannelID, cfg.AdminID, cfg.EncryptKey)
+	h := tgbot.NewHandler(rawBot, st, panel, gateway, cache, log, cfg.ChannelID, cfg.AdminID, cfg.EncryptKey)
 	tgbot.Register(rawBot, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	// FIX 16: start scheduler
-	sched := scheduler.New(st, panel, sender, log)
+	sched := scheduler.New(st, panel, rawBot, log)
 	sched.Start(ctx)
 
 	go func() { <-ctx.Done(); rawBot.Stop() }()

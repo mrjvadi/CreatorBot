@@ -12,6 +12,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/shared-core/engine"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/store"
 )
@@ -22,34 +23,64 @@ type Handler struct {
 	bot        *tele.Bot
 	log        ports.Logger
 	ownerID    int64
-	instanceID string // برای cache key
+	channelID  int64
+	instanceID string         // برای cache key
 	cache      ports.Cache
+	eng        *engine.Engine // برای دسترسی به Nats/BotID/InstanceInfo (تأیید ادمین کانال)
 }
 
-func New(st *store.Store, bot *tele.Bot, cache ports.Cache, log ports.Logger, ownerID int64, instanceID string) *Handler {
+// Deps وابستگی‌های Handler — هماهنگ با الگوی سایر bot های فرعی.
+type Deps struct {
+	Engine    *engine.Engine
+	Bot       *tele.Bot
+	OwnerID   int64
+	ChannelID int64
+}
+
+// NewHandler سازنده‌ی هماهنگ با Deps. از engine، DB/Cache را می‌سازد
+// تا main.go مجبور به ساخت دستی store نباشد.
+func NewHandler(d Deps) *Handler {
+	st := store.New(d.Engine.DB)
+	return &Handler{
+		store:      st,
+		bot:        d.Bot,
+		cache:      d.Engine.Cache,
+		log:        d.Engine.Log,
+		ownerID:    d.OwnerID,
+		channelID:  d.ChannelID,
+		eng:        d.Engine,
+		instanceID: d.Engine.InstanceID,
+	}
+}
+
+// New سازنده‌ی قدیمی — برای سازگاری با کد موجود نگه داشته شده.
+func New(st *store.Store, bot *tele.Bot, cache ports.Cache, log ports.Logger, ownerID int64, instanceID string, eng *engine.Engine) *Handler {
 	return &Handler{
 		store:      st,
 		bot:        bot,
 		cache:      cache,
 		log:        log,
 		ownerID:    ownerID,
+		eng:        eng,
 		instanceID: instanceID,
 	}
 }
 
-// Register همه handler ها را ثبت می‌کند.
+// Register همه handler ها را ثبت می‌کند. b همچنان *tele.Bot خام است چون
+// دریافت update (برخلاف ارسال پاسخ) انتزاع نشده — این الگوی رایج پلتفرم است.
 func Register(b *tele.Bot, h *Handler) {
-	b.Handle("/start", h.onStart)
-	b.Handle(tele.OnText, h.onText)
-	b.Handle(tele.OnCallback, h.onCallback)
-	b.Handle(tele.OnPhoto, h.onMedia)
-	b.Handle(tele.OnVideo, h.onMedia)
-	b.Handle(tele.OnDocument, h.onMedia)
-	b.Handle(tele.OnAudio, h.onMedia)
+	b.Handle("/start",         h.onStart)
+	b.Handle(tele.OnText,      h.onText)
+	b.Handle(tele.OnCallback,  h.onCallback)
+	b.Handle(tele.OnPhoto,     h.onMedia)
+	b.Handle(tele.OnVideo,     h.onMedia)
+	b.Handle(tele.OnDocument,  h.onMedia)
+	b.Handle(tele.OnAudio,     h.onMedia)
 	b.Handle(tele.OnAnimation, h.onMedia)
-	b.Handle(tele.OnVoice, h.onMedia)
-	b.Handle(tele.OnSticker, h.onMedia)
-	b.Handle(tele.OnQuery, h.onInlineQuery)
+	b.Handle(tele.OnVoice,     h.onMedia)
+	b.Handle(tele.OnSticker,   h.onMedia)
+	b.Handle(tele.OnQuery,     h.onInlineQuery)
+	b.Handle(tele.OnMyChatMember, h.onMyChatMember)
 }
 
 // ── /start ────────────────────────────────────────────────────
@@ -81,7 +112,7 @@ func (h *Handler) onStart(c tele.Context) error {
 	if h.isAdmin(c) {
 		welcome := h.store.GetSetting(ctx, "admin_welcome")
 		if welcome == "" {
-			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", "test")
+			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", c.Bot().Me.Username)
 		}
 		return c.Send(welcome, kbAdmin())
 	}
@@ -398,7 +429,9 @@ func (h *Handler) sendSubRequired(ctx context.Context, c tele.Context) error {
 func (h *Handler) scheduleDelete(ctx context.Context, chatID int64, msgIDs []int, delaySec int) {
 	time.Sleep(time.Duration(delaySec) * time.Second)
 	for _, msgID := range msgIDs {
-		h.bot.Delete(&tele.Message{ID: msgID, Chat: &tele.Chat{ID: chatID}})
+		if err := h.bot.Delete(&tele.Message{ID: msgID, Chat: &tele.Chat{ID: chatID}}); err != nil {
+			h.log.Error("scheduleDelete", ports.F("err", err))
+		}
 	}
 }
 
@@ -499,9 +532,9 @@ func (h *Handler) userUploadMedia(ctx context.Context, c tele.Context) error {
 
 	// ذخیره فایل
 	f := &models.File{
-		FileID:   fi.fileID,
-		FileType: fi.fileType,
-		Caption:  c.Message().Caption,
+		FileID:     fi.fileID,
+		FileType:   fi.fileType,
+		Caption:    c.Message().Caption,
 	}
 	if err := h.store.CreateFile(ctx, f); err != nil {
 		return c.Send("❌ خطا در ذخیره فایل.")
@@ -510,8 +543,8 @@ func (h *Handler) userUploadMedia(ctx context.Context, c tele.Context) error {
 	if autoApprove {
 		// ساخت کد خودکار
 		code := &models.Code{
-			Code:       h.store.GenerateUniqueCode(ctx),
-			Type:       models.CodeUnlimited,
+			Code:      h.store.GenerateUniqueCode(ctx),
+			Type:      models.CodeUnlimited,
 			UploaderID: c.Sender().ID,
 		}
 		h.store.CreateCode(ctx, code)

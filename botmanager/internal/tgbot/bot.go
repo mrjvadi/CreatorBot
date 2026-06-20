@@ -26,7 +26,7 @@ import (
 
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
-	"github.com/mrjvadi/creatorbot/shared-core/payclient"
+	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared-core/ton"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
@@ -44,7 +44,7 @@ type Handler struct {
 	botUsername string
 	encryptKey  string
 	ton         *ton.Client
-	pay         *payclient.Client
+	pay         *natspayclient.Client
 	tr          *i18n.Translator
 	nc          *natsadapter.Client
 }
@@ -58,7 +58,7 @@ func NewHandler(
 	ownerID int64,
 	encryptKey string,
 	tonClient *ton.Client,
-	payClient *payclient.Client,
+	payClient *natspayclient.Client,
 	nc *natsadapter.Client,
 ) *Handler {
 	return &Handler{
