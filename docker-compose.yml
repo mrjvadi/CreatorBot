@@ -14,7 +14,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./deploy/migrations:/docker-entrypoint-initdb.d
     ports:
-      - "5432:5432"
+      # فقط برای دسترسی local (دیباگ) — در production این خط را کامل حذف کنید
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U botuser -d creatorbot"]
       interval: 10s
@@ -31,9 +32,10 @@ services:
     volumes:
       - mongo_data:/data/db
     ports:
-      - "27017:27017"
+      # فقط برای دسترسی local (دیباگ) — در production این خط را کامل حذف کنید
+      - "127.0.0.1:27017:27017"
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/creatorbot --quiet
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' mongodb://mongouser:${MONGO_PASSWORD}@localhost:27017/admin"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -59,10 +61,12 @@ services:
       -js
       --user ${NATS_USERNAME}
       --pass ${NATS_PASSWORD}
+      --http_port 8222
     ports:
       - "4222:4222"
+      - "127.0.0.1:8222:8222"
     healthcheck:
-      test: ["CMD-SHELL", "nats-server --help > /dev/null 2>&1 && echo ok"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -123,6 +127,26 @@ services:
     volumes:
       - botpay_data:/app/data
 
+  # docker-socket-proxy: agentmanager فقط از طریق این پروکسی به docker.sock
+  # دسترسی دارد — فقط endpointهای لازم (CONTAINERS, IMAGES) باز هستند؛
+  # endpointهای حساس (مثلا EXEC, SWARM, PLUGINS) بسته می‌مانند تا
+  # compromise شدن agentmanager به root-equivalent روی host تبدیل نشود.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.2
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      POST: 1
+      EXEC: 0
+      SWARM: 0
+      PLUGINS: 0
+      SYSTEM: 0
+      NETWORKS: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   agentmanager:
     build:
       context: .
@@ -130,13 +154,13 @@ services:
     restart: unless-stopped
     depends_on:
       nats: {condition: service_healthy}
+      docker-socket-proxy: {condition: service_started}
     env_file: agentmanager/.env
     environment:
       NATS_URL: nats://nats:4222
       NATS_USERNAME: ${NATS_USERNAME}
       NATS_PASSWORD: ${NATS_PASSWORD}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
 
   webhook-gateway:
     build:
@@ -217,7 +241,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./deploy/loki/promtail-config.yaml:/etc/promtail/config.yaml
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
     command: -config.file=/etc/promtail/config.yaml
     depends_on:

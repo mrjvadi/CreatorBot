@@ -2,20 +2,20 @@ package i18n
 
 var fa = map[Key]string{
 	// ── سیستم ────────────────────────────────────────────
-	KeyError:     "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
-	KeyCancelled: "✅ عملیات لغو شد.",
-	KeyDone:      "✅ انجام شد.",
-	KeyBack:      "🔙 بازگشت",
-	KeyCancel:    "❌ لغو",
-	KeyConfirm:   "✅ تأیید",
-	KeyLoading:   "⏳ در حال بارگذاری...",
-	KeyNotFound:  "❌ یافت نشد.",
+	KeyError:          "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+	KeyCancelled:      "✅ عملیات لغو شد.",
+	KeyDone:           "✅ انجام شد.",
+	KeyBack:           "🔙 بازگشت",
+	KeyCancel:         "❌ لغو",
+	KeyConfirm:        "✅ تأیید",
+	KeyLoading:        "⏳ در حال بارگذاری...",
+	KeyNotFound:       "❌ یافت نشد.",
 	KeyComingSoon:     "🚧 این بخش به‌زودی فعال می‌شود.",
 	KeyAccountTitle:   "👤 <b>پروفایل کاربری شما</b>\n🆔 شناسه: <code>%d</code>\n💰 موجودی: <b>%.2f TON</b>\n🎁 اعتبار: <b>%.2f TON</b>\n💵 مجموع: <b>%.2f TON</b>\n🌟 وضعیت: %s\n\nبرای ساخت ربات بیشتر و دسترسی به امکانات ویژه، حساب خود را شارژ کنید.",
 	KeyLanguageSelect: "🌐 <b>انتخاب زبان پلتفرم</b>\n🇮🇷 لطفاً زبان مورد نظر خود را انتخاب کنید:\n🇬🇧 Please select your preferred language:",
 	KeyBroadcastMenu:  "📢 <b>ماژول ارسال همگانی</b>\nپیام شما در صف قرار گرفته و به‌سرعت به همه کاربران هدف ارسال می‌شود:",
 	KeySystemMenu:     "⚙️ <b>تنظیمات کلی سیستم</b>\nترجیحات اصلی ربات و تنظیمات مرکز فرماندهی را اینجا پیکربندی کنید:",
-	KeyNoAccess:  "⛔ دسترسی ندارید.",
+	KeyNoAccess:       "⛔ دسترسی ندارید.",
 
 	// ── منوی اصلی کاربر ──────────────────────────────────
 	KeyMenuWallet:        "💰 کیف پول",
@@ -112,6 +112,7 @@ var fa = map[Key]string{
 
 	KeyServiceCreate:     "🆕 <b>ایجاد سرویس جدید</b>",
 	KeyServiceSelectType: "🤖 <b>نوع سرویس را انتخاب کنید:</b>",
+	KeyServiceSelectTag:  "🏷 <b>نسخه (تگ) سرویس را انتخاب کنید:</b>\n\nسرویس: <b>%s</b>",
 	KeyServiceSelectPlan: "💎 <b>پلن را انتخاب کنید:</b>\n\nسرویس: %s",
 	KeyServiceEnterToken: `🔑 <b>توکن ربات</b>
 
@@ -130,6 +131,7 @@ var fa = map[Key]string{
 	KeyServiceConfirm: `✅ <b>تأیید ایجاد سرویس</b>
 
 🤖 نوع: <b>%s</b>
+🏷 تگ: <b>%s</b>
 💎 پلن: <b>%s</b>
 💰 قیمت: <b>%.2f TON</b>
 
@@ -288,12 +290,7 @@ var fa = map[Key]string{
 📦 %d پلن | 💰 %d کیف پول`,
 
 	// ── ساب‌اسکریپشن ─────────────────────────────────────
-	KeySubActiveNoBot: `✅ <b>پلن %s فعال است!</b>
-
-🤖 ظرفیت: %d ربات
-📅 انقضا: %s
-
-برای ساخت ربات از منوی «سرویس‌های من» استفاده کنید.`,
+	KeySubActiveNoBot: "✅ <b>پلن %s فعال است!</b>\n\nهنوز ربات فعالی ندارید.\nبرای ساخت ربات روی دکمه زیر کلیک کنید:",
 
 	KeyBuildWithLink: `🔗 <b>لینک دعوت معتبر</b>
 
@@ -332,12 +329,12 @@ var fa = map[Key]string{
 	KeyBtnMakeAdmin: "🛡 ادمین کردن",
 	KeyBtnMakeUser:  "👤 کاربر عادی",
 	// ── ادمین — ربات‌ها
-	KeyBotsTitle:        "🤖 <b>ربات‌ها</b> (%d کل)",
-	KeyAdminBotSummary:  "%s <b>%s</b> — %s",
-	KeyBotNotFound:      "❌ ربات یافت نشد.",
-	KeyBotStopped:       "⏹ ربات <b>%s</b> متوقف شد.",
-	KeyBotStarted:       "▶️ ربات <b>%s</b> شروع به کار کرد.",
-	KeyBotDeleted:       "🗑 ربات <b>%s</b> حذف شد.",
+	KeyBotsTitle:       "🤖 <b>ربات‌ها</b> (%d کل)",
+	KeyAdminBotSummary: "%s <b>%s</b> — %s",
+	KeyBotNotFound:     "❌ ربات یافت نشد.",
+	KeyBotStopped:      "⏹ ربات <b>%s</b> متوقف شد.",
+	KeyBotStarted:      "▶️ ربات <b>%s</b> شروع به کار کرد.",
+	KeyBotDeleted:      "🗑 ربات <b>%s</b> حذف شد.",
 
 	// ── ادمین — لینک‌ها
 	KeyLinksTitle:      "🔗 <b>لینک‌های دعوت</b> (%d لینک)",
@@ -364,7 +361,147 @@ var fa = map[Key]string{
 	KeyTemplateAskName:  "📦 <b>تمپلیت جدید</b>\n\nنام تمپلیت را وارد کنید:",
 	KeyTemplateAdded:    "✅ تمپلیت <b>%s</b> اضافه شد.",
 	KeyTemplateAddError: "❌ خطا در ایجاد تمپلیت.",
-	KeyAdminTemplates:   "📦 <b>%s</b> — %s:%s",
+
+	// ── دکمه‌ها و تستِ سرویس ──
+	KeyBtnTest:             "🧪 تست",
+	KeyBtnNewTemplate:      "➕ تمپلیت جدید",
+	KeyBtnAddCredit:        "💰 افزودن اعتبار",
+	KeyBtnBackToList:       "🔙 بازگشت به لیست",
+	KeyBtnAddServer:        "➕ افزودن سرور",
+	KeyBtnViewWallet:       "💰 مشاهده کیف پول",
+	KeyBtnConfirmDelete:    "🗑 بله، حذف شود",
+	KeyBtnGotIt:            "✅ متوجه شدم",
+	KeyBalanceUpdated:      "✅ <b>موجودی به‌روز شد</b>\n\n💎 موجودی کل: <b>%.4f TON</b>",
+	KeyBalanceAlert:        "💎 موجودی کل: %.4f TON",
+	KeyPaymentPendingAlert: "⏳ پرداخت هنوز تأیید نشده.\n💳 موجودی: %.4f TON | نیاز: %.2f TON\n⚠️ کمبود: %.4f TON\nچند لحظه بعد دوباره بررسی کنید.",
+	KeyTxPending:           "⏳ تراکنش هنوز دریافت نشده. چند لحظه بعد دوباره بررسی کنید.",
+	KeyTxPaid:              "✅ تراکنش دریافت شد!",
+	KeyTxPartial:           "🔸 بخشی از مبلغ دریافت شد (%.4f از %.4f TON). منتظر باقی‌مانده.",
+	KeyTxExpired:           "❌ این فاکتور منقضی شده. لطفاً فاکتور جدید بسازید.",
+	KeyTxNotFound:          "❓ تراکنشی با این کد یافت نشد.",
+	KeyTxCheckFailed:       "⚠️ بررسی وضعیت ممکن نشد. کمی بعد دوباره تلاش کنید.",
+	KeyBtnDepositTON:       "📥 واریز TON",
+	KeyBtnHistory:          "📜 تاریخچه",
+	KeyBtnRedeemPromo:      "🎁 استفاده از کد تخفیف",
+	KeyBtnNewDeposit:       "📥 واریز جدید",
+	KeyBtnCheckPayment:     "🔄 بررسی پرداخت",
+	KeyBtnBcText:           "💬 ارسال متنی",
+	KeyBtnBcForward:        "🔄 فوروارد همگانی",
+	KeyBtnBcFiltered:       "🎯 ارسال فیلترشده",
+	KeyBtnCreateFree:       "✅ ایجاد رایگان",
+	KeyBtnPayCreate:        "✅ پرداخت و ایجاد",
+
+	// ── عمومی / وضعیت ──
+	KeyFree:           "رایگان",
+	KeyDaysCount:      "%d روز",
+	KeyForever:        "∞ ابدی",
+	KeyStatusActive:   "✅ فعال",
+	KeyStatusInactive: "⛔ غیرفعال",
+	KeyErrShort:       "❌ خطا",
+	KeyErrSave:        "❌ خطا در ذخیره",
+
+	// ── ادمین — پلن (ادیتور) ──
+	KeyPlanNotFound:       "❌ پلن پیدا نشد.",
+	KeyBtnNewPlan:         "➕ پلن جدید",
+	KeyBtnBackToPlans:     "🔙 بازگشت به پلن‌ها",
+	KeyBtnEditPlan:        "⚙️ ویرایش: %s",
+	KeyBtnTotalCap:        "🤖 سقف کلی:  %d",
+	KeyAdminPlanRow:       "%s 💎 <b>%s</b> — %s TON | %d روز | سقف %d ربات",
+	KeyPlanEditTitle:      "⚙️ <b>ویرایش پلن: %s</b>\n💰 %s  |  ⏳ %s  |  %s\n\n📊 <b>محدودیت ربات‌ها:</b>\n<i>(هر تغییر بلافاصله ذخیره می‌شود)</i>",
+	KeyAvailableTemplates: "📦 <b>تمپلیت‌های موجود:</b>",
+	KeyPlanTmplChosen:     "تمپلیت: <b>%s</b>\n\n%s",
+	KeyPlanLimitsPrompt:   "حالا محدودیت هر نوع ربات را وارد کنید.\n\nفرمت: <code>نوع=تعداد</code> جداشده با کاما\nمثال: <code>uploader=2,vpn=1</code>\n\nانواع: %s\nیا فقط یک عدد بفرستید تا برای همه انواع اعمال شود.",
+	KeyPlanLimitsInvalid:  "فرمت نامعتبر. مثال: <code>uploader=2,vpn=1</code>",
+	KeyPlanLimitsSaved:    "✅ <b>محدودیت‌ها ثبت شد</b>\n\n%s\n\nمجموع: %d ربات",
+
+	// ── کاربر — پلن‌ها (UI) ──
+	KeyDurationForever:       "برای همیشه",
+	KeyBtnMyBots:             "🤖 ربات‌های من",
+	KeyBtnTopupWallet:        "💎 شارژ کیف پول",
+	KeyBtnRecheck:            "🔄 بررسی مجدد",
+	KeyBtnClose:              "❌ بستن",
+	KeyBtnBuyWith:            "✅ خرید با %.2f TON",
+	KeyPlansUnavailable:      "در حال حاضر پلنی موجود نیست. بعداً دوباره بررسی کنید.",
+	KeyPlansAvailableTitle:   "<b>💎 پلن‌های موجود</b>\n\n",
+	KeyPlanRemDays:           " — %d روز مانده",
+	KeyPlanExpiredShort:      " — منقضی شده",
+	KeyPlanActiveYours:       "✅ <b>پلن فعال شما:</b> %s%s\n\n",
+	KeyPlanRow:               "<b>%s</b>\n💰 %s  |  🤖 %d ربات  |  ⏳ %s\n\n",
+	KeyPlansClickToBuy:       "برای خرید روی پلن مورد نظر کلیک کنید:",
+	KeyPlanLabelFree:         "🆓 %s — رایگان",
+	KeyPlanLabelPaid:         "💎 %s — %.2f TON",
+	KeyPlanAlreadyActive:     "✅ این پلن در حال حاضر برای شما فعال است.",
+	KeyPlanDetail:            "<b>💎 %s</b>\n\n🤖 تعداد ربات: %d عدد\n⏳ مدت: %s\n💰 قیمت: <b>%.2f TON</b>\n\n",
+	KeyWalletBalanceLine:     "💳 موجودی کیف پول شما: <b>%.4f TON</b>\n",
+	KeyBalanceEnough:         "\n✅ موجودی شما کافی است!",
+	KeyBalanceShortfall:      "\n⚠️ کمبود موجودی: <b>%.4f TON</b>",
+	KeyDepositAddrCode:       "\n\n💎 آدرس: <code>%s</code>\n🏷 کد (حتماً در comment وارد کنید): <code>%s</code>",
+	KeyPayServiceUnavailable: "\n⚠️ سرویس پرداخت موقتاً در دسترس نیست.",
+	KeyFreePlanActivated:     "🎉 <b>پلن رایگان فعال شد!</b>\n\n✅ %d ربات — %s\n\nحالا می‌توانید سرویس خود را بسازید.",
+	KeyPlanPurchaseDesc:      "خرید پلن %s",
+	KeyPurchaseSuccess:       "🎉 <b>خرید موفق!</b>\n\n✅ پلن <b>%s</b> فعال شد\n🤖 %d ربات در اختیار شماست\n\nحالا می‌توانید سرویس خود را بسازید.",
+	KeyPaymentNotConfirmed:   "⏳ پرداخت هنوز تأیید نشده.\n\n💳 موجودی فعلی: <b>%.4f TON</b>\n💰 نیاز: <b>%.2f TON</b>\n⚠️ کمبود: %.4f TON\n\nچند دقیقه صبر کنید و دوباره بررسی کنید.",
+
+	// ── UX — ویزارد و badgeها ──
+	KeyWizardStep:      "🧭 مرحله %d از %d",
+	KeyBadgePopular:    "🔥 محبوب",
+	KeyBadgeNewest:     "🆕 جدید",
+	KeyBtnCustomAmount: "✏️ مبلغ دلخواه",
+	KeyBtnRenew:        "🔄 تمدید / ارتقا",
+
+	// ── تمدید سرویس و یادآور انقضا ──
+	KeyRenewConfirm:    "🔄 <b>تمدید سرویس</b>\n\n📛 <code>%s</code>\n💎 پلن: <b>%s</b>\n💰 هزینه تمدید: <b>%.2f TON</b>\n\nاز کیف پولت کسر و سرویس تمدید می‌شود. تأیید می‌کنی؟",
+	KeyBtnConfirmRenew: "✅ تأیید و پرداخت",
+	KeyRenewDone:       "🎉 <b>سرویس تمدید شد!</b>\n\n📛 <code>%s</code>\n⏰ %s",
+	KeyRenewNoPlan:     "❌ این سرویس پلن مشخصی برای تمدید ندارد. لطفاً از «پلن‌ها» اقدام کن.",
+	KeyExpiryReminder:  "⏰ <b>یادآوری انقضا</b>\n\n📛 سرویس <code>%s</code> تا <b>%d روز</b> دیگر منقضی می‌شود.\nبرای جلوگیری از قطع شدن، همین حالا تمدید کن. 🔄",
+
+	// ── کاربر — سرویس‌های من (UI) ──
+	KeyBtnStats:           "📊 آمار",
+	KeyBtnSettings:        "⚙️ تنظیمات",
+	KeyBtnRestart:         "🔄 ری‌استارت",
+	KeyBtnStop:            "⏸ توقف",
+	KeyBtnStart:           "▶️ شروع",
+	KeyBtnDeleteSvc:       "🗑 حذف سرویس",
+	KeyBtnDelete:          "🗑 حذف",
+	KeyBtnCheckStatus:     "🔄 بررسی وضعیت",
+	KeyBtnRetry:           "🔄 تلاش مجدد",
+	KeyBtnCreateSvc:       "➕ ایجاد سرویس",
+	KeyBtnCreateNewSvc:    "➕ ایجاد سرویس جدید",
+	KeyBtnStartFree:       "🆓 شروع رایگان",
+	KeyBtnViewPlans:       "💎 مشاهده پلن‌ها",
+	KeyBtnUpgradePlan:     "💎 ارتقای پلن",
+	KeyMyServicesHeader:   "<b>🤖 سرویس‌های من</b> (%d سرویس)\n",
+	KeySvcNameLine:        "📛 نام: <code>%s</code>\n",
+	KeySvcStatusLine:      "%s وضعیت: <b>%s</b>\n",
+	KeySvcExpiredNL:       "⏰ <b>منقضی شده</b>\n",
+	KeySvcHoursLeft:       "⚠️ %d ساعت تا انقضا\n",
+	KeySvcDaysLeft:        "⏰ %d روز مانده\n",
+	KeyWelcomeNoService:   "👋 سلام <b>%s</b>!\n\nبا CreatorBot می‌توانید ربات تلگرام اختصاصی بسازید.\n\n🆓 <b>پلن رایگان:</b>\nیک ربات رایگان برای همیشه\n\n💎 <b>پلن‌های پولی:</b>\nچند ربات — با امکانات بیشتر\n\nبرای شروع روی «شروع رایگان» کلیک کنید:",
+	KeyNeedPlanFirst:      "برای ساخت ربات باید ابتدا یک پلن داشته باشید.\n\nیک ربات رایگان می‌توانید داشته باشید:",
+	KeyMaxBotsReached:     "❌ به حداکثر ربات رسیده‌اید.\n\n🤖 %d از %d ربات استفاده شده\n\nبرای ساخت ربات بیشتر پلن خود را ارتقا دهید.",
+	KeyStatusRunning:      "در حال اجرا",
+	KeyStatusStopped:      "متوقف",
+	KeyStatusStarting:     "در حال راه‌اندازی...",
+	KeyStatusErrContact:   "خطا — با پشتیبانی تماس بگیرید",
+	KeyTypeNotAllowed:     "❌ پلن فعلی شما اجازه ساخت ربات <b>%s</b> را نمی‌دهد.\n\nبرای دسترسی، پلن خود را ارتقا دهید.",
+	KeyMaxBotsReachedType: "❌ به حداکثر ربات <b>%s</b> رسیده‌اید (%d از %d).\n\nبرای ساخت بیشتر، پلن خود را ارتقا دهید.",
+	KeyActionStopSent:     "⏹ دستور توقف ارسال شد",
+	KeyActionStartSent:    "▶️ دستور شروع ارسال شد",
+	KeyActionRestartSent:  "🔄 دستور ری‌استارت ارسال شد",
+	KeyActionDeleteSent:   "🗑 دستور حذف ارسال شد",
+	KeySvcStatusShort:     "%s وضعیت سرویس: <b>%s</b>",
+	KeySvcStatsDetail:     "📊 <b>آمار سرویس</b>\n\n📛 نام: <code>%s</code>\n%s وضعیت: <b>%s</b>",
+	KeyServiceGeneric:     "سرویس",
+	KeyUnknown:            "نامشخص",
+	KeyExpiredLabel:       "⏰ <b>منقضی شده</b>",
+	KeyDaysUntilExpiry:    "⏰ %d روز مانده تا انقضا",
+	KeyPlanLine:           "💎 پلن: <b>%s</b>",
+	KeyAdminTestAskToken: "🧪 <b>دپلوی تستی</b>\n\nسرویس: <b>%s</b> | تگ: <b>%s</b>\n\n" +
+		"توکن ربات تست را از @BotFather بفرستید (بدون پلن و پرداخت دپلوی می‌شود):",
+	KeyAdminTestDeployed: "🧪 <b>سرویس تستی در حال راه‌اندازی است.</b>\n\n" +
+		"📛 کانتینر: <code>%s</code>\nظرف چند دقیقه آماده می‌شود.",
+	KeyAdminTemplates: "📦 <b>%s</b> — %s:%s",
 
 	// ── ادمین — سرورها
 	KeyServersTitle:    "🖥 <b>سرورها</b> (%d سرور)",
@@ -394,8 +531,101 @@ var fa = map[Key]string{
 	KeyBotTypeArchive:  "📦 آرشیو",
 
 	// ── متفرقه
-	KeyNoPlan:    "❌ اشتراک فعالی ندارید.",
+	KeyNoPlan:     "❌ اشتراک فعالی ندارید.",
 	KeySelectLang: "🌍 زبان مورد نظر خود را انتخاب کنید:",
-	KeyBtnLimit:  "🔢 %d بار",
+	KeyBtnLimit:   "🔢 %d بار",
 
+	// ── wizard — خطاها ───────────────────────────────────
+	KeyWizardNoPlan:      "❌ پلنی برای این نوع سرویس یافت نشد.",
+	KeyWizardRestart:     "❌ لطفاً از ابتدا شروع کنید.",
+	KeyWizardNoServer:    "❌ هیچ سروری در دسترس نیست. با مدیر تماس بگیرید.",
+	KeyWizardNoTemplate:  "❌ قالب سرویس پیدا نشد. با مدیر تماس بگیرید.",
+	KeyWizardCreateError: "❌ خطا در ایجاد سرویس. لطفاً دوباره تلاش کنید.",
+	KeyWizardDeployError: "❌ خطا در ارسال دستور راه‌اندازی. مبلغ به کیف پول بازگشت داده شد.",
+	KeyWizardIncomplete:  "❌ اطلاعات ناقص است. از ابتدا شروع کنید.",
+	KeyWizardLowBalance:  "❌ <b>موجودی کافی نیست.</b>\n\n💡 برای شارژ کیف پول از منوی «کیف پول» استفاده کنید.",
+	KeyInstanceNotFound:  "❌ سرویس یافت نشد.",
+	KeyInstanceNoAccess:  "⛔ دسترسی به این سرویس را ندارید.",
+
+	// ── ادمین — افزودن اعتبار ────────────────────────────
+	KeyAdminCreditAsk:     "💰 <b>افزودن اعتبار</b>\n\nکاربر: <code>%d</code>\n\nمقدار اعتبار (به TON) را وارد کنید:\n<i>مثال: 1.5 یا 10</i>",
+	KeyAdminCreditDone:    "✅ <b>%.4f TON</b> به کیف پول کاربر <code>%d</code> اضافه شد.",
+	KeyAdminCreditError:   "❌ خطا در افزودن اعتبار. لطفاً دوباره تلاش کنید.",
+	KeyAdminCreditInvalid: "❌ مقدار نامعتبر. یک عدد مثبت وارد کنید (مثال: 2.5)",
+
+	// ── کیف پول — صفحه اصلی ─────────────────────────────
+	KeyWalletTitle: `💰 <b>کیف پول</b>
+
+💎 موجودی TON: <b>%.4f</b>
+🎁 اعتبار هدیه: <b>%.4f</b>
+💵 کل موجودی: <b>%.4f</b>`,
+
+	// ── تنظیمات ──────────────────────────────────────────
+	KeySettingsLanguage: "🌐 تغییر زبان",
+	KeySettingsSupport:  "💬 پشتیبانی",
+	KeySettingsAbout:    "ℹ️ درباره پلتفرم",
+
+	// ── سرویس — تنظیمات ──────────────────────────────────
+	KeySvcSettingsDetail: `⚙️ <b>تنظیمات سرویس</b>
+
+📛 نام: <code>%s</code>
+🤖 نوع: <b>%s</b>
+%s وضعیت: <b>%s</b>
+🖥 سرور: <code>%s</code>
+%s`,
+
+	// ── حذف — تأیید ──────────────────────────────────────
+	KeyDeleteConfirm: "⚠️ <b>تأیید حذف</b>\n\nسرویس <code>%s</code> برای همیشه حذف می‌شود.\n\nاین عمل غیرقابل بازگشت است. مطمئن هستید؟",
+	KeyDeleteDone:    "🗑 سرویس <code>%s</code> حذف شد.",
+
+	// ── واریز کیف پول ────────────────────────────────────
+	KeyWalletTopupAsk:     "💰 <b>شارژ کیف پول</b>\n\nمقدار TON مورد نظر برای واریز را وارد کنید:\n<i>مثال: 5.5</i>",
+	KeyWalletTopupInvoice: "📥 <b>اطلاعات واریز TON</b>\n\n💰 مبلغ: <b>%.4f TON</b>\n\n📬 آدرس واریز:\n<code>%s</code>\n\n🏷 کد پیگیری (حتماً در comment تراکنش وارد کنید):\n<code>%s</code>\n\n⏰ این invoice تا ۲۴ ساعت معتبر است.",
+	KeyWalletTopupInvalid: "❌ مقدار نامعتبر. یک عدد مثبت به TON وارد کنید (مثال: 5.5)",
+
+	// ── تاریخچه تراکنش‌ها ────────────────────────────────
+	KeyWalletHistoryNote: "📜 <b>تاریخچه تراکنش‌ها</b>\n\n💎 موجودی TON: <b>%.4f</b>\n🎁 اعتبار هدیه: <b>%.4f</b>\n💵 کل: <b>%.4f</b>\n\n📊 تاریخچه کامل تراکنش‌ها به‌زودی اضافه می‌شود.",
+
+	// ── پشتیبانی و اطلاعات (inline) ──────────────────────
+	KeySupportInline: `💬 <b>پشتیبانی CreatorBot</b>
+
+برای دریافت کمک از راه‌های زیر استفاده کنید:
+
+📚 مستندات: @CreatorBotDocs
+💬 پشتیبانی: @CreatorBotSupport
+🐞 گزارش باگ: @CreatorBotBug
+
+⏰ پاسخگویی: ۹ صبح تا ۱۰ شب`,
+
+	KeyAboutPlatform: `ℹ️ <b>درباره CreatorBot</b>
+
+🤖 <b>CreatorBot</b> یک پلتفرم PaaS برای ساخت ربات تلگرام بدون کدنویسی است.
+
+✨ <b>امکانات:</b>
+• ربات آپلودر فایل
+• ربات VPN و فروش اشتراک
+• ربات قفل ممبرشیپ
+• ربات آرشیو با جستجوی فارسی
+• سیستم کیف پول TON یکپارچه
+• تبلیغات هدفمند و درآمد گروه‌ها
+
+💰 <b>واحد پرداخت:</b> TON Blockchain
+🔒 <b>امنیت:</b> احراز هویت پیشرفته بین سرویس‌ها
+
+📌 نسخه: ۳.۰`,
+
+	// ── ادمین — ارسال همگانی ─────────────────────────────
+	KeyBroadcastAskText: "📢 <b>ارسال همگانی</b>\n\nمتن پیامی که می‌خواهید به همه کاربران ارسال شود را بنویسید:",
+	KeyBroadcastPreview: "👁 <b>پیش‌نمایش پیام</b>\n\n─────────────\n%s\n─────────────\n\n📤 این پیام به <b>%d</b> کاربر ارسال خواهد شد.\n\nتأیید می‌کنید؟",
+	KeyBroadcastDone:    "✅ <b>ارسال همگانی تمام شد.</b>\n\n📤 ارسال شده: %d\n❌ خطا: %d",
+	KeyBroadcastStarted: "🚀 <b>ارسال همگانی شروع شد.</b>\n\nپس از اتمام، گزارش نتیجه برایتان ارسال می‌شود.",
+	KeyBroadcastConfirm: "✅ تأیید و ارسال",
+
+	// ── ادمین — سیستم ────────────────────────────────────
+	KeyAdminSysInfo: `⚙️ <b>وضعیت سیستم</b>
+
+🤖 پلن‌ها: %d
+🖥 سرورها: %d (🟢 %d آنلاین)
+📦 تمپلیت‌ها: %d
+👥 کاربران: %d`,
 }

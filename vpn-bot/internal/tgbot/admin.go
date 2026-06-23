@@ -125,28 +125,7 @@ func (h *Handler) adminPlans(ctx context.Context, c tele.Context) error {
 }
 
 // ════════════════════════════════════════════════════════════
-// پنل‌ها
-// ════════════════════════════════════════════════════════════
-
-func (h *Handler) adminPanels(ctx context.Context, c tele.Context) error {
-	// پنل از طریق env تنظیم می‌شود — نه DB
-	// اطلاعات از panel interface می‌گیریم
-	count, err := h.panel.ActiveCount(ctx)
-	if err != nil {
-		return c.Send("❌ خطا در اتصال به پنل.", kbAdminMain())
-	}
-	return c.Send(
-		fmt.Sprintf(
-			"<b>🖥 پنل VPN</b>\n\n"+
-				"🟢 وضعیت: متصل\n"+
-				"👥 کاربران فعال: <b>%d</b>\n\n"+
-				"تنظیمات پنل از .env خوانده می‌شود.",
-			count,
-		),
-		tele.ModeHTML, kbAdminMain(),
-	)
-}
-
+// پنل‌ها — نسخه‌ی کامل (DB-based) در admin_panel.go قرار دارد
 // ════════════════════════════════════════════════════════════
 // تأیید پرداخت‌ها
 // ════════════════════════════════════════════════════════════
@@ -222,11 +201,11 @@ func (h *Handler) approvePayment(ctx context.Context, c tele.Context, payIDStr s
 				// فعال‌سازی از طریق پنل
 				username := genVPNUsername(user.TelegramID)
 				expiresAt := time.Now().AddDate(0, 0, plan.DurationDay)
-				dataLimit := int64(plan.DataGB * 1e9)
+				dataLimitBytes := int64(plan.DataGB * 1e9)
 
 				vpnUser, err := h.panel.CreateUser(ctx, ports.CreateVPNUserRequest{
 					Username:  username,
-					DataLimit: dataLimit,
+					DataLimit: dataLimitBytes,
 					ExpiresAt: expiresAt,
 				})
 				if err == nil {
@@ -239,7 +218,7 @@ func (h *Handler) approvePayment(ctx context.Context, c tele.Context, payIDStr s
 						UserID: user.ID, PanelID: panelID,
 						PlanID: plan.ID, Username: vpnUser.Username,
 						Status: models.SubActive, ExpiresAt: expiresAt,
-						DataLimit: dataLimit,
+						DataLimit: float64(dataLimitBytes),
 					}
 					h.store.CreateSubscription(ctx, sub)
 

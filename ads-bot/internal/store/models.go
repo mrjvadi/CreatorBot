@@ -228,6 +228,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&MemberAnalysis{},
 		&Campaign{},
 		&Impression{},
+		// lock-rental tables
+		&LockRentalCampaign{},
+		&FreeBotSlot{},
+		&RentalJoinReward{},
+		&FreeBotOwnerReward{},
 	)
 }
 

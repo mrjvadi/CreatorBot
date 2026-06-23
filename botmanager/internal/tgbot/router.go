@@ -15,7 +15,7 @@ func (h *Handler) onCallback(c tele.Context) error {
 	ctx := context.Background()
 	uid := c.Sender().ID
 	data := c.Callback().Data
-	defer c.Respond()
+	defer func() { _ = c.Respond() }()
 
 	if len(data) > 0 && data[0] == '\f' {
 		data = data[1:]
@@ -31,289 +31,214 @@ func (h *Handler) onCallback(c tele.Context) error {
 	switch action {
 
 	case "lang":
-		return h.setLanguage(ctx, c, arg)
+		return h.SetLanguage(ctx, c, arg)
 	case "back_main":
 		_ = c.Respond()
-		return h.sendMain(c, h.t(ctx, uid, i18n.KeyDone))
-	case "wallet_topup", "redeem_promo", "bc_text", "bc_forward",
-		"bc_filtered", "sys_notif":
-		return c.Respond(&tele.CallbackResponse{Text: h.t(ctx, uid, i18n.KeyComingSoon)})
+		return h.SendMain(c, h.T(ctx, uid, i18n.KeyDone))
+	// ── کیف پول ───────────────────────────────────────────
+	case "wallet_topup":
+		return h.WalletTopupStart(ctx, c)
+	case "topup_amt":
+		return h.WalletTopupAmount(ctx, c, arg)
+	case "topup_custom":
+		return h.WalletTopupCustom(ctx, c)
+	case "wallet_history":
+		return h.WalletHistory(ctx, c)
+	case "wallet_home":
+		_ = c.Respond()
+		return h.UserWallet(ctx, c)
+
+	// ── پشتیبانی / اطلاعات ───────────────────────────────
+	case "user_support_inline":
+		_ = c.Respond()
+		return h.UserSupportInline(ctx, c)
+	case "about_platform":
+		_ = c.Respond()
+		return h.AboutPlatform(ctx, c)
+
+	// ── ارسال همگانی ──────────────────────────────────────
+	case "bc_text":
+		return h.BroadcastStartText(ctx, c)
+	case "bc_confirm":
+		return h.BroadcastConfirm(ctx, c)
+	case "bc_forward", "bc_filtered":
+		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
+
+	// ── کیف پول — بررسی پرداخت ───────────────────────────
+	// وضعیتِ خودِ تراکنش (با کُد فاکتور) به‌صورت اعلان نشان داده می‌شود؛
+	// پیامِ فاکتور و دکمه بسته نمی‌شود تا هر بار قابل بررسی باشد. (arg = code)
+	case "topup_check":
+		if h.Pay == nil {
+			return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyError), ShowAlert: true})
+		}
+		st, err := h.Pay.InvoiceStatus(ctx, uid, arg)
+		if err != nil {
+			return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyTxCheckFailed), ShowAlert: true})
+		}
+		return c.Respond(h.TxStatusAlert(ctx, uid, st))
+
+	// ── ادمین — سیستم ────────────────────────────────────
+	case "admin_sys_info":
+		return h.AdminSysInfo(ctx, c)
+	case "admin_sys_plans":
+		_ = c.Respond()
+		return h.AdminPlansList(ctx, c)
+	case "admin_sys_servers":
+		_ = c.Respond()
+		return h.AdminServersList(ctx, c)
+	case "admin_sys_templates":
+		_ = c.Respond()
+		return h.AdminTemplatesList(ctx, c)
+	case "admin_sys_member", "admin_sys_nats", "admin_sys_db", "admin_sys_metrics":
+		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
+
+	// ── متفرقه (stub) ─────────────────────────────────────
+	case "redeem_promo", "sys_notif":
+		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
+
 	case "sys_lang":
 		_ = c.Respond()
-		return h.userLanguageMenu(ctx, c)
+		return h.UserLanguageMenu(ctx, c)
+
+	// ── ادمین — افزودن اعتبار ──────────────────────────
+	case "add_credit":
+		targetTid, err := strconv.ParseInt(arg, 10, 64)
+		if err != nil {
+			return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyError)})
+		}
+		_ = c.Respond()
+		return h.AdminCreditStart(ctx, c, targetTid)
 
 	// ── پلن‌ها ────────────────────────────────────────────
 	case "show_plans":
-		return h.userPlans(ctx, c)
+		return h.UserPlans(ctx, c)
 	case "select_plan":
-		return h.userSelectPlan(ctx, c, arg)
+		return h.UserSelectPlan(ctx, c, arg)
 	case "buy_plan":
-		return h.executePlanPurchase(ctx, c, arg)
+		return h.ExecutePlanPurchase(ctx, c, arg)
 	case "start_free":
-		plan, _ := h.store.FindPlan(ctx, arg)
-		u, _ := h.getOrCreateUser(ctx, c)
-		if plan != nil && u != nil {
-			return h.activateFreePlanInline(ctx, c, u, plan)
-		}
-		return c.Edit(h.t(ctx, uid, i18n.KeyNoFreePlan))
+		return h.UserStartFree(ctx, c, arg)
 	case "check_plan":
 		sub := strings.SplitN(arg, ":", 2)
 		if len(sub) == 2 {
-			return h.checkPlanAfterDeposit(ctx, c, sub[0], sub[1])
+			return h.CheckPlanAfterDeposit(ctx, c, sub[0], sub[1])
 		}
 	case "plan_current":
-		return h.userPlans(ctx, c)
+		return h.UserPlans(ctx, c)
 
 	// ── سرویس‌های من ─────────────────────────────────────
 	case "my_bots":
-		return h.userBotsList(ctx, c)
+		return h.UserBotsList(ctx, c)
 	case "svc_create":
-		return h.wizardSelectType(ctx, c)
+		return h.WizardSelectType(ctx, c)
 	case "svc_type":
-		return h.wizardSelectPlan(ctx, c, arg)
+		return h.WizardSelectTag(ctx, c, arg)
+	case "svc_tag":
+		return h.WizardSelectPlan(ctx, c, arg)
 	case "wizard_plan":
-		return h.wizardEnterToken(ctx, c, arg)
+		return h.WizardEnterToken(ctx, c, arg)
 	case "wizard_pay":
-		return h.wizardPay(ctx, c)
+		return h.WizardPay(ctx, c)
 	case "wizard_create":
-		return h.wizardCreateFree(ctx, c)
+		return h.WizardCreateFree(ctx, c)
 	case "svc_status":
-		return h.instanceStatus(ctx, c, arg)
+		return h.InstanceStatus(ctx, c, arg)
 
 	// ── عملیات روی سرویس ─────────────────────────────────
 	case "bot_stop":
-		return h.instanceAction(ctx, c, arg, "stop")
+		return h.InstanceAction(ctx, c, arg, "stop")
 	case "bot_start":
-		return h.instanceAction(ctx, c, arg, "start")
+		return h.InstanceAction(ctx, c, arg, "start")
 	case "bot_restart":
-		return h.instanceAction(ctx, c, arg, "restart")
+		return h.InstanceAction(ctx, c, arg, "restart")
 	case "bot_delete":
-		return h.instanceAction(ctx, c, arg, "delete")
+		// نمایش تأیید قبل از حذف
+		defer func() { _ = c.Respond() }()
+		inst, err := h.Store.FindInstance(ctx, arg)
+		if err != nil || inst == nil {
+			return c.Edit(h.T(ctx, uid, i18n.KeyInstanceNotFound))
+		}
+		kb := &tele.ReplyMarkup{}
+		kb.Inline(
+			kb.Row(
+				kb.Data(h.Btn(ctx, uid, i18n.KeyBtnConfirmDelete), "confirm_delete:"+arg),
+				kb.Data(h.Btn(ctx, uid, i18n.KeyBtnCancel), "cancel"),
+			),
+		)
+		return c.Edit(
+			h.T(ctx, uid, i18n.KeyDeleteConfirm, inst.ContainerName),
+			tele.ModeHTML, kb,
+		)
+	case "confirm_delete":
+		return h.InstanceAction(ctx, c, arg, "delete")
+	case "svc_settings":
+		return h.InstanceSettings(ctx, c, arg)
+	case "svc_renew":
+		return h.InstanceRenewConfirm(ctx, c, arg)
+	case "svc_renew_do":
+		return h.InstanceRenewExecute(ctx, c, arg)
 	case "svc_stats":
-		return h.instanceStats(ctx, c, arg)
+		return h.InstanceStats(ctx, c, arg)
 
 	// ── راهنما ────────────────────────────────────────────
 	case "how_to_build":
 		kb := &tele.ReplyMarkup{}
-		kb.Inline(kb.Row(kb.Data("✅ متوجه شدم", "cancel")))
-		return c.Edit(h.t(ctx, uid, i18n.KeyHowToBuild), tele.ModeHTML, kb)
+		kb.Inline(kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBtnGotIt), "cancel")))
+		return c.Edit(h.T(ctx, uid, i18n.KeyHowToBuild), tele.ModeHTML, kb)
 
 	// ── ادمین — کاربران ───────────────────────────────────
 	case "block_user":
-		return h.adminUserAction(ctx, c, arg, "block")
+		return h.AdminUserAction(ctx, c, arg, "block")
 	case "unblock_user":
-		return h.adminUserAction(ctx, c, arg, "unblock")
+		return h.AdminUserAction(ctx, c, arg, "unblock")
 	case "make_admin":
-		return h.adminUserAction(ctx, c, arg, "make_admin")
+		return h.AdminUserAction(ctx, c, arg, "make_admin")
 	case "make_user":
-		return h.adminUserAction(ctx, c, arg, "make_user")
+		return h.AdminUserAction(ctx, c, arg, "make_user")
 	case "admin_users":
-		return h.adminUsersList(ctx, c)
+		return h.AdminUsersList(ctx, c)
+	case "start_plan_add":
+		_ = c.Respond()
+		return h.AdminStartAddPlan(ctx, c)
+
+	// ── ویرایش پلن با دکمه‌های ➕➖ ─────────────────────────
+	case "plan_edit":
+		return h.AdminPlanEdit(ctx, c, arg)
+	case "admin_plans_back":
+		_ = c.Respond()
+		return h.AdminPlansList(ctx, c)
+	case "plim_up":
+		// arg: planID:botType
+		parts2 := strings.SplitN(arg, ":", 2)
+		if len(parts2) != 2 {
+			return nil
+		}
+		return h.AdminPlanLimitChange(ctx, c, parts2[0], parts2[1], +1)
+	case "plim_dn":
+		parts2 := strings.SplitN(arg, ":", 2)
+		if len(parts2) != 2 {
+			return nil
+		}
+		return h.AdminPlanLimitChange(ctx, c, parts2[0], parts2[1], -1)
+	case "pmb_up":
+		return h.AdminPlanMaxBotsChange(ctx, c, arg, +1)
+	case "pmb_dn":
+		return h.AdminPlanMaxBotsChange(ctx, c, arg, -1)
+
 	case "add_server":
-		return h.adminServerStart(ctx, c)
-	case "create_link":
-		h.setStep(ctx, uid, stepLinkType)
-		return c.Edit(h.t(ctx, uid, i18n.KeyLinkAskType), h.kbBotType(ctx, uid))
+		return h.AdminServerStart(ctx, c)
 	case "create_tmpl":
-		h.setStep(ctx, uid, stepTmplType)
-		return c.Edit(h.t(ctx, uid, i18n.KeyTemplateAskType), h.kbBotType(ctx, uid))
+		// نوعِ سرویس به‌صورت متن آزاد وارد می‌شود (انواع پویا).
+		h.SetStep(ctx, uid, stepTmplType)
+		return c.Edit(h.T(ctx, uid, i18n.KeyTemplateAskType),
+			tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case "tmpl_test":
+		return h.AdminTestStart(ctx, c, arg)
 
 	// ── لغو ───────────────────────────────────────────────
 	case "cancel":
-		h.clearState(ctx, uid)
-		return h.sendMain(c, h.t(ctx, uid, i18n.KeyCancelled))
-	}
-
-	return nil
-}
-
-// onText پیام‌های متنی.
-func (h *Handler) onText(c tele.Context) error {
-	ctx := context.Background()
-	uid := c.Sender().ID
-	text := c.Text()
-
-	// state فعال
-	st := h.getState(ctx, uid)
-	if st.Step != stepIdle {
-		return h.handleStep(ctx, c, st, text)
-	}
-
-	// wizard pending (invite link)
-	if token := h.getWizardPending(ctx, uid); token != "" {
-		switch text {
-		case h.btn(ctx, uid, i18n.KeyBtnYesBuild):
-			h.clearWizardPending(ctx, uid)
-			h.setStep(ctx, uid, stepWizardToken, "invite_token", token)
-			return c.Send(h.t(ctx, uid, i18n.KeyWizardAskToken),
-				tele.ModeHTML, h.kbBackCancel(ctx, uid))
-		default:
-			if h.isCancel(ctx, uid, text) {
-				h.clearWizardPending(ctx, uid)
-				return h.sendMain(c, h.t(ctx, uid, i18n.KeyCancelled))
-			}
-		}
-	}
-
-	// cancel
-	if h.isCancel(ctx, uid, text) {
-		return h.onCancel(c)
-	}
-
-	// ── ادمین ────────────────────────────────────────────
-	if h.isAdmin(c) {
-		switch text {
-		case h.btn(ctx, uid, i18n.KeyMenuUsers):
-			return h.adminUsersList(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuBots):
-			return h.adminBotsList(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuPlans):
-			return h.adminPlansList(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuLinks):
-			return h.adminLinksList(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuServers):
-			return h.adminServersList(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuTemplates):
-			return h.adminTemplatesList(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuStats):
-			return h.adminStats(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuBroadcast):
-			return h.adminBroadcastMenu(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuSystem):
-			return h.adminSystemMenu(ctx, c)
-		case h.btn(ctx, uid, i18n.KeyMenuExitAdmin):
-			return h.sendMain(c, h.t(ctx, uid, i18n.KeyDone))
-		}
-		return nil
-	}
-
-	// ── کاربر ────────────────────────────────────────────
-	switch text {
-	case h.btn(ctx, uid, i18n.KeyMenuCreateBot):
-		return h.userPlans(ctx, c)
-	case h.btn(ctx, uid, i18n.KeyMenuMyBots):
-		return h.userBotsList(ctx, c)
-	case h.btn(ctx, uid, i18n.KeyMenuAccount):
-		return h.userAccount(ctx, c)
-	case h.btn(ctx, uid, i18n.KeyMenuPlans):
-		return h.userPlans(ctx, c)
-	case h.btn(ctx, uid, i18n.KeyMenuTutorials):
-		return h.onHelp(c)
-	case h.btn(ctx, uid, i18n.KeyMenuSupport):
-		return h.userSupport(c)
-	case h.btn(ctx, uid, i18n.KeyMenuLanguage):
-		return h.userLanguageMenu(ctx, c)
-	}
-
-	return nil
-}
-
-// handleStep مدیریت state machine.
-func (h *Handler) handleStep(ctx context.Context, c tele.Context, st userState, text string) error {
-	uid := c.Sender().ID
-
-	if h.isCancel(ctx, uid, text) {
-		h.clearState(ctx, uid)
-		return h.sendMain(c, h.t(ctx, uid, i18n.KeyCancelled))
-	}
-
-	switch st.Step {
-
-	// ══ سرور ══════════════════════════════════════════════
-	case stepServerName:
-		h.setStep(ctx, uid, stepServerIP, "name", text)
-		return c.Send(h.t(ctx, uid, i18n.KeyServerAskIP),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepServerIP:
-		return h.adminServerAdd(ctx, c, st.Data["name"], text)
-
-	// ══ تمپلیت ════════════════════════════════════════════
-	case stepTmplType:
-		bt := h.botTypeFromText(ctx, uid, text)
-		if bt == "" {
-			return c.Send(h.t(ctx, uid, i18n.KeyTemplateAskType), h.kbBotType(ctx, uid))
-		}
-		h.setStep(ctx, uid, stepTmplImage, "type", bt)
-		return c.Send(h.t(ctx, uid, i18n.KeyTemplateAskImage),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepTmplImage:
-		h.setStep(ctx, uid, stepTmplTag, "image", text)
-		return c.Send(h.t(ctx, uid, i18n.KeyTemplateAskTag),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepTmplTag:
-		h.setStep(ctx, uid, stepTmplName, "tag", text)
-		return c.Send(h.t(ctx, uid, i18n.KeyTemplateAskName),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepTmplName:
-		return h.adminTemplateAdd(ctx, c, st.Data["type"], st.Data["image"], st.Data["tag"], text)
-
-	// ══ لینک ══════════════════════════════════════════════
-	case stepLinkType:
-		bt := h.botTypeFromText(ctx, uid, text)
-		if bt == "" {
-			return c.Send(h.t(ctx, uid, i18n.KeyLinkAskType), h.kbBotType(ctx, uid))
-		}
-		h.setStep(ctx, uid, stepLinkLimit, "type", bt)
-		return c.Send(h.t(ctx, uid, i18n.KeyLinkAskLimit), h.kbLinkLimit(ctx, uid))
-	case stepLinkLimit:
-		limit := h.linkLimitFromText(ctx, uid, text)
-		if limit < 0 {
-			return c.Send(h.t(ctx, uid, i18n.KeyLinkAskLimit), h.kbLinkLimit(ctx, uid))
-		}
-		h.setStep(ctx, uid, stepLinkLabel, "limit", strconv.Itoa(limit))
-		return c.Send(h.t(ctx, uid, i18n.KeyLinkAskLabel),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepLinkLabel:
-		label := text
-		if label == "0" {
-			label = ""
-		}
-		limit, _ := strconv.Atoi(st.Data["limit"])
-		return h.adminLinkCreate(ctx, c, st.Data["type"], limit, label)
-
-	// ══ پلن ═══════════════════════════════════════════════
-	case stepPlanTmpl:
-		return h.adminPlanStepName(ctx, c, text)
-	case stepPlanName:
-		h.setStep(ctx, uid, stepPlanDays, "name", text)
-		return c.Send(h.t(ctx, uid, i18n.KeyPlanAskDays),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepPlanDays:
-		days, err := strconv.Atoi(text)
-		if err != nil || days < 0 {
-			return c.Send(h.t(ctx, uid, i18n.KeyPlanInvalidNumber), h.kbBackCancel(ctx, uid))
-		}
-		h.setStep(ctx, uid, stepPlanPrice, "days", text)
-		return c.Send(h.t(ctx, uid, i18n.KeyPlanAskPrice),
-			tele.ModeHTML, h.kbBackCancel(ctx, uid))
-	case stepPlanPrice:
-		price, err := strconv.ParseFloat(text, 64)
-		if err != nil || price < 0 {
-			return c.Send(h.t(ctx, uid, i18n.KeyPlanInvalidNumber), h.kbBackCancel(ctx, uid))
-		}
-		days, _ := strconv.Atoi(st.Data["days"])
-		return h.adminPlanAdd(ctx, c, st.Data["tmpl_id"], st.Data["name"], days, price)
-	case stepPlanLimits:
-		return h.adminPlanSetLimits(ctx, c, st.Data["plan_id"], text)
-
-	// ══ کاربر ═════════════════════════════════════════════
-	case stepUserAction:
-		return h.adminUserHandleAction(ctx, c, st.Data["user_id"], text)
-
-	// ══ wizard ════════════════════════════════════════════
-	case stepWizardToken:
-		return h.wizardFinish(ctx, c, "", text)
-
-	// ══ زبان ══════════════════════════════════════════════
-	case stepLangSelect:
-		h.clearState(ctx, uid)
-		switch text {
-		case "🇮🇷 فارسی":
-			h.tr.SetLang(ctx, uid, i18n.FA)
-		case "🇬🇧 English":
-			h.tr.SetLang(ctx, uid, i18n.EN)
-		}
-		return h.sendMain(c, h.t(ctx, uid, i18n.KeyLangChanged))
+		h.ClearState(ctx, uid)
+		return h.SendMain(c, h.T(ctx, uid, i18n.KeyCancelled))
 	}
 
 	return nil

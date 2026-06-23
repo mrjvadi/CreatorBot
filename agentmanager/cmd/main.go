@@ -4,19 +4,20 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
-	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/agentmanager/internal/docker"
+	"github.com/mrjvadi/creatorbot/agentmanager/internal/heartbeat"
 	"github.com/mrjvadi/creatorbot/agentmanager/internal/queue"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
+	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 )
 
 type Config struct {
@@ -25,10 +26,26 @@ type Config struct {
 	NatsUser     string `mapstructure:"NATS_USERNAME"`
 	NatsPass     string `mapstructure:"NATS_PASSWORD"`
 	HeartbeatSec int    `mapstructure:"HEARTBEAT_INTERVAL_SEC"`
+
+	// ── تنظیمات امنیتی/منابع پیش‌فرض container ها ──
+	// AllowedImages لیست prefix های مجاز، جداشده با کاما (whitelist اجباری).
+	AllowedImages    string  `mapstructure:"ALLOWED_IMAGES"`
+	DefaultMemoryMB  int64   `mapstructure:"DEFAULT_MEMORY_MB"`
+	DefaultCPUs      float64 `mapstructure:"DEFAULT_CPUS"`
+	DefaultPidsLimit int64   `mapstructure:"DEFAULT_PIDS_LIMIT"`
+	ReadonlyRootfs   bool    `mapstructure:"READONLY_ROOTFS"`
+	DefaultTmpfsMB   int64   `mapstructure:"DEFAULT_TMPFS_MB"`
 }
 
 func main() {
-	var cfg Config
+	// پیش‌فرض‌های امن؛ اگر در .env تنظیم نشوند همین‌ها می‌مانند.
+	cfg := Config{
+		DefaultMemoryMB:  512,
+		DefaultCPUs:      1.0,
+		DefaultPidsLimit: 256,
+		ReadonlyRootfs:   true,
+		DefaultTmpfsMB:   64,
+	}
 	config.MustLoad(&cfg)
 	log := logger.MustNew(false)
 
@@ -39,22 +56,60 @@ func main() {
 		cfg.HeartbeatSec = 5
 	}
 
+	// ── ساخت SecurityPolicy از config ──
+	var allowed []string
+	for _, p := range strings.Split(cfg.AllowedImages, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			allowed = append(allowed, p)
+		}
+	}
+	policy := docker.SecurityPolicy{
+		AllowedImages:    allowed,
+		DefaultMemoryMB:  cfg.DefaultMemoryMB,
+		DefaultCPUs:      cfg.DefaultCPUs,
+		DefaultPidsLimit: cfg.DefaultPidsLimit,
+		ReadonlyRootfs:   cfg.ReadonlyRootfs,
+		DefaultTmpfsMB:   cfg.DefaultTmpfsMB,
+	}
+
+	// ── NATS ─────────────────────────────────────────────────────
 	nc, err := natsclient.New(natsclient.Config{
 		URL:      cfg.NatsURL,
 		Username: cfg.NatsUser,
 		Password: cfg.NatsPass,
+		Name:     "agentmanager",
 	})
 	if err != nil {
 		log.Fatal("nats connect failed", ports.F("err", err))
 	}
 	defer nc.Close()
 
+	// ── Docker SDK client ─────────────────────────────────────────
+	// هیچ exec.Command وجود ندارد — مستقیم با Docker daemon از طریق socket
+	dockerClient, err := docker.NewClient(log, policy)
+	if err != nil {
+		log.Fatal("docker sdk init failed", ports.F("err", err))
+	}
+	defer dockerClient.Close()
+	log.Info("docker sdk connected")
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// ── Deploy Worker Pool (concurrent limit) ───────────────
+	// ── JetStream streams ─────────────────────────────────────────
+	setupCtx, cancelSetup := context.WithTimeout(ctx, 10*time.Second)
+	if err := nc.EnsureStream(setupCtx, protocol.StreamAgent, []string{"agent.>"}); err != nil {
+		log.Fatal("ensure AGENT stream failed", ports.F("err", err))
+	}
+	if err := nc.EnsureStream(setupCtx, protocol.StreamDeploy, []string{"deploy.>"}); err != nil {
+		log.Fatal("ensure DEPLOY stream failed", ports.F("err", err))
+	}
+	cancelSetup()
+	log.Info("jetstream streams ready")
+
+	// ── Deploy Worker Pool ────────────────────────────────────────
 	worker := queue.New(cfg.ServerID, nc, func(ctx context.Context, cmd protocol.DeployCommand) error {
-		_, err := handleCommand(ctx, nc, cfg.ServerID, cmd, log)
+		_, err := handleCommand(ctx, nc, cfg.ServerID, cmd, dockerClient, log)
 		return err
 	}, log)
 	go worker.Start(ctx)
@@ -62,30 +117,44 @@ func main() {
 		ports.F("subject", protocol.DeploySubject(cfg.ServerID)),
 		ports.F("max_concurrent", queue.MaxConcurrentDeploys))
 
-	// ── Heartbeat loop ────────────────────────────────────────
-	go heartbeatLoop(ctx, nc, cfg.ServerID,
-		time.Duration(cfg.HeartbeatSec)*time.Second, log)
+	// ── Heartbeat (Docker SDK — نه exec.Command) ──────────────────
+	hb := heartbeat.New(
+		cfg.ServerID, nc, dockerClient, log,
+		time.Duration(cfg.HeartbeatSec)*time.Second,
+	)
+	go hb.Run(ctx)
 
 	log.Info("agentmanager started",
 		ports.F("server_id", cfg.ServerID),
 		ports.F("nats", cfg.NatsURL))
 
-	// metrics + health server
+	// ── Metrics + Health ──────────────────────────────────────────
 	metrics.ServeMetrics(":9093")
 	go func() {
-		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"ok":true,"service":"agentmanager"}`))
 		})
-		http.ListenAndServe(":8091", nil)
+		if err := http.ListenAndServe(":8096", mux); err != nil {
+			log.Error("health server failed", ports.F("err", err))
+		}
 	}()
 
 	<-ctx.Done()
 	log.Info("agentmanager stopped")
 }
 
-func handleCommand(ctx context.Context, nc *natsclient.Client, serverID string,
-	cmd protocol.DeployCommand, log ports.Logger) (string, error) {
+// handleCommand یک DeployCommand را با Docker SDK اجرا می‌کند.
+// هیچ exec.Command یا shell string concatenation وجود ندارد.
+func handleCommand(
+	ctx context.Context,
+	nc *natsclient.Client,
+	serverID string,
+	cmd protocol.DeployCommand,
+	dockerClient *docker.Client,
+	log ports.Logger,
+) (string, error) {
 
 	log.Info("executing command",
 		ports.F("type", cmd.Type),
@@ -93,27 +162,25 @@ func handleCommand(ctx context.Context, nc *natsclient.Client, serverID string,
 
 	var out string
 	var execErr error
-	var finalErr error
 
 	switch cmd.Type {
 	case protocol.MsgDeploy:
-		out, execErr = deploy(ctx, cmd)
+		out, execErr = dockerClient.Deploy(ctx, cmd)
 	case protocol.MsgStop:
-		out, execErr = runCmd(ctx, "docker", "stop", "--time=10", cmd.ContainerID)
+		out, execErr = dockerClient.Stop(ctx, cmd.ContainerID)
 	case protocol.MsgRemove:
-		out, execErr = runCmd(ctx, "docker", "rm", "-f", cmd.ContainerID)
+		out, execErr = dockerClient.Remove(ctx, cmd.ContainerID)
 	case protocol.MsgRestart:
-		out, execErr = runCmd(ctx, "docker", "restart", cmd.ContainerID)
+		out, execErr = dockerClient.Restart(ctx, cmd.ContainerID)
 	default:
 		execErr = fmt.Errorf("unknown command: %s", cmd.Type)
 	}
 
+	// ── نتیجه را به botmanager publish می‌کنیم ───────────────────
 	errStr := ""
 	if execErr != nil {
 		errStr = execErr.Error()
-		finalErr = execErr
 	}
-
 	result := protocol.ResultMsg{
 		Type:          protocol.MsgResult,
 		ServerID:      serverID,
@@ -124,108 +191,26 @@ func handleCommand(ctx context.Context, nc *natsclient.Client, serverID string,
 		Error:         errStr,
 		Timestamp:     time.Now().Unix(),
 	}
-
 	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	nc.Publish(pubCtx, protocol.ResultSubject(serverID), result)
+	_ = nc.Publish(pubCtx, protocol.ResultSubject(serverID), result)
 
 	if execErr != nil {
 		log.Error("command failed",
-			ports.F("type", cmd.Type), ports.F("err", execErr))
+			ports.F("type", cmd.Type),
+			ports.F("err", execErr))
 		if cmd.Type == protocol.MsgDeploy {
 			metrics.IncDeploy("bot", "failed")
 		}
 	} else {
 		log.Info("command done",
-			ports.F("type", cmd.Type), ports.F("container", cmd.ContainerName))
-	if cmd.Type == protocol.MsgDeploy {
-		metrics.IncDeploy("bot", "success")
-		metrics.ActiveInstances.Inc()
-	}
-	}
-	return result.Output, finalErr
-}
-
-func deploy(ctx context.Context, cmd protocol.DeployCommand) (string, error) {
-	image := cmd.ImageName + ":" + cmd.ImageTag
-	runCmd(ctx, "docker", "pull", image)
-	runCmd(ctx, "docker", "rm", "-f", cmd.ContainerName)
-
-	args := []string{"run", "-d", "--restart=unless-stopped",
-		"--name=" + cmd.ContainerName}
-	if cmd.NetworkName != "" {
-		args = append(args, "--network="+cmd.NetworkName)
-	}
-	for k, v := range cmd.EnvVars {
-		args = append(args, "-e", k+"="+v)
-	}
-	args = append(args, image)
-	return runCmd(ctx, "docker", args...)
-}
-
-func runCmd(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
-	s := strings.TrimSpace(string(out))
-	if err != nil {
-		return s, fmt.Errorf("%s", s)
-	}
-	return s, nil
-}
-
-func heartbeatLoop(ctx context.Context, nc *natsclient.Client, serverID string,
-	interval time.Duration, log ports.Logger) {
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	log.Info("heartbeat started",
-		ports.F("server", serverID), ports.F("interval", interval))
-
-	send := func() {
-		msg := protocol.HeartbeatMsg{
-			Type:       protocol.MsgHeartbeat,
-			ServerID:   serverID,
-			Timestamp:  time.Now().Unix(),
-			Containers: listContainers(),
-		}
-		pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		if err := nc.Publish(pubCtx, protocol.HeartbeatSubject(serverID), msg); err != nil {
-			// context canceled موقع shutdown نرمال است
-			if pubCtx.Err() == nil {
-				log.Error("heartbeat publish failed", ports.F("err", err))
-			}
-		} else {
-			log.Info("heartbeat sent", ports.F("containers", len(msg.Containers)))
+			ports.F("type", cmd.Type),
+			ports.F("container", cmd.ContainerName))
+		if cmd.Type == protocol.MsgDeploy {
+			metrics.IncDeploy("bot", "success")
+			metrics.ActiveInstances.Inc()
 		}
 	}
 
-	send()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			send()
-		}
-	}
-}
-
-func listContainers() []protocol.ContainerStatus {
-	out, err := exec.Command("docker", "ps", "-a",
-		"--format", "{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}").Output()
-	if err != nil {
-		return nil
-	}
-	var list []protocol.ContainerStatus
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		parts := strings.SplitN(line, "\t", 4)
-		if len(parts) < 4 || line == "" {
-			continue
-		}
-		list = append(list, protocol.ContainerStatus{
-			Name: parts[0], Image: parts[1],
-			State: parts[2], Status: parts[3],
-		})
-	}
-	return list
+	return out, execErr
 }

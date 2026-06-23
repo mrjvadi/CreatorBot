@@ -14,7 +14,7 @@ import (
 
 // Base is embedded in every model.
 type Base struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
@@ -39,7 +39,7 @@ const (
 
 type User struct {
 	Base
-	TelegramID int64    `gorm:"uniqueIndex;not null"`
+	TelegramID int64 `gorm:"uniqueIndex;not null"`
 	Username   string
 	FirstName  string
 	Role       UserRole `gorm:"default:'user'"`
@@ -83,38 +83,41 @@ const (
 	StatusStopped InstanceStatus = "stopped"
 	StatusPending InstanceStatus = "pending"
 	StatusError   InstanceStatus = "error"
+	// StatusDeleted یعنی instance حذف نرم شده — دیگر فعال یا قابل‌مدیریت
+	// نیست (متفاوت از StatusStopped که هنوز می‌تواند دوباره start شود).
+	StatusDeleted InstanceStatus = "deleted"
 )
 
 // BotInstance is a deployed container owned by a User, running on a Server.
 type BotInstance struct {
 	Base
-	OwnerID       uuid.UUID      `gorm:"not null;index"`
-	TemplateID    uuid.UUID      `gorm:"not null;index"`
-	ServerID      uuid.UUID      `gorm:"not null;index"`
+	OwnerID       uuid.UUID `gorm:"not null;index"`
+	TemplateID    uuid.UUID `gorm:"not null;index"`
+	ServerID      uuid.UUID `gorm:"not null;index"`
 	ContainerID   string
-	ContainerName string         `gorm:"uniqueIndex"`
-	BotToken      string         // AES-256-GCM encrypted
+	ContainerName string `gorm:"uniqueIndex"`
+	BotToken      string // AES-256-GCM encrypted
 
 	// BotID عدد یکتای ربات — از توکن استخراج می‌شود (قبل از ':')
 	// این فیلد هرگز تغییر نمی‌کند، حتی اگه توکن عوض شود.
 	// instance_id در MongoDB = BotID
 	// مثال توکن: 8442959411:AAGOZ...  →  BotID = 8442959411
-	BotID         int64          `gorm:"uniqueIndex;not null"`
+	BotID int64 `gorm:"uniqueIndex;not null"`
 
 	// PlanID پلنی که این instance با آن ساخته شده (می‌تواند خالی باشد
 	// اگر از یک قالب رایگان مستقیم ساخته شده، نه از مسیر خرید پلن).
-	PlanID    *uuid.UUID `gorm:"index"`
+	PlanID *uuid.UUID `gorm:"index"`
 
 	// LockMode نوع قفل کانال این instance:
 	//   "free"   → قفل کانال خود پلتفرم (تبلیغ رایگان ما)
 	//   "rented" → قفل کانالی که کسی برایش اجاره پرداخت کرده (از طریق ads-bot)
 	//   "none"   → بدون قفل کانال
-	LockMode  InstanceLockMode `gorm:"default:'none'"`
+	LockMode InstanceLockMode `gorm:"default:'none'"`
 
-	Status        InstanceStatus `gorm:"default:'pending'"`
-	ExpiresAt     *time.Time
-	DBSchema      string         `gorm:"uniqueIndex"`
-	EnvOverrides  string         `gorm:"type:text"` // JSON: {"CHANNEL_ID": "123"}
+	Status       InstanceStatus `gorm:"default:'pending'"`
+	ExpiresAt    *time.Time
+	DBSchema     string `gorm:"uniqueIndex"`
+	EnvOverrides string `gorm:"type:text"` // JSON: {"CHANNEL_ID": "123"}
 }
 
 // InstanceLockMode نوع قفل کانال یک instance.
@@ -163,9 +166,9 @@ type Plan struct {
 	DurationDay int     // 0 = ابدی
 	Price       float64 // قیمت به TON
 	// MaxBots مجموع کل ربات‌ها (fallback اگر PlanBotLimit نبود)
-	MaxBots     int  `gorm:"default:1"`
-	IsFree      bool `gorm:"default:false"`
-	IsActive    bool `gorm:"default:true"`
+	MaxBots  int  `gorm:"default:1"`
+	IsFree   bool `gorm:"default:false"`
+	IsActive bool `gorm:"default:true"`
 
 	// Limits محدودیت به تفکیک نوع ربات
 	Limits []PlanBotLimit `gorm:"foreignKey:PlanID"`
@@ -181,18 +184,20 @@ type PlanBotLimit struct {
 }
 
 // LimitFor حداکثر تعداد ربات از نوع داده‌شده.
-// اگر limit صریح تعریف نشده باشد، صفر برمی‌گردد (مجاز نیست).
-// اگر هیچ limit ای تعریف نشده باشد (لیست خالی)، MaxBots کلی fallback است.
+//
+// قوانین:
+//   - اگر رکورد صریح برای این نوع ربات وجود دارد → همان مقدار برمی‌گردد (0 یعنی مسدود).
+//   - اگر رکوردی برای این نوع نیست → MaxBots کلی پلن fallback است.
+//
+// این یعنی برای مسدودکردن صریح یک نوع ربات، باید رکورد با MaxBots=0 ثبت شود.
 func (p *Plan) LimitFor(botType string) int {
-	if len(p.Limits) == 0 {
-		return p.MaxBots // fallback — پلن قدیمی
-	}
 	for _, l := range p.Limits {
 		if l.BotType == botType {
 			return l.MaxBots
 		}
 	}
-	return 0
+	// این نوع ربات صراحتاً محدود نشده → از سقف کلی پلن استفاده می‌شود
+	return p.MaxBots
 }
 
 // TotalLimit مجموع همه limit ها.
@@ -229,25 +234,25 @@ func (s *Subscription) HasCapacity(maxBots int) bool {
 type PaymentStatus string
 
 const (
-	PaymentPending  PaymentStatus = "pending"
-	PaymentDone     PaymentStatus = "done"
-	PaymentFailed   PaymentStatus = "failed"
+	PaymentPending PaymentStatus = "pending"
+	PaymentDone    PaymentStatus = "done"
+	PaymentFailed  PaymentStatus = "failed"
 )
 
 type Payment struct {
 	Base
-	UserID          uuid.UUID     `gorm:"not null;index"`
-	PlanID          *uuid.UUID    `gorm:"index"`
-	Amount          float64       // مقدار به TON
-	Currency        string        `gorm:"default:'TON'"`
-	Status          PaymentStatus `gorm:"default:'pending'"`
+	UserID   uuid.UUID     `gorm:"not null;index"`
+	PlanID   *uuid.UUID    `gorm:"index"`
+	Amount   float64       // مقدار به TON
+	Currency string        `gorm:"default:'TON'"`
+	Status   PaymentStatus `gorm:"default:'pending'"`
 	// TON specific
-	TxHash          string        `gorm:"uniqueIndex"` // transaction hash
-	FromWallet      string        // کیف پول فرستنده
-	PaymentURL      string        // لینک پرداخت برای کاربر
-	InvoiceID       string        `gorm:"uniqueIndex"` // شناسه یکتا
-	ConfirmedAt     *time.Time
-	InstanceID      *uuid.UUID
+	TxHash      string `gorm:"uniqueIndex"` // transaction hash
+	FromWallet  string // کیف پول فرستنده
+	PaymentURL  string // لینک پرداخت برای کاربر
+	InvoiceID   string `gorm:"uniqueIndex"` // شناسه یکتا
+	ConfirmedAt *time.Time
+	InstanceID  *uuid.UUID
 }
 
 // AllModels returns every model for db.Migrate().
@@ -286,10 +291,10 @@ type InviteLink struct {
 	Token     string  `gorm:"uniqueIndex;not null"` // UUID کوتاه — توی لینک می‌آد
 	BotType   BotType `gorm:"not null"`
 	Label     string  // یادداشت خصوصی owner (مثلاً "برای علی")
-	MaxUse    int     `gorm:"default:1"`  // 0 = نامحدود
+	MaxUse    int     `gorm:"default:1"` // 0 = نامحدود
 	UsedCount int     `gorm:"default:0"`
 	ExpiresAt *time.Time
-	CreatedBy int64   // TelegramID سازنده
+	CreatedBy int64 // TelegramID سازنده
 	// بعد از استفاده، instance ساخته‌شده اینجا ذخیره می‌شه
 	InstanceID *uuid.UUID `gorm:"type:uuid"`
 }
@@ -328,16 +333,16 @@ const (
 // apimanager این رو می‌سازه، agentmanager پردازش می‌کنه.
 type DeployJob struct {
 	Base
-	InstanceID    uuid.UUID       `gorm:"not null;index"`
-	ServerID      uuid.UUID       `gorm:"not null;index"`
-	Status        DeployJobStatus `gorm:"default:'pending';index"`
-	Priority      int             `gorm:"default:0"` // بالاتر = زودتر
-	Attempts      int             `gorm:"default:0"`
-	MaxAttempts   int             `gorm:"default:3"`
-	ScheduledAt   time.Time       // زمان مجاز برای پردازش
-	StartedAt     *time.Time
-	FinishedAt    *time.Time
-	Error         string
+	InstanceID  uuid.UUID       `gorm:"not null;index"`
+	ServerID    uuid.UUID       `gorm:"not null;index"`
+	Status      DeployJobStatus `gorm:"default:'pending';index"`
+	Priority    int             `gorm:"default:0"` // بالاتر = زودتر
+	Attempts    int             `gorm:"default:0"`
+	MaxAttempts int             `gorm:"default:3"`
+	ScheduledAt time.Time       // زمان مجاز برای پردازش
+	StartedAt   *time.Time
+	FinishedAt  *time.Time
+	Error       string
 }
 
 // ── Audit Log ──────────────────────────────────────────────
@@ -363,7 +368,7 @@ type AuditLog struct {
 	ActorID     uuid.UUID `gorm:"type:uuid;index"` // کسی که action انجام داد
 	ActorRole   string
 	Action      AuditAction `gorm:"not null;index"`
-	TargetID    string      `gorm:"index"`  // instance_id, user_id, ...
+	TargetID    string      `gorm:"index"` // instance_id, user_id, ...
 	TargetType  string      // instance, user, plan, wallet
 	Description string
 	IPAddress   string

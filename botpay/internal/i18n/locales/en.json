@@ -1,0 +1,100 @@
+{
+  "err.generic": "❌ Something went wrong. Please try again.",
+  "common.cancelled": "✅ Operation cancelled.",
+  "common.back": "Back",
+
+  "btn.wallet": "💳 Wallet",
+  "btn.deposit": "📥 Deposit TON",
+  "btn.withdraw": "📤 Withdraw",
+  "btn.transfer": "🔄 Transfer",
+  "btn.history": "📋 History",
+  "btn.help": "❓ Help",
+  "btn.language": "🌐 Language",
+  "btn.cancel": "❌ Cancel",
+
+  "btn.open_wallet": "💎 Open TON Wallet",
+  "btn.check_deposit": "🔄 Check deposit",
+  "btn.deposit_inline": "📥 Deposit",
+  "btn.withdraw_inline": "📤 Withdraw",
+  "btn.history_inline": "📋 History",
+
+  "start.body": "👛 <b>BotPay</b>\n\nHi <b>%s</b>! 👋\n\n💎 TON balance: <b>%.4f</b>\n🎁 Credit: <b>%.4f</b>\n📊 Total: <b>%.4f TON</b>\n\nUse the buttons below to manage your wallet 👇",
+
+  "wallet.body": "💳 <b>Your wallet</b>\n\n💎 TON balance: <b>%.4f</b>\n🎁 Internal credit: <b>%.4f</b>\n📊 Total usable: <b>%.4f TON</b>%s\n\n📥 Deposit address (shared by everyone):\n<code>%s</code>\n\n💬 Your personal comment (always usable):\n<code>%s</code>\n\n⚠️ Always put one of the comments (your personal comment or a deposit code) in the <b>comment</b> field when paying.",
+  "wallet.frozen_line": "\n🔒 Pending: <b>%.4f TON</b>",
+
+  "deposit.error": "❌ Failed to create deposit invoice.",
+  "deposit.body": "📥 <b>Deposit TON</b>\n\nSteps:\n1️⃣ Tap “Open TON Wallet”\n2️⃣ Enter any amount\n3️⃣ Put the code below in the <b>Comment</b> field\n4️⃣ Confirm the transaction\n\n🔑 Deposit code:\n<code>%s</code>\n\n⚠️ Without this code your deposit <b>cannot</b> be matched.\n⏰ Code valid for: 30 minutes",
+
+  "withdraw.insufficient": "❌ Insufficient balance.\n\nMinimum withdrawal: <b>%.1f TON</b>\nNetwork fee: <b>%.2f TON</b>",
+  "withdraw.ask_addr": "📤 <b>Withdraw TON</b>\n\nBalance: <b>%.4f TON</b>\nNetwork fee: <b>%.2f TON</b>\n\nEnter the destination TON address:",
+  "withdraw.bad_addr": "❌ Invalid TON address.\n\nIt must start with <code>UQ</code> or <code>EQ</code> and be 48 characters long.",
+  "withdraw.ask_amount": "📍 Address: <code>%s...%s</code>\n\nMax withdrawable: <b>%.4f TON</b>\n(a <b>%.2f TON</b> fee is deducted)\n\nEnter the withdrawal amount:",
+  "withdraw.bad_amount": "❌ Please enter a valid number.",
+  "withdraw.submitted": "✅ <b>Withdrawal request submitted</b>\n\n💰 Amount: <b>%.4f TON</b>\n🔧 Fee: <b>%.2f TON</b>\n📥 Address: <code>%s</code>\n🆔 ID: <code>%s</code>\n\nAn admin will process it shortly.",
+  "withdraw.error": "❌ %s",
+
+  "history.empty": "📋 You have no transactions yet.",
+  "history.title": "📋 <b>Last 15 transactions</b>\n",
+  "history.line": "%s %s%.4f TON%s — %s\n   <i>%s</i>",
+
+  "tx.deposit": "TON deposit",
+  "tx.withdraw": "TON withdrawal",
+  "tx.credit_add": "Credit added",
+  "tx.payment": "Payment",
+  "tx.refund": "Refund",
+
+  "help.body": "❓ <b>BotPay help</b>\n\n<b>💎 TON balance</b>\nFunded via the blockchain. There is one shared address for all users, and every deposit must carry its own <b>comment</b>.\n\n<b>🎁 Internal credit</b>\nAdded by an admin; payments draw from credit first.\n\n<b>📥 Deposit</b>\n“Deposit” button → get a code → send TON to the address with that comment.\n\n<b>📤 Withdraw</b>\n“Withdraw” button → address → amount → admin approval (network fee 0.01 TON).\n\n<b>🔄 Transfer</b>\nSend balance to another user by their Telegram ID.\n\nSupport: @support",
+
+  "transfer.insufficient": "❌ Your balance is not enough for a transfer.",
+  "transfer.ask_id": "🔄 <b>Internal transfer</b>\n\nEnter the recipient's Telegram ID:\n(e.g. <code>123456789</code>)",
+  "transfer.bad_id": "❌ Invalid ID, or you can't transfer to yourself.",
+  "transfer.no_recipient": "❌ The recipient is not registered in the system.",
+  "transfer.ask_amount": "👤 Recipient: <code>%d</code>\n\nYour balance: <b>%.4f TON</b>\nEnter the transfer amount:",
+  "transfer.bad_amount": "❌ Please enter a valid number.",
+  "transfer.done": "✅ <b>Transfer complete</b>\n\n💸 <b>%.4f TON</b> sent to <code>%d</code>.",
+  "transfer.received": "💸 <b>Transfer received</b>\n\n💰 Amount: <b>%.4f TON</b>\n👤 From: <code>%d</code>",
+  "transfer.error": "❌ %s",
+
+  "check.pending": "⏳ Not received yet.\n\nThis usually takes 1–5 minutes.",
+  "check.unconfirmed": "⏳ Not confirmed yet.\n\nPlease check again in a few minutes.",
+  "check.confirmed": "✅ <b>Deposit confirmed!</b>\n\n💰 Amount: <b>%.4f TON</b>\n💳 New balance: <b>%.4f TON</b>",
+
+  "deposit.confirmed": "✅ <b>Deposit confirmed!</b>\n\n💰 Received: <b>%.4f TON</b>\n💳 New balance: <b>%.4f TON</b>",
+
+  "language.ask": "🌐 Choose your language:",
+  "language.changed": "✅ Language changed to English.",
+
+  "admin.panel": "🔧 <b>BotPay admin panel</b>\n\n👥 Total wallets: <b>%d</b>\n📥 Total deposits: <b>%.4f TON</b>\n💸 Total payments: <b>%.4f TON</b>\n⏳ Pending withdrawals: <b>%d</b>\n\n<b>Commands:</b>\n/withdraws — list pending withdrawals\n/approve &lt;id&gt; &lt;txhash&gt; — approve withdrawal\n/reject &lt;id&gt; &lt;reason&gt; — reject withdrawal\n/addcredit &lt;telegram_id&gt; &lt;amount&gt; — add credit",
+  "admin.no_withdraws": "There are no pending withdrawal requests.",
+  "admin.withdraws_title": "⏳ <b>Pending withdrawals (%d)</b>\n",
+  "admin.withdraw_line": "🆔 <code>%s</code>\n💰 %.4f TON + %.2f fee\n📥 <code>%s</code>\n📅 %s\n",
+  "admin.approve_usage": "Usage: /approve &lt;id&gt; &lt;txhash&gt;",
+  "admin.reject_usage": "Usage: /reject &lt;id&gt; &lt;reason&gt;",
+  "admin.addcredit_usage": "Usage: /addcredit &lt;telegram_id&gt; &lt;amount_ton&gt;",
+  "admin.bad_id": "❌ Invalid ID.",
+  "admin.bad_param": "❌ Invalid parameter.",
+  "admin.wallet_not_found": "❌ Wallet not found.",
+  "admin.error": "❌ Error: %s",
+  "admin.approved": "✅ Withdrawal <code>%s</code> approved.",
+  "admin.rejected": "🚫 Withdrawal <code>%s</code> rejected.",
+  "admin.credit_added": "✅ <b>%.4f TON</b> credit added to user <code>%d</code>.",
+  "admin.credit_desc": "Credit added by admin",
+
+  "btn.admin_stats": "📊 Stats",
+  "btn.admin_withdraws": "⏳ Pending withdrawals",
+  "btn.admin_credit": "🎁 Add credit",
+  "btn.admin_refresh": "🔄 Refresh",
+  "btn.admin_back": "⬅️ Back",
+  "btn.approve": "✅ Approve",
+  "btn.reject": "🚫 Reject",
+
+  "admin.menu": "🛠 <b>BotPay admin panel</b>\n\nPick a section from the buttons below 👇",
+  "admin.stats": "📊 <b>Overview</b>\n\n👥 Wallets: <b>%d</b>\n📥 Total deposits: <b>%.4f TON</b>\n💸 Total payments: <b>%.4f TON</b>\n⏳ Pending withdrawals: <b>%d</b>",
+  "admin.withdraw_item": "🆔 <code>%s</code>\n💰 <b>%.4f TON</b> + %.2f fee\n📥 <code>%s</code>\n📅 %s",
+  "admin.ask_txhash": "🔑 Send the transaction hash (txhash) to approve withdrawal <code>%s</code>:",
+  "admin.ask_reason": "✍️ Write the reason for rejecting withdrawal <code>%s</code>:",
+  "admin.ask_credit_userid": "👤 Enter the recipient's Telegram ID:",
+  "admin.ask_credit_amount": "💰 Enter the credit amount (TON) for user <code>%d</code>:",
+  "admin.req_not_found": "❌ Withdrawal request not found or already processed."
+}

@@ -29,6 +29,7 @@ type Config struct {
 	NatsPass   string `mapstructure:"NATS_PASSWORD"`
 	FraudURL   string `mapstructure:"FRAUD_ENGINE_URL"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
+	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
 	PostgresDSN string `mapstructure:"MASTER_DSN"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
@@ -65,7 +66,7 @@ func main() {
 	botID := webhook.BotIDFromToken(cfg.BotToken)
 	var wnc *natsclient.Client
 	if mode == webhook.ModeWebhook {
-		wnc, err = natsclient.New(natsclient.Config{URL: cfg.NatsURL, Username: cfg.NatsUser, Password: cfg.NatsPass})
+		wnc, err = natsclient.New(natsclient.Config{URL: cfg.NatsURL, Username: cfg.NatsUser, Password: cfg.NatsPass, Name: "member-bot"})
 		if err != nil {
 			log.Fatal("nats connect (webhook mode)", ports.F("err", err))
 		}
@@ -74,7 +75,11 @@ func main() {
 		Mode: mode, BotID: botID, Token: cfg.BotToken,
 		GatewayURL: cfg.GatewayURL, NATS: wnc, Log: log,
 	})
-	rawBot, err := tele.NewBot(tele.Settings{Token: cfg.BotToken, Poller: poller})
+	botSettings := tele.Settings{Token: cfg.BotToken, Poller: poller}
+	if cfg.LocalBotAPI != "" {
+		botSettings.URL = cfg.LocalBotAPI
+	}
+	rawBot, err := tele.NewBot(botSettings)
 	if err == nil {
 		if e := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
 			Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,

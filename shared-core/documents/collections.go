@@ -6,9 +6,9 @@ package documents
 // Collection names
 const (
 	// uploader-bot
-	ColCodes    = "codes"
-	ColFiles    = "files"
-	ColUsers    = "bot_users"
+	ColCodes = "codes"
+	ColFiles = "files"
+	ColUsers = "bot_users"
 
 	// vpn-bot
 	ColSubscriptions = "subscriptions"

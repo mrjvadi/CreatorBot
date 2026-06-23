@@ -152,7 +152,7 @@ func (h *Handler) handlePanelCap(ctx context.Context, c tele.Context, st wizardS
 	}
 
 	// تست اتصال قبل از ذخیره
-	testPanel, err := vpnports.NewPanel(st.Data["ptype"], st.Data["url"], st.Data["user"], st.Data["pass"])
+	testPanel, err := vpnports.NewPanel(st.Data["ptype"], st.Data["url"], st.Data["user"], st.Data["pass"], "")
 	if err != nil {
 		return c.Send("❌ نوع پنل پشتیبانی نمی‌شود.")
 	}
@@ -203,7 +203,7 @@ func (h *Handler) testAllPanels(ctx context.Context, c tele.Context) error {
 
 	for _, p := range panels {
 		pass, _ := auth.Decrypt(p.Password, h.encryptKey)
-		testPanel, err := vpnports.NewPanel(p.Type, p.BaseURL, p.Username, pass)
+		testPanel, err := vpnports.NewPanel(p.Type, p.BaseURL, p.Username, pass, "")
 		status := "✅"
 		detail := ""
 		if err != nil {

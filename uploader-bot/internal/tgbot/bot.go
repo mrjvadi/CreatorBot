@@ -11,8 +11,8 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/store"
 )
@@ -24,7 +24,7 @@ type Handler struct {
 	log        ports.Logger
 	ownerID    int64
 	channelID  int64
-	instanceID string         // برای cache key
+	instanceID string // برای cache key
 	cache      ports.Cache
 	eng        *engine.Engine // برای دسترسی به Nats/BotID/InstanceInfo (تأیید ادمین کانال)
 }
@@ -69,17 +69,17 @@ func New(st *store.Store, bot *tele.Bot, cache ports.Cache, log ports.Logger, ow
 // Register همه handler ها را ثبت می‌کند. b همچنان *tele.Bot خام است چون
 // دریافت update (برخلاف ارسال پاسخ) انتزاع نشده — این الگوی رایج پلتفرم است.
 func Register(b *tele.Bot, h *Handler) {
-	b.Handle("/start",         h.onStart)
-	b.Handle(tele.OnText,      h.onText)
-	b.Handle(tele.OnCallback,  h.onCallback)
-	b.Handle(tele.OnPhoto,     h.onMedia)
-	b.Handle(tele.OnVideo,     h.onMedia)
-	b.Handle(tele.OnDocument,  h.onMedia)
-	b.Handle(tele.OnAudio,     h.onMedia)
+	b.Handle("/start", h.onStart)
+	b.Handle(tele.OnText, h.onText)
+	b.Handle(tele.OnCallback, h.onCallback)
+	b.Handle(tele.OnPhoto, h.onMedia)
+	b.Handle(tele.OnVideo, h.onMedia)
+	b.Handle(tele.OnDocument, h.onMedia)
+	b.Handle(tele.OnAudio, h.onMedia)
 	b.Handle(tele.OnAnimation, h.onMedia)
-	b.Handle(tele.OnVoice,     h.onMedia)
-	b.Handle(tele.OnSticker,   h.onMedia)
-	b.Handle(tele.OnQuery,     h.onInlineQuery)
+	b.Handle(tele.OnVoice, h.onMedia)
+	b.Handle(tele.OnSticker, h.onMedia)
+	b.Handle(tele.OnQuery, h.onInlineQuery)
 	b.Handle(tele.OnMyChatMember, h.onMyChatMember)
 }
 
@@ -112,7 +112,7 @@ func (h *Handler) onStart(c tele.Context) error {
 	if h.isAdmin(c) {
 		welcome := h.store.GetSetting(ctx, "admin_welcome")
 		if welcome == "" {
-			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", c.Bot().Me.Username)
+			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", c.Bot().(*tele.Bot).Me.Username)
 		}
 		return c.Send(welcome, kbAdmin())
 	}
@@ -323,7 +323,7 @@ func (h *Handler) userDeliverCode(ctx context.Context, c tele.Context, user *mod
 	if code.Password != "" {
 		st := h.getState(ctx, uid)
 		if st.Data["pwd_verified"] != code.Code {
-			h.setStep(ctx, uid, stepPassword, "code", codeStr)
+			h.setStepData(ctx, uid, stepPassword, "code_id", code.ID.String())
 			return c.Send(h.store.GetSetting(ctx, models.SettingPasswordText) + "🔐 رمز عبور را وارد کنید:")
 		}
 	}
@@ -455,27 +455,22 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 	showReport := h.store.GetSetting(ctx, models.SettingShowReportButton) == "true"
 
 	// قفل فوروارد واقعی (Protected) — نه Silent
-	var protect tele.Option
-	if code.ForwardLock {
-		protect = tele.Protected
-	}
+	protected := code.ForwardLock
 
 	// آلبوم
 	if code.IsAlbum && len(files) > 1 {
 		var album tele.Album
-		for i, f := range files {
+		for _, f := range files {
 			inp := fileToInput(f)
 			if inp == nil {
 				continue
 			}
-			if i == len(files)-1 {
-				inp.(tele.Inputtable).SetCaption(caption)
-			}
 			album = append(album, inp)
 		}
+		album.SetCaption(caption)
 		opts := []any{tele.ModeHTML}
-		if protect != nil {
-			opts = append(opts, protect)
+		if protected {
+			opts = append(opts, tele.Protected)
 		}
 		msgs, err := c.Bot().SendAlbum(c.Recipient(), album, opts...)
 		if err == nil {
@@ -504,8 +499,8 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 				opts = append(opts, kbMediaButtons(code, showLikes, showReport))
 			}
 		}
-		if protect != nil {
-			opts = append(opts, protect)
+		if protected {
+			opts = append(opts, tele.Protected)
 		}
 
 		msg, err := sendSingleFile(c, f, cap, opts...)
@@ -532,9 +527,9 @@ func (h *Handler) userUploadMedia(ctx context.Context, c tele.Context) error {
 
 	// ذخیره فایل
 	f := &models.File{
-		FileID:     fi.fileID,
-		FileType:   fi.fileType,
-		Caption:    c.Message().Caption,
+		FileID:   fi.fileID,
+		FileType: fi.fileType,
+		Caption:  c.Message().Caption,
 	}
 	if err := h.store.CreateFile(ctx, f); err != nil {
 		return c.Send("❌ خطا در ذخیره فایل.")
@@ -543,8 +538,8 @@ func (h *Handler) userUploadMedia(ctx context.Context, c tele.Context) error {
 	if autoApprove {
 		// ساخت کد خودکار
 		code := &models.Code{
-			Code:      h.store.GenerateUniqueCode(ctx),
-			Type:      models.CodeUnlimited,
+			Code:       h.store.GenerateUniqueCode(ctx),
+			Type:       models.CodeUnlimited,
 			UploaderID: c.Sender().ID,
 		}
 		h.store.CreateCode(ctx, code)

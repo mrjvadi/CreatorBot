@@ -2,21 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	tele "gopkg.in/telebot.v4"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/mrjvadi/creatorbot/botpay/internal/api"
 	"github.com/mrjvadi/creatorbot/botpay/internal/chainguard"
-	"github.com/mrjvadi/creatorbot/botpay/internal/payresponder"
 	"github.com/mrjvadi/creatorbot/botpay/internal/consensus"
+	"github.com/mrjvadi/creatorbot/botpay/internal/payresponder"
 	"github.com/mrjvadi/creatorbot/botpay/internal/store"
 	"github.com/mrjvadi/creatorbot/botpay/internal/tgbot"
 	"github.com/mrjvadi/creatorbot/botpay/internal/ton"
@@ -25,16 +21,14 @@ import (
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Config struct {
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
-	APIPort     int    `mapstructure:"API_PORT"`
-	AdminAPIKey string `mapstructure:"ADMIN_API_KEY"`
 
 	NatsURL  string `mapstructure:"NATS_URL"`
 	NatsUser string `mapstructure:"NATS_USERNAME"`
@@ -51,11 +45,8 @@ type Config struct {
 	TONNetwork       string `mapstructure:"TON_NETWORK"`
 	ConsensusDBDir   string `mapstructure:"CONSENSUS_DB_DIR"`
 
-	// Service API keys — هر سرویس یک key دارد
-	// فرمت: SERVICE_KEY_<SERVICE_ID>=key
-	BotManagerKey string `mapstructure:"SERVICE_KEY_BOTMANAGER"`
-	UploaderKey   string `mapstructure:"SERVICE_KEY_UPLOADER"`
-	VPNKey        string `mapstructure:"SERVICE_KEY_VPN"`
+	// DefaultLang زبان پیش‌فرض ربات وقتی کاربر هنوز زبانی انتخاب نکرده.
+	DefaultLang string `mapstructure:"DEFAULT_LANG"`
 }
 
 func main() {
@@ -82,6 +73,7 @@ func main() {
 			URL:      cfg.NatsURL,
 			Username: cfg.NatsUser,
 			Password: cfg.NatsPass,
+			Name:     "botpay",
 		})
 		if err != nil {
 			log.Error("nats unavailable — running in standalone mode", ports.F("err", err))
@@ -125,15 +117,9 @@ func main() {
 		nc, log,
 	)
 
-	// ── REST API ──────────────────────────────────────────
-	serviceKeys := map[string]string{
-		"botmanager": cfg.BotManagerKey,
-		"uploader":   cfg.UploaderKey,
-		"vpn":        cfg.VPNKey,
-	}
-
 	// ── NATS Responder (pay.* request/reply) ──────────────
-	// همه‌ی سرویس‌ها برای موجودی/پرداخت از این طریق با botpay حرف می‌زنند.
+	// همه‌ی سرویس‌ها برای موجودی/پرداخت فقط از این طریق با botpay حرف می‌زنند.
+	// REST API حذف شده — ارتباط بین‌سرویسی کاملاً روی NATS است.
 	if nc != nil {
 		// Redis اختیاری — اگر در دسترس نباشد، botpay بدون cache ادامه می‌دهد
 		var payCache ports.Cache
@@ -155,27 +141,16 @@ func main() {
 		log.Warn("NATS unavailable — pay request/reply disabled")
 	}
 
-	apiHandler := api.New(walletSvc, api.Config{
-		ServiceKeys: serviceKeys,
-		AdminKey:    cfg.AdminAPIKey,
-	}, log)
-
-	r := gin.New()
-	r.Use(gin.Recovery())
-	apiHandler.Register(r)
-
-	apiAddr := fmt.Sprintf(":%d", cfg.APIPort)
-	srv := &http.Server{Addr: apiAddr, Handler: r}
-
 	// ── Telegram Bot ──────────────────────────────────────
 	rawBot, err := tele.NewBot(tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: 10},
+		URL:    "http://141.95.210.17:8081",
 	})
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
 	}
-	h := tgbot.New(walletSvc, st, cfg.OwnerID, log)
+	h := tgbot.New(walletSvc, st, cfg.OwnerID, cfg.DefaultLang, log)
 	tgbot.Register(rawBot, h)
 	h.SetBot(rawBot) // فعال‌سازی push notification
 
@@ -191,22 +166,11 @@ func main() {
 	go cg.Start(ctx)
 
 	go watcher.Run(ctx)
-	go func() {
-		log.Info("botpay API started", ports.F("addr", apiAddr))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("api", ports.F("err", err))
-		}
-	}()
 	go func() { <-ctx.Done(); rawBot.Stop() }()
 
 	metrics.ServeMetrics(":9091")
 	log.Info("botpay started",
 		ports.F("bot", rawBot.Me.Username),
-		ports.F("api", apiAddr),
 		ports.F("ton_address", cfg.TONMasterAddress))
 	rawBot.Start()
-
-	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	srv.Shutdown(shutCtx)
 }

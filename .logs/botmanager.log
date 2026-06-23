@@ -1,0 +1,6 @@
+2026-06-23T19:51:10.469+0330	[34mINFO[0m	logger/logger.go:48	nats connected
+2026-06-23T19:51:11.128+0330	[34mINFO[0m	logger/logger.go:48	bot connected	{"username": "botmanagertestsbot"}
+2026-06-23T19:51:11.128+0330	[34mINFO[0m	logger/logger.go:48	botpay connected via NATS
+2026-06-23T19:51:11.128+0330	[34mINFO[0m	logger/logger.go:48	NATS listeners started
+2026-06-23T19:51:11.129+0330	[34mINFO[0m	logger/logger.go:48	botmanager started	{"owner": 7631742375}
+2026-06-23T23:36:14.206+0330	[34mINFO[0m	logger/logger.go:48	shutting down botmanager...

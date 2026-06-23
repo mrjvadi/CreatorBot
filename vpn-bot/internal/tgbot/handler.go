@@ -154,7 +154,7 @@ func (h *Handler) onPhoto(c tele.Context) error {
 		return c.Send("لطفاً عکس رسید را ارسال کنید.")
 	}
 	photo := c.Message().Photo
-	return h.handleReceiptPhoto(ctx, c, st, photo[len(photo)-1].FileID)
+	return h.handleReceiptPhoto(ctx, c, st, photo.FileID)
 }
 
 func (h *Handler) onCallback(c tele.Context) error {
@@ -202,6 +202,24 @@ func (h *Handler) onCallback(c tele.Context) error {
 	case "panel_del":
 		if len(parts) == 2 {
 			return h.deletePanel(ctx, c, parts[1])
+		}
+	case "buy":
+		return h.onBuy(c)
+	case "confirm_buy":
+		if len(parts) == 2 {
+			return h.confirmBuyWithBalance(ctx, c, parts[1])
+		}
+	case "verify_payment":
+		if len(parts) == 2 {
+			return h.verifyOnlinePayment(ctx, c, parts[1])
+		}
+	case "approve_pay":
+		if len(parts) == 2 {
+			return h.approvePayment(ctx, c, parts[1])
+		}
+	case "reject_pay":
+		if len(parts) == 2 {
+			return h.rejectPayment(ctx, c, parts[1])
 		}
 	case "cancel":
 		h.clearState(ctx, c.Sender().ID)

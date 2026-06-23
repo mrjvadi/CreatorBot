@@ -1,6 +1,6 @@
 module github.com/mrjvadi/creatorbot/uploader-bot
 
-go 1.22
+go 1.21
 
 require (
 	github.com/mrjvadi/creatorbot/shared v0.0.0

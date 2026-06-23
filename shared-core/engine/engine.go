@@ -12,18 +12,19 @@ package engine
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
-	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared-core/configstore"
+	"github.com/mrjvadi/creatorbot/shared-core/docstore"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/mongodb"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
-	"github.com/mrjvadi/creatorbot/shared-core/docstore"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 )
 
 // Config تنظیمات engine هر bot.
@@ -42,10 +43,10 @@ type Config struct {
 	RedisDB     int
 
 	// NATS — فقط برای heartbeat و events
-	NatsURL    string
-	NatsUser   string
-	NatsPass   string
-	ServerID   string // UUID سرور در جدول servers
+	NatsURL  string
+	NatsUser string
+	NatsPass string
+	ServerID string // UUID سرور در جدول servers
 
 	// Heartbeat interval
 	HeartbeatSec int
@@ -139,8 +140,8 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 
 	// ── Document Stores ───────────────────────────────────────
 	settings := docstore.NewSettingStore(ds, instanceID)
-	stats    := docstore.NewStatStore(ds, instanceID)
-	users    := docstore.NewBotUserStore(ds, instanceID)
+	stats := docstore.NewStatStore(ds, instanceID)
+	users := docstore.NewBotUserStore(ds, instanceID)
 
 	// ── Config از MongoDB ────────────────────────────────────
 	cfgStore := configstore.New(ds, instanceID)
@@ -165,6 +166,7 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 			URL:      cfg.NatsURL,
 			Username: cfg.NatsUser,
 			Password: cfg.NatsPass,
+			Name:     fmt.Sprintf("bot-%d", botID),
 		})
 		if err != nil {
 			// NATS اختیاری است — بدون آن هم bot کار می‌کند

@@ -1,0 +1,21 @@
+go 1.22
+
+use (
+	./shared
+	./shared-core
+	./botmanager
+	./apimanager
+	./agentmanager
+	./uploader-bot
+	./vpn-bot
+	./archive-bot
+	./member-bot
+	./source-service
+	./botpay
+	./revenue-service
+	./webhook-gateway
+	./ads-bot
+	./fraud-engine
+	./community-service
+	./tests/integration
+)

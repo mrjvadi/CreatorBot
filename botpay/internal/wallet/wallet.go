@@ -5,23 +5,30 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+
 	"github.com/mrjvadi/creatorbot/botpay/internal/consensus"
+	"github.com/mrjvadi/creatorbot/botpay/internal/i18n"
 	"github.com/mrjvadi/creatorbot/botpay/internal/store"
 	"github.com/mrjvadi/creatorbot/botpay/internal/ton"
 )
 
+// ErrInsufficientBalance خطای پایه برای تشخیص قابل‌اعتماد موجودی ناکافی
+// (با errors.Is)، مستقل از متن دقیق پیام که می‌تواند جزئیات اضافه داشته
+// باشد (مثلاً مقدار موجودی فعلی).
+var ErrInsufficientBalance = errors.New("insufficient balance")
+
 // NATS subjects برای رویدادهای botpay
 const (
-	SubjectDeposit  = "botpay.deposit"        // واریز انجام شد
-	SubjectPaid     = "botpay.paid"           // پرداخت به سرویس انجام شد
-	SubjectInvoice  = "botpay.invoice.%s"     // invoice تأیید شد
+	SubjectDeposit = "botpay.deposit"    // واریز انجام شد
+	SubjectPaid    = "botpay.paid"       // پرداخت به سرویس انجام شد
+	SubjectInvoice = "botpay.invoice.%s" // invoice تأیید شد
 )
 
 // MinWithdrawNano حداقل مقدار برداشت (0.1 TON).
@@ -32,12 +39,12 @@ const NetworkFeeNano = 10_000_000 // 0.01 TON
 
 // Service service layer کیف پول.
 type Service struct {
-	store       *store.Store
-	notify      Notifier
-	nc          *natsclient.Client
-	log         ports.Logger
-	masterAddr  string
-	guard       *consensus.Guard // محافظ consensus
+	store      *store.Store
+	notify     Notifier
+	nc         *natsclient.Client
+	log        ports.Logger
+	masterAddr string
+	guard      *consensus.Guard // محافظ consensus
 }
 
 func New(st *store.Store, nc *natsclient.Client, log ports.Logger, masterAddr string, guard *consensus.Guard) *Service {
@@ -107,13 +114,25 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 			return fmt.Errorf("wallet not found for invoice")
 		}
 		event.WalletID = inv.WalletID.String()
-	} else {
-		// invoice نداشت → سعی کن کاربر را پیدا کن
-		// (ممکنه کاربر بدون invoice واریز کرده باشه)
-		s.log.Info("deposit without invoice",
+	} else if event.InvoiceCode != "" {
+		// invoice فعالی پیدا نشد → کامنت را به‌عنوان «کامنت شخصی» (pay_handle)
+		// کاربر تطبیق بده. این اجازه می‌دهد کاربر همیشه با کامنت ثابت خود واریز کند.
+		var err3 error
+		w, err3 = s.store.GetWalletByPayHandle(ctx, event.InvoiceCode)
+		if err3 != nil {
+			return err3
+		}
+		if w != nil {
+			event.WalletID = w.ID.String()
+		}
+	}
+
+	if w == nil {
+		// کامنت با هیچ invoice یا کاربری تطبیق نخورد → نادیده گرفته می‌شود.
+		s.log.Info("deposit without matching comment",
+			ports.F("comment", event.InvoiceCode),
 			ports.F("from", event.FromAddr),
 			ports.F("amount", event.AmountTON))
-		// فعلاً نادیده می‌گیریم — در production log بزن و به ادمین اطلاع بده
 		return nil
 	}
 
@@ -125,34 +144,34 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 		}
 	}
 
-	// ثبت deposit در wallet
-	tx, err := s.store.Deposit(ctx, w.ID, event.AmountNano,
-		event.TxHash, event.FromAddr, "TON deposit")
-	if err != nil {
+	// ثبت deposit در wallet — توضیح خالی تا تاریخچه برچسب نوع تراکنش را به
+	// زبان هر کاربر نمایش دهد.
+	if _, err := s.store.Deposit(ctx, w.ID, event.AmountNano,
+		event.TxHash, event.FromAddr, ""); err != nil {
 		return fmt.Errorf("deposit to wallet: %w", err)
 	}
 
-	// تأیید invoice
+	// تأیید invoice + publish رویداد برای سرویس درخواست‌دهنده
 	if inv != nil {
-		s.store.ConfirmInvoice(ctx, inv.ID, event.TxHash)
-
-		// publish رویداد برای سرویس درخواست‌دهنده
-		s.nc.PublishCore(
+		if err := s.store.ConfirmInvoice(ctx, inv.ID, event.TxHash); err != nil {
+			s.log.Error("confirm invoice failed", ports.F("code", inv.Code), ports.F("err", err))
+		}
+		s.publish(
 			fmt.Sprintf(SubjectInvoice, inv.Code),
 			map[string]any{
-				"invoice_id":   inv.ID.String(),
-				"code":         inv.Code,
-				"ref":          inv.Ref,
-				"service_id":   inv.ServiceID,
-				"amount_nano":  event.AmountNano,
-				"wallet_id":    w.ID.String(),
-				"tx_hash":      event.TxHash,
+				"invoice_id":  inv.ID.String(),
+				"code":        inv.Code,
+				"ref":         inv.Ref,
+				"service_id":  inv.ServiceID,
+				"amount_nano": event.AmountNano,
+				"wallet_id":   w.ID.String(),
+				"tx_hash":     event.TxHash,
 			},
 		)
 	}
 
 	// publish رویداد عمومی واریز
-	s.nc.PublishCore(SubjectDeposit, ton.DepositEvent{
+	s.publish(SubjectDeposit, ton.DepositEvent{
 		WalletID:    w.ID.String(),
 		AmountNano:  event.AmountNano,
 		AmountTON:   event.AmountTON,
@@ -166,38 +185,39 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 		ports.F("tx", event.TxHash))
 
 	// ── publish wallet.deposit برای سرویس‌های دیگر ──────────
-	if s.nc != nil {
-		s.nc.PublishCore("wallet.deposit", map[string]any{
-			"telegram_id":  w.TelegramID,
-			"wallet_id":    w.ID,
-			"amount_nano":  event.AmountNano,
-			"amount_ton":   event.AmountTON,
-			"tx_hash":      event.TxHash,
-			"invoice_code": event.InvoiceCode,
-		})
-	}
+	s.publish("wallet.deposit", map[string]any{
+		"telegram_id":  w.TelegramID,
+		"wallet_id":    w.ID,
+		"amount_nano":  event.AmountNano,
+		"amount_ton":   event.AmountTON,
+		"tx_hash":      event.TxHash,
+		"invoice_code": event.InvoiceCode,
+	})
 
-	// ── اعلان فوری به کاربر ─────────────────────────────────
+	// ── اعلان فوری به کاربر (به زبان خودش) ──────────────────
 	if s.notify != nil {
-		// موجودی جدید
-		updatedWallet, _ := s.store.GetWalletByID(ctx, w.ID)
 		newBalance := event.AmountTON
-		if updatedWallet != nil {
-			newBalance = updatedWallet.TotalTON()
+		if updated, _ := s.store.GetWalletByID(ctx, w.ID); updated != nil {
+			newBalance = updated.TotalTON()
 		}
-		msg := fmt.Sprintf(
-			"✅ <b>واریز تأیید شد!</b>\n\n"+
-				"💰 مبلغ دریافتی: <b>%.4f TON</b>\n"+
-				"💳 موجودی جدید: <b>%.4f TON</b>",
-			event.AmountTON, newBalance,
-		)
+		msg := i18n.T(i18n.Normalize(w.Lang), i18n.KDepositConfirmed, event.AmountTON, newBalance)
 		if err := s.notify.SendHTML(ctx, w.TelegramID, msg); err != nil {
 			s.log.Error("notify deposit failed", ports.F("err", err))
 		}
 	}
 
-	_ = tx
 	return nil
+}
+
+// publish یک رویداد را روی NATS منتشر می‌کند و در صورت نبودن اتصال، بی‌صدا
+// رد می‌شود (حالت standalone). این از panic ناشی از nil بودن client جلوگیری می‌کند.
+func (s *Service) publish(subject string, payload any) {
+	if s.nc == nil {
+		return
+	}
+	if err := s.nc.PublishCore(subject, payload); err != nil {
+		s.log.Error("nats publish failed", ports.F("subject", subject), ports.F("err", err))
+	}
 }
 
 // Pay کسر مبلغ از wallet برای پرداخت به سرویس.
@@ -212,8 +232,8 @@ func (s *Service) Pay(ctx context.Context, telegramID int64, amountNano int64, s
 		return nil, fmt.Errorf("wallet not found")
 	}
 	if !w.HasEnough(amountNano) {
-		return nil, fmt.Errorf("insufficient balance: have %.4f TON, need %.4f TON",
-			w.TotalTON(), float64(amountNano)/1e9)
+		return nil, fmt.Errorf("%w: have %.4f TON, need %.4f TON",
+			ErrInsufficientBalance, w.TotalTON(), float64(amountNano)/1e9)
 	}
 
 	// ── بررسی consensus قبل از کسر ──────────────────────────
@@ -229,7 +249,7 @@ func (s *Service) Pay(ctx context.Context, telegramID int64, amountNano int64, s
 	}
 
 	// publish رویداد پرداخت
-	s.nc.PublishCore(SubjectPaid, map[string]any{
+	s.publish(SubjectPaid, map[string]any{
 		"wallet_id":  w.ID.String(),
 		"service_id": serviceID,
 		"ref":        ref,
@@ -242,6 +262,9 @@ func (s *Service) Pay(ctx context.Context, telegramID int64, amountNano int64, s
 
 // RequestWithdraw درخواست برداشت ایجاد می‌کند.
 func (s *Service) RequestWithdraw(ctx context.Context, telegramID int64, toAddress string, amountNano int64, note string) (*store.WithdrawRequest, error) {
+	if !IsValidTONAddress(toAddress) {
+		return nil, fmt.Errorf("invalid TON address")
+	}
 	if amountNano < MinWithdrawNano {
 		return nil, fmt.Errorf("minimum withdrawal is %.1f TON", float64(MinWithdrawNano)/1e9)
 	}
@@ -252,7 +275,7 @@ func (s *Service) RequestWithdraw(ctx context.Context, telegramID int64, toAddre
 		return nil, fmt.Errorf("wallet not found")
 	}
 	if !w.HasEnough(totalNeeded) {
-		return nil, fmt.Errorf("insufficient balance (including %.4f TON fee)", float64(NetworkFeeNano)/1e9)
+		return nil, fmt.Errorf("%w (including %.4f TON fee)", ErrInsufficientBalance, float64(NetworkFeeNano)/1e9)
 	}
 
 	req := &store.WithdrawRequest{
@@ -285,8 +308,18 @@ func (s *Service) DepositInstructions(ctx context.Context, telegramID int64, amo
 
 func genInvoiceCode() string {
 	b := make([]byte, 4)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return "PAY-" + strings.ToUpper(hex.EncodeToString(b))
+}
+
+// IsValidTONAddress یک اعتبارسنجی سبک برای آدرس TON (فرمت user-friendly).
+// آدرس باید با UQ یا EQ شروع شده و دقیقاً ۴۸ کاراکتر باشد.
+func IsValidTONAddress(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if len(addr) != 48 {
+		return false
+	}
+	return strings.HasPrefix(addr, "UQ") || strings.HasPrefix(addr, "EQ")
 }
 
 // NanoToTON تبدیل nano-TON به TON.
@@ -298,8 +331,8 @@ func TONToNano(ton float64) int64 { return int64(ton * 1e9) }
 // Store برگرداندن store برای استفاده مستقیم.
 func (s *Service) Store() *store.Store { return s.store }
 
-// suppress
-var _ = uuid.New
+// MasterAddress آدرس کیف پول پلتفرم که کاربران باید برای واریز TON بفرستند.
+func (s *Service) MasterAddress() string { return s.masterAddr }
 
 // Transfer انتقال داخلی بین دو کاربر (P2P).
 func (s *Service) Transfer(ctx context.Context, fromTelegramID, toTelegramID int64, amountNano int64, desc string) error {
@@ -317,7 +350,7 @@ func (s *Service) Transfer(ctx context.Context, fromTelegramID, toTelegramID int
 	}
 
 	if !fromWallet.HasEnough(amountNano) {
-		return fmt.Errorf("insufficient balance")
+		return ErrInsufficientBalance
 	}
 
 	_, _, err = s.store.Transfer(ctx, fromWallet.ID, toWallet.ID, amountNano, desc)
@@ -325,15 +358,12 @@ func (s *Service) Transfer(ctx context.Context, fromTelegramID, toTelegramID int
 		return fmt.Errorf("transfer: %w", err)
 	}
 
-	// اعلان به گیرنده
+	// اعلان به گیرنده (به زبان خودش)
 	if s.notify != nil {
-		msg := fmt.Sprintf(
-			"💸 <b>انتقال دریافت شد</b>\n\n"+
-				"💰 مبلغ: <b>%.4f TON</b>\n"+
-				"👤 از: <code>%d</code>",
-			NanoToTON(amountNano), fromTelegramID,
-		)
-		s.notify.SendHTML(ctx, toTelegramID, msg)
+		msg := i18n.T(i18n.Normalize(toWallet.Lang), i18n.KTransferReceived, NanoToTON(amountNano), fromTelegramID)
+		if err := s.notify.SendHTML(ctx, toTelegramID, msg); err != nil {
+			s.log.Error("notify transfer failed", ports.F("err", err))
+		}
 	}
 
 	s.log.Info("transfer done",

@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 )
 
 type Client struct {

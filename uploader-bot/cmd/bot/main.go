@@ -12,6 +12,7 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/tgbot"
 )
 
@@ -31,9 +32,11 @@ type Config struct {
 
 	// NATS — فقط برای heartbeat و events
 	NatsURL    string `mapstructure:"NATS_URL"`
+	NatsUser   string `mapstructure:"NATS_USERNAME"`
+	NatsPass   string `mapstructure:"NATS_PASSWORD"`
 	BotMode    string `mapstructure:"BOT_MODE"`
 	GatewayURL string `mapstructure:"GATEWAY_URL"`
-	ServerID string `mapstructure:"SERVER_ID"`
+	ServerID   string `mapstructure:"SERVER_ID"`
 
 	HeartbeatSec int `mapstructure:"HEARTBEAT_INTERVAL_SEC"`
 }
@@ -53,11 +56,19 @@ func main() {
 		RedisPass:    cfg.RedisPass,
 		RedisDB:      cfg.RedisDB,
 		NatsURL:      cfg.NatsURL,
+		NatsUser:     cfg.NatsUser,
+		NatsPass:     cfg.NatsPass,
 		ServerID:     cfg.ServerID,
 		HeartbeatSec: cfg.HeartbeatSec,
 	}, log)
 	if err != nil {
 		log.Fatal("engine init failed", ports.F("err", err))
+	}
+
+	// ── Migration — جدول‌های مخصوص uploader-bot ───────────────
+	// engine فقط connection می‌سازد؛ schema این سرویس باید اینجا ساخته شود.
+	if err := eng.DB.Migrate(models.AllModels()...); err != nil {
+		log.Fatal("migration failed", ports.F("err", err))
 	}
 
 	// ── Telegram Bot ──────────────────────────────────────────

@@ -96,8 +96,13 @@ func (h *Handler) userCheckPassword(ctx context.Context, c tele.Context, st user
 		return c.Send("❌ رمز اشتباه است. دوباره وارد کنید:")
 	}
 	h.clearState(ctx, uid)
-	user, _ := h.store.GetUser(ctx, uid)
-	return h.sendFiles(ctx, c, user, code)
+	files, _ := h.store.GetFilesForCode(ctx, code.ID)
+	if len(files) == 0 {
+		return c.Send("❌ فایلی یافت نشد.")
+	}
+	sig := h.store.GetSetting(ctx, models.SettingSignature)
+	h.sendFiles(ctx, c, code, files, sig)
+	return nil
 }
 
 func (h *Handler) userSearch(ctx context.Context, c tele.Context, query string) error {

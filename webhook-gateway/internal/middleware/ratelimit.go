@@ -52,7 +52,7 @@ func (r *BotRateLimiter) allow(botID string) bool {
 
 	// refill tokens
 	elapsed := now.Sub(b.lastSeen).Seconds()
-	b.tokens = min(b.capacity, b.tokens+elapsed*r.rate)
+	b.tokens = min(r.capacity, b.tokens+elapsed*r.rate)
 	b.lastSeen = now
 
 	if b.tokens >= 1 {

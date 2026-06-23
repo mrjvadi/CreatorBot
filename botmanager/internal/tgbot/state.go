@@ -1,112 +1,37 @@
 package tgbot
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"time"
-
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/state"
 )
 
-type step string
+// aliasهای محلی به پکیجِ state تا کدِ tgbot (router/handleStep) بدون تغییر بماند.
+// متدهای ذخیره/بازیابی در core هستند؛ این‌ها فقط typeها و ثابت‌ها.
+type userState = state.UserState
 
 const (
-	stepIdle step = ""
+	stepIdle = state.StepIdle
 
-	// سرور
-	stepServerName step = "srv:name"
-	stepServerIP   step = "srv:ip"
+	stepServerName = state.StepServerName
+	stepServerIP   = state.StepServerIP
 
-	// تمپلیت
-	stepTmplType  step = "tmpl:type"
-	stepTmplImage step = "tmpl:image"
-	stepTmplTag   step = "tmpl:tag"
-	stepTmplName  step = "tmpl:name"
+	stepTmplType  = state.StepTmplType
+	stepTmplImage = state.StepTmplImage
+	stepTmplTag   = state.StepTmplTag
+	stepTmplName  = state.StepTmplName
 
-	// لینک دعوت
-	stepLinkType  step = "lnk:type"
-	stepLinkLimit step = "lnk:limit"
-	stepLinkLabel step = "lnk:label"
+	stepPlanTmpl   = state.StepPlanTmpl
+	stepPlanName   = state.StepPlanName
+	stepPlanDays   = state.StepPlanDays
+	stepPlanPrice  = state.StepPlanPrice
+	stepPlanLimits = state.StepPlanLimits
 
-	// پلن
-	stepPlanTmpl  step = "plan:tmpl"
-	stepPlanName  step = "plan:name"
-	stepPlanDays  step = "plan:days"
-	stepPlanPrice  step = "plan:price"
-	stepPlanLimits step = "plan:limits" // ورود limit ها: vpn=5,uploader=3
+	stepUserAction = state.StepUserAction
 
-	// مدیریت کاربر
-	stepUserAction step = "user:action"
-	stepPlanSelect step = "plan:select"
+	stepWizardToken = state.StepWizardToken
+	stepLangSelect  = state.StepLangSelect
 
-	// wizard ساخت ربات
-	stepWizardToken step = "wiz:token"
-	stepLangSelect  step = "lang:select"
-
-	// جستجو
-	stepBotSearch  step = "bot:search"
-	stepUserSearch step = "user:search"
+	stepAdminCreditAmount = state.StepAdminCreditAmount
+	stepWalletTopupAmount = state.StepWalletTopupAmount
+	stepBroadcastText     = state.StepBroadcastText
+	stepAdminTestToken    = state.StepAdminTestToken
 )
-
-type userState struct {
-	Step step              `json:"s"`
-	Data map[string]string `json:"d,omitempty"`
-}
-
-const stateTTL = 15 * time.Minute
-
-func stateKey(uid int64) string {
-	return fmt.Sprintf("bm:s:%d", uid)
-}
-
-func (h *Handler) getState(ctx context.Context, uid int64) userState {
-	raw, err := h.cache.Get(ctx, stateKey(uid))
-	if err != nil || raw == "" {
-		return userState{Step: stepIdle, Data: map[string]string{}}
-	}
-	var s userState
-	if err := json.Unmarshal([]byte(raw), &s); err != nil {
-		return userState{Step: stepIdle, Data: map[string]string{}}
-	}
-	if s.Data == nil {
-		s.Data = map[string]string{}
-	}
-	return s
-}
-
-func (h *Handler) setState(ctx context.Context, uid int64, s userState) {
-	data, _ := json.Marshal(s)
-	h.cache.Set(ctx, stateKey(uid), string(data), stateTTL)
-}
-
-func (h *Handler) clearState(ctx context.Context, uid int64) {
-	h.cache.Del(ctx, stateKey(uid))
-}
-
-func (h *Handler) setStep(ctx context.Context, uid int64, st step, kv ...string) {
-	s := h.getState(ctx, uid)
-	s.Step = st
-	if s.Data == nil {
-		s.Data = map[string]string{}
-	}
-	for i := 0; i+1 < len(kv); i += 2 {
-		s.Data[kv[i]] = kv[i+1]
-	}
-	h.setState(ctx, uid, s)
-}
-
-// wizardPending توکن لینک در انتظار تأیید کاربر.
-func (h *Handler) setWizardPending(ctx context.Context, uid int64, token string) {
-	h.cache.Set(ctx, fmt.Sprintf("bm:wiz:%d", uid), token, 10*time.Minute)
-}
-
-func (h *Handler) getWizardPending(ctx context.Context, uid int64) string {
-	val, _ := h.cache.Get(ctx, fmt.Sprintf("bm:wiz:%d", uid))
-	return val
-}
-
-func (h *Handler) clearWizardPending(ctx context.Context, uid int64) {
-	h.cache.Del(ctx, fmt.Sprintf("bm:wiz:%d", uid))
-	_ = ports.F // suppress unused
-}

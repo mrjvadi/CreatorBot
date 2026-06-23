@@ -17,6 +17,8 @@ type Config struct {
 	// اختیاری — برای auth
 	Username string
 	Password string
+	// Name نام این connection در NATS monitoring — پیش‌فرض "creatorbot"
+	Name string
 }
 
 // Client یک wrapper روی NATS connection است.
@@ -27,8 +29,12 @@ type Client struct {
 
 // New اتصال به NATS برقرار می‌کند.
 func New(cfg Config) (*Client, error) {
+	name := cfg.Name
+	if name == "" {
+		name = "creatorbot"
+	}
 	opts := []nats.Option{
-		nats.Name("creatorbot"),
+		nats.Name(name),
 		nats.ReconnectWait(2 * time.Second),
 		nats.MaxReconnects(-1),
 	}

@@ -4,9 +4,11 @@ package docstore
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
@@ -66,7 +68,10 @@ func (s *SettingStore) Get(ctx context.Context, key string) (string, error) {
 	err := s.col("bot_settings").FindOne(ctx,
 		s.baseFilter(bson.E{Key: "key", Value: key}), &d)
 	if err != nil {
-		return "", nil // key وجود نداره — مقدار پیش‌فرض
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return "", nil // key واقعاً وجود ندارد — مقدار پیش‌فرض درست است
+		}
+		return "", err // خطای واقعی DB (قطعی، timeout، ...) — نباید silent شود
 	}
 	return d.Value, nil
 }

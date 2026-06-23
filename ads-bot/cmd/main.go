@@ -15,25 +15,25 @@ import (
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/engine"
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/tgbot"
+	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
-	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 )
 
 type Config struct {
-	BotToken      string `mapstructure:"BOT_TOKEN"`
-	OwnerID       int64  `mapstructure:"OWNER_ID"`
-	PostgresDSN   string `mapstructure:"POSTGRES_DSN"`
-	RedisAddr     string `mapstructure:"REDIS_ADDR"`
-	RedisPass     string `mapstructure:"REDIS_PASSWORD"`
-	NatsURL       string `mapstructure:"NATS_URL"`
-	NatsUser      string `mapstructure:"NATS_USERNAME"`
-	NatsPass      string `mapstructure:"NATS_PASSWORD"`
+	BotToken    string `mapstructure:"BOT_TOKEN"`
+	OwnerID     int64  `mapstructure:"OWNER_ID"`
+	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
+	RedisAddr   string `mapstructure:"REDIS_ADDR"`
+	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
+	NatsURL     string `mapstructure:"NATS_URL"`
+	NatsUser    string `mapstructure:"NATS_USERNAME"`
+	NatsPass    string `mapstructure:"NATS_PASSWORD"`
 }
 
 func main() {
@@ -50,7 +50,7 @@ func main() {
 		log.Fatal("migrate", ports.F("err", err))
 	}
 	st := store.New(db)
-	
+
 	ctx := context.Background()
 	if err := st.SeedCategories(ctx); err != nil {
 		log.Fatal("seed categories", ports.F("err", err))
@@ -67,6 +67,7 @@ func main() {
 		URL:      cfg.NatsURL,
 		Username: cfg.NatsUser,
 		Password: cfg.NatsPass,
+		Name:     "ads-bot",
 	})
 	if err != nil {
 		log.Fatal("nats", ports.F("err", err))
@@ -77,6 +78,7 @@ func main() {
 	b, err := tele.NewBot(tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+		URL:    "http://141.95.210.17:8081",
 	})
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))

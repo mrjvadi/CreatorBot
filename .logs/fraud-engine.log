@@ -1,0 +1,6 @@
+2026-06-23T19:51:05.362+0330	[34mINFO[0m	logger/logger.go:48	mongodb connected
+2026-06-23T19:51:05.376+0330	[34mINFO[0m	logger/logger.go:48	fraud-engine listeners registered
+2026-06-23T19:51:05.377+0330	[34mINFO[0m	logger/logger.go:48	fraud-engine score handlers registered
+2026-06-23T19:51:05.380+0330	[34mINFO[0m	logger/logger.go:48	periodic recalc started
+2026-06-23T19:51:05.381+0330	[34mINFO[0m	logger/logger.go:48	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-06-23T23:36:14.203+0330	[34mINFO[0m	logger/logger.go:48	shutting down...

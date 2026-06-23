@@ -8,10 +8,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
-	"errors"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -127,6 +127,26 @@ func (s *Store) DeleteInstance(ctx context.Context, id any) error {
 	return s.db.Conn().WithContext(ctx).Delete(&models.BotInstance{}, "id = ?", id).Error
 }
 
+// UpdateInstanceExpiry تاریخ انقضای یک instance را به‌روزرسانی می‌کند.
+// expiresAt = nil یعنی ابدی (بدون انقضا).
+func (s *Store) UpdateInstanceExpiry(ctx context.Context, id any, expiresAt *time.Time) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.BotInstance{}).
+		Where("id = ?", id).
+		Update("expires_at", expiresAt).Error
+}
+
+// ListInstancesExpiringBetween instanceهایی که انقضایشان در بازه‌ی [from, to] است
+// و حذف‌نشده‌اند را برمی‌گرداند (برای یادآور انقضا).
+func (s *Store) ListInstancesExpiringBetween(ctx context.Context, from, to time.Time) ([]models.BotInstance, error) {
+	var list []models.BotInstance
+	err := s.db.Conn().WithContext(ctx).
+		Where("expires_at IS NOT NULL AND expires_at BETWEEN ? AND ?", from, to).
+		Where("status <> ?", models.StatusDeleted).
+		Find(&list).Error
+	return list, err
+}
+
 // ---- Plan ----
 
 func (s *Store) ListPlans(ctx context.Context) ([]models.Plan, error) {
@@ -208,6 +228,42 @@ func (s *Store) FindTemplateByType(ctx context.Context, botType string) (*models
 	var t models.BotTemplate
 	err := s.db.Conn().WithContext(ctx).
 		Where("type = ? AND is_active = true", botType).
+		First(&t).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &t, err
+}
+
+// ListServiceTypes انواع سرویسِ فعال (distinct type) را برمی‌گرداند.
+// منبعِ حقیقتِ «سرویس‌های پویا» — هیچ نوعی در کد hardcode نیست.
+func (s *Store) ListServiceTypes(ctx context.Context) ([]string, error) {
+	var types []string
+	err := s.db.Conn().WithContext(ctx).
+		Model(&models.BotTemplate{}).
+		Where("is_active = true").
+		Distinct().
+		Order("type").
+		Pluck("type", &types).Error
+	return types, err
+}
+
+// ListTemplatesByType همه‌ی تمپلیت‌های فعالِ یک نوع سرویس (هر کدام یک تگ).
+// مرتب بر اساس جدیدترین (created_at desc) تا اولین مورد = جدیدترین تگ باشد.
+func (s *Store) ListTemplatesByType(ctx context.Context, serviceType string) ([]models.BotTemplate, error) {
+	var list []models.BotTemplate
+	err := s.db.Conn().WithContext(ctx).
+		Where("type = ? AND is_active = true", serviceType).
+		Order("created_at DESC").
+		Find(&list).Error
+	return list, err
+}
+
+// FindTemplateByTypeAndTag تمپلیتِ یک نوع سرویس با تگِ (ImageTag) مشخص.
+func (s *Store) FindTemplateByTypeAndTag(ctx context.Context, serviceType, tag string) (*models.BotTemplate, error) {
+	var t models.BotTemplate
+	err := s.db.Conn().WithContext(ctx).
+		Where("type = ? AND image_tag = ? AND is_active = true", serviceType, tag).
 		First(&t).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -386,6 +442,9 @@ func (s *Store) ListActivePlans(ctx context.Context) ([]models.Plan, error) {
 }
 
 func (s *Store) FindPlan(ctx context.Context, id string) (*models.Plan, error) {
+	if isBlankID(id) {
+		return nil, nil // از کوئریِ بی‌فایده با UUID صفر/خالی جلوگیری کن
+	}
 	var plan models.Plan
 	err := s.db.Conn().WithContext(ctx).Where("id = ?", id).First(&plan).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -394,6 +453,10 @@ func (s *Store) FindPlan(ctx context.Context, id string) (*models.Plan, error) {
 	return &plan, err
 }
 
+// isBlankID بررسی می‌کند شناسه خالی یا UUID صفر است.
+func isBlankID(id string) bool {
+	return id == "" || id == uuid.Nil.String()
+}
 
 // ---- Capacity Engine ----
 
@@ -420,6 +483,9 @@ func (s *Store) CountInstancesByOwnerAndType(ctx context.Context, ownerID uuid.U
 
 // FindPlanWithLimits پلن را با limit هایش بارگذاری می‌کند.
 func (s *Store) FindPlanWithLimits(ctx context.Context, id string) (*models.Plan, error) {
+	if isBlankID(id) {
+		return nil, nil // از کوئریِ بی‌فایده با UUID صفر/خالی جلوگیری کن
+	}
 	var plan models.Plan
 	err := s.db.Conn().WithContext(ctx).
 		Preload("Limits").
@@ -448,6 +514,17 @@ func (s *Store) SetPlanLimit(ctx context.Context, planID uuid.UUID, botType stri
 	}
 	return s.db.Conn().WithContext(ctx).
 		Model(&existing).Update("max_bots", maxBots).Error
+}
+
+// UpdatePlanMaxBots سقف کلی ربات‌های یک پلن را آپدیت می‌کند.
+func (s *Store) UpdatePlanMaxBots(ctx context.Context, planID uuid.UUID, maxBots int) error {
+	if maxBots < 0 {
+		maxBots = 0
+	}
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.Plan{}).
+		Where("id = ?", planID).
+		Update("max_bots", maxBots).Error
 }
 
 // CanCreateInstance بررسی کامل ظرفیت — قلب Capacity Engine.
@@ -547,9 +624,12 @@ func (s *Store) SelectLeastLoadedServer(ctx context.Context) (*models.Server, er
 		) ASC
 		LIMIT 1
 	`).First(&server).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &server, err
 }
+
 // ── Audit Log ─────────────────────────────────────────────
 
 // CreateAuditLog یک رکورد audit ایجاد می‌کند.

@@ -1,0 +1,5 @@
+2026-06-23T19:51:09.544+0330	[34mINFO[0m	logger/logger.go:48	bot connected	{"username": "adsbottestsbot"}
+2026-06-23T19:51:09.544+0330	[34mINFO[0m	logger/logger.go:48	ads scheduler started
+2026-06-23T19:51:09.551+0330	[34mINFO[0m	logger/logger.go:48	join-reward settlement scheduler started
+2026-06-23T19:51:09.544+0330	[34mINFO[0m	logger/logger.go:48	ads-bot started	{"owner": 7631742375}
+2026-06-23T23:36:14.194+0330	[34mINFO[0m	logger/logger.go:48	shutting down...
