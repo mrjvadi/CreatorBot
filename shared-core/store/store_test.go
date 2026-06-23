@@ -15,7 +15,9 @@ type MockDB struct {
 	data map[string]any
 }
 
-func (m *MockDB) Conn() interface{ Where(query any, args ...any) any } {
+func (m *MockDB) Conn() interface {
+	Where(query any, args ...any) any
+} {
 	return nil
 }
 

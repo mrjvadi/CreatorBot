@@ -1,4 +1,4 @@
-go 1.22
+go 1.25.0
 
 use (
 	./shared
@@ -17,4 +17,5 @@ use (
 	./ads-bot
 	./fraud-engine
 	./community-service
+	./tests/integration
 )

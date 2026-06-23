@@ -55,6 +55,7 @@ func main() {
 		URL:      cfg.NatsURL,
 		Username: cfg.NatsUser,
 		Password: cfg.NatsPass,
+		Name:     "community-service",
 	})
 	if err != nil {
 		log.Fatal("nats", ports.F("err", err))

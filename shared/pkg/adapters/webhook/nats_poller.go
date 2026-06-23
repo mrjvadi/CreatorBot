@@ -82,8 +82,7 @@ func (p *NATSPoller) Poll(b *tele.Bot, updates chan tele.Update, stop chan struc
 // باید یک بار در startup صدا زده شود.
 func SetWebhook(ctx context.Context, b *tele.Bot, gatewayURL, token string) error {
 	webhook := &tele.Webhook{
-		Listen:   gatewayURL + "/webhook/" + token,
-		MaxConns: 40,
+		Listen: gatewayURL + "/webhook/" + token,
 	}
 	return b.SetWebhook(webhook)
 }

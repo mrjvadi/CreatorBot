@@ -99,11 +99,11 @@ type DeductResp struct {
 }
 
 type InvoiceResp struct {
-	InvoiceCode  string `json:"invoice_code"`
-	PayURL       string `json:"pay_url"`
-	AmountTON    float64 `json:"amount_ton"`
-	ExpiresIn    string `json:"expires_in"`
-	NATSSubject  string `json:"nats_subject"`
+	InvoiceCode string  `json:"invoice_code"`
+	PayURL      string  `json:"pay_url"`
+	AmountTON   float64 `json:"amount_ton"`
+	ExpiresIn   string  `json:"expires_in"`
+	NATSSubject string  `json:"nats_subject"`
 }
 
 // ── internal ───────────────────────────────────────────────

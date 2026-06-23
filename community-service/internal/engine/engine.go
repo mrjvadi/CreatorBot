@@ -238,13 +238,13 @@ func (e *Engine) HandleLeave(ctx context.Context, telegramID, chatID int64) erro
 		ports.F("chat", chatID))
 
 	// پیدا کردن community
-	comm, err := e.pg.FindCommunityByChatID(ctx, chatID)
+	comm, err := e.store.FindCommunityByChatID(ctx, chatID)
 	if err != nil || comm == nil {
 		return nil // community ثبت‌نشده — نادیده بگیر
 	}
 
 	// آپدیت تعداد اعضا در MongoDB
-	if err := e.mongo.DecrementMemberCount(ctx, comm.ID.String()); err != nil {
+	if err := e.store.DecrementMemberCount(ctx, comm.ID.String()); err != nil {
 		e.log.Error("leave: decrement member count",
 			ports.F("chat", chatID), ports.F("err", err))
 	}

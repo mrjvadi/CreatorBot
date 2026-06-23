@@ -8,7 +8,6 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/google/uuid"
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 func (h *Handler) onAdmin(c tele.Context) error {

@@ -1,6 +1,6 @@
 module github.com/mrjvadi/creatorbot/member-bot
 
-go 1.22
+go 1.21
 
 require (
 	github.com/google/uuid v1.6.0

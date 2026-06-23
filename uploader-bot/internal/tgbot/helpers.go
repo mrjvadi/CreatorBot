@@ -80,7 +80,7 @@ func extractFileInfo(c tele.Context) *fileInfo {
 	return nil
 }
 
-func fileToInput(f models.File) tele.InputMedia {
+func fileToInput(f models.File) tele.Inputtable {
 	file := tele.File{FileID: f.FileID}
 	switch f.FileType {
 	case "photo":
@@ -172,10 +172,10 @@ func fileTypeIcon(t string) string {
 
 // BackupData ساختار داده بکاپ.
 type BackupData struct {
-	Version   int                      `json:"version"`
-	CreatedAt time.Time                `json:"created_at"`
-	Codes     []models.Code            `json:"codes"`
-	Settings  map[string]string        `json:"settings"`
+	Version   int                       `json:"version"`
+	CreatedAt time.Time                 `json:"created_at"`
+	Codes     []models.Code             `json:"codes"`
+	Settings  map[string]string         `json:"settings"`
 	Channels  []models.ForceJoinChannel `json:"channels"`
 }
 

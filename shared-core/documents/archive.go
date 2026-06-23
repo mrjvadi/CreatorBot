@@ -7,7 +7,7 @@ import (
 
 // ArchiveFile فایل آرشیو — با index برای جستجوی فازی.
 type ArchiveFile struct {
-	ID             primitive.ObjectID `bson:"_id,omitempty"`
+	ID primitive.ObjectID `bson:"_id,omitempty"`
 	ports.DocBase
 	TelegramFileID string   `bson:"telegram_file_id"`
 	FileType       string   `bson:"file_type"`
@@ -17,13 +17,13 @@ type ArchiveFile struct {
 	CategoryID     string   `bson:"category_id,omitempty"`
 	UploaderID     int64    `bson:"uploader_id"`
 	// SearchText فیلد ترکیبی برای text index MongoDB
-	SearchText     string   `bson:"search_text"`
+	SearchText string `bson:"search_text"`
 }
 
 // ArchiveCategory دسته‌بندی فایل‌های آرشیو.
 type ArchiveCategory struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
+	ID primitive.ObjectID `bson:"_id,omitempty"`
 	ports.DocBase
-	Name       string `bson:"name"`
-	ParentID   string `bson:"parent_id,omitempty"`
+	Name     string `bson:"name"`
+	ParentID string `bson:"parent_id,omitempty"`
 }

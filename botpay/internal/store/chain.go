@@ -76,7 +76,7 @@ func linkEntry(e *LedgerEntry, prevSeq int64, prevHash string) {
 type ChainVerifyResult struct {
 	Valid       bool
 	TotalBlocks int64
-	BrokenAtSeq int64  // اولین بلوکی که شکسته (0 = سالم)
+	BrokenAtSeq int64 // اولین بلوکی که شکسته (0 = سالم)
 	Reason      string
 }
 

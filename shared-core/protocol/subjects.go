@@ -1,15 +1,17 @@
 // Package protocol همه NATS subjects و message types را تعریف می‌کند.
 //
 // معماری:
-//   هر bot یک engine کامل دارد — مستقیم به DB وصل است.
-//   NATS فقط برای: deploy، heartbeat، رویدادهای cross-service
+//
+//	هر bot یک engine کامل دارد — مستقیم به DB وصل است.
+//	NATS فقط برای: deploy، heartbeat، رویدادهای cross-service
 //
 // Subjects:
-//   deploy.{server_id}          ← apimanager → agentmanager (deploy bot)
-//   agent.{server_id}.heartbeat ← agentmanager → apimanager
-//   agent.{server_id}.result    ← agentmanager → apimanager (نتیجه دستور)
-//   event.payment.{bot_id}      ← bot → apimanager (پرداخت تأیید شد)
-//   event.instance.{bot_id}     ← apimanager → bot (تغییر وضعیت instance)
+//
+//	deploy.{server_id}          ← apimanager → agentmanager (deploy bot)
+//	agent.{server_id}.heartbeat ← agentmanager → apimanager
+//	agent.{server_id}.result    ← agentmanager → apimanager (نتیجه دستور)
+//	event.payment.{bot_id}      ← bot → apimanager (پرداخت تأیید شد)
+//	event.instance.{bot_id}     ← apimanager → bot (تغییر وضعیت instance)
 package protocol
 
 import "fmt"
@@ -17,9 +19,9 @@ import "fmt"
 // ── Streams ────────────────────────────────────────────────
 
 const (
-	StreamDeploy = "DEPLOY"  // دستورات deploy/stop/remove
-	StreamAgent  = "AGENT"   // heartbeat + نتایج
-	StreamEvents = "EVENTS"  // رویدادهای cross-service
+	StreamDeploy = "DEPLOY" // دستورات deploy/stop/remove
+	StreamAgent  = "AGENT"  // heartbeat + نتایج
+	StreamEvents = "EVENTS" // رویدادهای cross-service
 )
 
 // ── Subjects ───────────────────────────────────────────────
@@ -84,6 +86,30 @@ type DeployCommand struct {
 	NetworkName   string            `json:"network_name,omitempty"`
 	// ContainerID فقط برای stop/remove/restart لازم است
 	ContainerID string `json:"container_id,omitempty"`
+	// Settings تنظیمات اختیاری امنیت/منابع برای override پیش‌فرض‌های agentmanager.
+	// nil یعنی «از پیش‌فرض‌های سرور استفاده کن».
+	Settings *DeploySettings `json:"settings,omitempty"`
+}
+
+// DeploySettings تنظیمات اختیاری امنیتی و محدودیت منابع برای هر container است.
+// همه‌ی فیلدها اختیاری‌اند؛ مقدار صفر/nil یعنی «پیش‌فرض agentmanager اعمال شود».
+// این ساختار اجازه می‌دهد هر bot محدودیت اختصاصی خودش را داشته باشد بدون اینکه
+// پیش‌فرض‌های امن سرور دور زده شوند.
+type DeploySettings struct {
+	// MemoryMB سقف حافظه به مگابایت (۰ = پیش‌فرض سرور).
+	MemoryMB int64 `json:"memory_mb,omitempty"`
+	// CPUs تعداد هسته‌ی مجاز (مثلاً 0.5 یا 2) — ۰ = پیش‌فرض سرور.
+	CPUs float64 `json:"cpus,omitempty"`
+	// PidsLimit حداکثر تعداد پردازه؛ جلوی fork-bomb را می‌گیرد (۰ = پیش‌فرض سرور).
+	PidsLimit int64 `json:"pids_limit,omitempty"`
+	// ReadonlyRootfs اگر تنظیم شود فایل‌سیستم ریشه را read-only/نوشتنی می‌کند
+	// (nil = پیش‌فرض سرور). برای bot هایی که روی دیسک می‌نویسند می‌توان false گذاشت.
+	ReadonlyRootfs *bool `json:"readonly_rootfs,omitempty"`
+	// CapAdd قابلیت‌های kernel که با وجود drop ALL دوباره اضافه می‌شوند
+	// (مثلاً ["NET_BIND_SERVICE"]). پیش‌فرض: هیچ.
+	CapAdd []string `json:"cap_add,omitempty"`
+	// TmpfsSizeMB اندازه‌ی tmpfs برای /tmp وقتی rootfs فقط‌خواندنی است (۰ = پیش‌فرض سرور).
+	TmpfsSizeMB int64 `json:"tmpfs_size_mb,omitempty"`
 }
 
 // ── Heartbeat ──────────────────────────────────────────────
@@ -121,24 +147,24 @@ type ResultMsg struct {
 // PaymentConfirmedEvent پرداخت تأیید شده.
 // bot این رویداد را publish می‌کند تا apimanager رکورد را update کند.
 type PaymentConfirmedEvent struct {
-	Type       MsgType `json:"type"`
-	BotID      int64   `json:"bot_id"`
-	UserID     int64   `json:"user_id"`
-	PlanID     string  `json:"plan_id"`
-	Amount     float64 `json:"amount"`
-	Gateway    string  `json:"gateway"`
-	RefCode    string  `json:"ref_code"`
-	Timestamp  int64   `json:"ts"`
+	Type      MsgType `json:"type"`
+	BotID     int64   `json:"bot_id"`
+	UserID    int64   `json:"user_id"`
+	PlanID    string  `json:"plan_id"`
+	Amount    float64 `json:"amount"`
+	Gateway   string  `json:"gateway"`
+	RefCode   string  `json:"ref_code"`
+	Timestamp int64   `json:"ts"`
 }
 
 // InstanceUpdatedEvent تغییر وضعیت instance از apimanager به bot.
 // مثلاً انقضا، تمدید، تغییر تنظیمات.
 type InstanceUpdatedEvent struct {
-	Type       MsgType           `json:"type"`
-	BotID      int64             `json:"bot_id"`
-	ChangeType string            `json:"change_type"` // expired | renewed | settings_changed
-	Data       map[string]any    `json:"data,omitempty"`
-	Timestamp  int64             `json:"ts"`
+	Type       MsgType        `json:"type"`
+	BotID      int64          `json:"bot_id"`
+	ChangeType string         `json:"change_type"` // expired | renewed | settings_changed
+	Data       map[string]any `json:"data,omitempty"`
+	Timestamp  int64          `json:"ts"`
 }
 
 // ── Service Provisioning Events ─────────────────────────────
@@ -186,12 +212,61 @@ const (
 	SubjPayCredit = "pay.credit"
 	// SubjPayTransfer — انتقال بین دو کاربر
 	SubjPayTransfer = "pay.transfer"
+	// SubjPayCreateInvoice — ساخت invoice واریز TON (برای شارژ کیف پول
+	// از طریق انتقال مستقیم TON با کد comment، نه لینک پرداخت آنلاین)
+	SubjPayCreateInvoice = "pay.invoice.create"
+	// SubjPayInvoiceStatus — استعلامِ وضعیتِ یک فاکتورِ خاص با کُد آن.
+	// botpay باید این را هندل کند: فاکتور را با Code پیدا و وضعیتش را برگرداند.
+	SubjPayInvoiceStatus = "pay.invoice.status"
 	// SubjPayQueue — queue group برای load balancing بین instanceهای botpay
 	SubjPayQueue = "botpay-workers"
 	// SubjWalletUpdated — رویداد تغییر موجودی (botpay → همه سرویس‌ها)
 	// کلاینت‌ها با شنیدن این، کش Redis خود را باطل می‌کنند.
 	SubjWalletUpdated = "wallet.updated"
 )
+
+// InvoiceRequest درخواست ساخت یک invoice واریز TON.
+type InvoiceRequest struct {
+	PayRequest
+	AmountTON float64 `json:"amount_ton"`
+	Ref       string  `json:"ref"` // مثلا plan_id
+}
+
+// InvoiceResponse پاسخ — کاربر باید AmountTON را به MasterAddress با
+// comment = Code بفرستد (نه یک لینک پرداخت آنلاین؛ TON-deposit مبتنی بر
+// تطبیق comment تراکنش است، طبق معماری واقعی botpay).
+type InvoiceResponse struct {
+	Code          string  `json:"code"`           // کد یکتا — کاربر باید این را در comment تراکنش بنویسد
+	MasterAddress string  `json:"master_address"` // آدرس کیف پول پلتفرم
+	AmountTON     float64 `json:"amount_ton"`
+	ExpiresAt     int64   `json:"expires_at"` // unix timestamp
+	Error         string  `json:"error,omitempty"`
+}
+
+// ── وضعیتِ فاکتور (Invoice Status) ────────────────────────────
+// مقادیرِ ممکنِ وضعیتِ یک فاکتور.
+const (
+	InvoiceStatusPending  = "pending"   // هنوز پرداخت/دریافت نشده
+	InvoiceStatusPaid     = "paid"      // کامل دریافت شد
+	InvoiceStatusPartial  = "partial"   // بخشی دریافت شد
+	InvoiceStatusExpired  = "expired"   // منقضی شده
+	InvoiceStatusNotFound = "not_found" // یافت نشد
+)
+
+// InvoiceStatusRequest استعلامِ وضعیتِ یک فاکتور با کُد آن.
+type InvoiceStatusRequest struct {
+	PayRequest
+	Code string `json:"code"`
+}
+
+// InvoiceStatusResponse وضعیتِ فاکتور.
+type InvoiceStatusResponse struct {
+	Status    string  `json:"status"`     // یکی از InvoiceStatus* بالا
+	AmountTON float64 `json:"amount_ton"` // مبلغِ موردِ انتظار
+	PaidTON   float64 `json:"paid_ton"`   // مبلغِ دریافت‌شده تا این لحظه
+	ExpiresAt int64   `json:"expires_at"` // unix
+	Error     string  `json:"error,omitempty"`
+}
 
 // WalletUpdatedEvent رویداد تغییر موجودی یک کاربر.
 type WalletUpdatedEvent struct {
@@ -264,10 +339,22 @@ type DeductRequest struct {
 }
 
 // DeductResponse نتیجه‌ی کسر.
+// ErrorCode کدهای خطای عددی pay — برای تشخیص قابل‌اعتماد نوع خطا، نه
+// string matching روی پیام (که با تغییر فرمت پیام شکننده می‌شود).
+type ErrorCode int
+
+const (
+	ErrCodeNone                ErrorCode = 0
+	ErrCodeUnauthorized        ErrorCode = 1
+	ErrCodeInsufficientBalance ErrorCode = 2
+	ErrCodeInternal            ErrorCode = 3
+)
+
 type DeductResponse struct {
-	Success    bool    `json:"success"`
-	NewBalance float64 `json:"new_balance"`
-	Error      string  `json:"error,omitempty"`
+	Success    bool      `json:"success"`
+	NewBalance float64   `json:"new_balance"`
+	Error      string    `json:"error,omitempty"`
+	Code       ErrorCode `json:"code,omitempty"`
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -285,8 +372,8 @@ const (
 
 // MemberCheckRequest درخواست چک عضویت یک کاربر در یک کانال.
 type MemberCheckRequest struct {
-	ChannelID  int64 `json:"channel_id"`
-	UserID     int64 `json:"user_id"`
+	ChannelID int64 `json:"channel_id"`
+	UserID    int64 `json:"user_id"`
 }
 
 // MemberCheckResponse نتیجه‌ی چک عضویت.

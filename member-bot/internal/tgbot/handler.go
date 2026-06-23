@@ -11,6 +11,7 @@ package tgbot
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
@@ -224,7 +225,7 @@ func (h *Handler) isAdmin(c tele.Context) bool {
 func countStr(v any) string {
 	switch val := v.(type) {
 	case int:
-		return strings.Repeat("", 0) + string(rune('0'+val))
+		return strconv.Itoa(val)
 	}
 	return "0"
 }

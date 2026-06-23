@@ -14,9 +14,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 )
 
 // ErrInsufficientBalance خطای موجودی ناکافی.
@@ -130,6 +130,68 @@ func (c *Client) Authorize(ctx context.Context, telegramID int64) (bool, error) 
 	return resp.Authorized, nil
 }
 
+// Invoice یک درخواست واریز TON — کاربر باید AmountTON را به MasterAddress
+// با comment = Code بفرستد (نه یک لینک پرداخت آنلاین؛ این یک واریز مستقیم
+// TON با تطبیق comment تراکنش است).
+type Invoice struct {
+	Code          string
+	MasterAddress string
+	AmountTON     float64
+	ExpiresAt     int64
+}
+
+// CreateInvoice یک invoice واریز TON می‌سازد — برای شارژ کیف پول وقتی
+// موجودی کافی نیست.
+func (c *Client) CreateInvoice(ctx context.Context, telegramID int64, amountTON float64, ref string) (*Invoice, error) {
+	var resp protocol.InvoiceResponse
+	err := c.nc.Request(ctx, protocol.SubjPayCreateInvoice, protocol.InvoiceRequest{
+		PayRequest: c.base(telegramID),
+		AmountTON:  amountTON,
+		Ref:        ref,
+	}, &resp, c.cfg.Timeout)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("pay: %s", resp.Error)
+	}
+	return &Invoice{
+		Code:          resp.Code,
+		MasterAddress: resp.MasterAddress,
+		AmountTON:     resp.AmountTON,
+		ExpiresAt:     resp.ExpiresAt,
+	}, nil
+}
+
+// InvoiceStatusResult وضعیتِ یک فاکتورِ خاص.
+type InvoiceStatusResult struct {
+	Status    string // protocol.InvoiceStatus* (pending|paid|partial|expired|not_found)
+	AmountTON float64
+	PaidTON   float64
+	ExpiresAt int64
+}
+
+// InvoiceStatus وضعیتِ یک فاکتور را با کُد آن از botpay می‌گیرد.
+func (c *Client) InvoiceStatus(ctx context.Context, telegramID int64, code string) (*InvoiceStatusResult, error) {
+	var resp protocol.InvoiceStatusResponse
+	err := c.nc.Request(ctx, protocol.SubjPayInvoiceStatus, protocol.InvoiceStatusRequest{
+		PayRequest: c.base(telegramID),
+		Code:       code,
+	}, &resp, c.cfg.Timeout)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("pay: %s", resp.Error)
+	}
+	return &InvoiceStatusResult{
+		Status:    resp.Status,
+		AmountTON: resp.AmountTON,
+		PaidTON:   resp.PaidTON,
+		ExpiresAt: resp.ExpiresAt,
+	}, nil
+}
+
 // Deduct کسر از حساب (پرداخت). idempotencyKey از کسر دوباره جلوگیری می‌کند.
 func (c *Client) Deduct(ctx context.Context, telegramID int64, amountTON float64, reason, idempotencyKey string) (float64, error) {
 	return c.DeductWithMeta(ctx, telegramID, amountTON, reason, idempotencyKey, "", "")
@@ -150,7 +212,7 @@ func (c *Client) DeductWithMeta(ctx context.Context, telegramID int64, amountTON
 		return 0, err
 	}
 	if resp.Error != "" {
-		if resp.Error == "insufficient balance" {
+		if resp.Code == protocol.ErrCodeInsufficientBalance {
 			return 0, ErrInsufficientBalance
 		}
 		return 0, fmt.Errorf("pay: %s", resp.Error)

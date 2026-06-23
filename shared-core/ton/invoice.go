@@ -30,10 +30,10 @@ type Config struct {
 
 // Invoice یک فاکتور پرداخت.
 type Invoice struct {
-	ID          string    // شناسه یکتا (در comment تراکنش)
-	Amount      float64   // مقدار TON
-	PayURL      string    // لینک برای کاربر
-	ExpiresAt   time.Time
+	ID        string  // شناسه یکتا (در comment تراکنش)
+	Amount    float64 // مقدار TON
+	PayURL    string  // لینک برای کاربر
+	ExpiresAt time.Time
 }
 
 // Client مدیریت پرداخت TON.

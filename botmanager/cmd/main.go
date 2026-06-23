@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"os/signal"
 	"syscall"
+	"time"
 
 	tele "gopkg.in/telebot.v4"
 
+	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared-core/ton"
-	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
@@ -39,8 +40,8 @@ type Config struct {
 
 	EncryptKey string `mapstructure:"ENCRYPTION_KEY"`
 	// TON payment
-	TONWallet  string `mapstructure:"TON_WALLET_ADDRESS"`
-	TONAPIKey  string `mapstructure:"TON_API_KEY"`
+	TONWallet   string `mapstructure:"TON_WALLET_ADDRESS"`
+	TONAPIKey   string `mapstructure:"TON_API_KEY"`
 	TONNetwork  string `mapstructure:"TON_NETWORK"`
 	BotpayURL   string `mapstructure:"BOTPAY_URL"`
 	BotpayKey   string `mapstructure:"BOTPAY_API_KEY"`
@@ -57,7 +58,7 @@ func main() {
 	if err != nil {
 		log.Fatal("postgres", ports.F("err", err))
 	}
-	db.Migrate(models.AllModels()...)
+	_ = db.Migrate(models.AllModels()...)
 
 	// ── Redis (wizard state) ───────────────────────────────────
 	cache, err := sharedredis.New(sharedredis.Config{
@@ -76,6 +77,7 @@ func main() {
 			URL:      cfg.NatsURL,
 			Username: cfg.NatsUser,
 			Password: cfg.NatsPass,
+			Name:     "botmanager",
 		})
 		if err != nil {
 			log.Fatal("nats", ports.F("err", err))
@@ -135,13 +137,15 @@ func main() {
 			if err := json.Unmarshal(data, &msg); err != nil {
 				return
 			}
-			st.MarkServerOnlineByServerID(ctx, msg.ServerID)
+			cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			_ = st.MarkServerOnlineByServerID(cctx, msg.ServerID)
 			for _, c := range msg.Containers {
 				switch c.State {
 				case "running":
-					st.UpdateInstanceStatusByContainerName(ctx, c.Name, models.StatusRunning)
+					_ = st.UpdateInstanceStatusByContainerName(cctx, c.Name, models.StatusRunning)
 				case "exited", "dead":
-					st.UpdateInstanceStatusByContainerName(ctx, c.Name, models.StatusStopped)
+					_ = st.UpdateInstanceStatusByContainerName(cctx, c.Name, models.StatusStopped)
 				}
 			}
 		})
@@ -152,10 +156,12 @@ func main() {
 			if err := json.Unmarshal(data, &msg); err != nil {
 				return
 			}
+			cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
 			if msg.Success {
-				st.UpdateInstanceStatusByContainerName(ctx, msg.ContainerName, models.StatusRunning)
+				_ = st.UpdateInstanceStatusByContainerName(cctx, msg.ContainerName, models.StatusRunning)
 			} else {
-				st.UpdateInstanceStatusByContainerName(ctx, msg.ContainerName, models.StatusError)
+				_ = st.UpdateInstanceStatusByContainerName(cctx, msg.ContainerName, models.StatusError)
 			}
 			log.Info("docker result",
 				ports.F("cmd", msg.CommandType),
@@ -165,6 +171,9 @@ func main() {
 
 		log.Info("NATS listeners started")
 	}
+
+	// ── یادآورِ انقضای سرویس‌ها (job پس‌زمینه) ────────────────
+	h.StartExpiryReminders(ctx)
 
 	go func() {
 		<-ctx.Done()

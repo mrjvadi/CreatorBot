@@ -341,6 +341,54 @@ func getUserID(ctx context.Context, h *Handler, c tele.Context) uuid.UUID {
 	return uuid.Nil
 }
 
+// confirmBuyWithBalance خرید مستقیم از موجودی کیف پول.
+func (h *Handler) confirmBuyWithBalance(ctx context.Context, c tele.Context, planIDStr string) error {
+	planID, err := uuid.Parse(planIDStr)
+	if err != nil {
+		return c.Edit("❌ پلن نامعتبر.")
+	}
+	plan, err := h.store.FindPlan(ctx, planID)
+	if err != nil || plan == nil {
+		return c.Edit("❌ پلن یافت نشد.")
+	}
+	u, _ := h.getOrCreate(ctx, c)
+	if u == nil {
+		return c.Edit("❌ خطا.")
+	}
+	if u.Balance < plan.Price {
+		return c.Edit("❌ موجودی کافی نیست.")
+	}
+	if err := h.store.UpdateBalance(ctx, u.ID, -plan.Price); err != nil {
+		return c.Edit("❌ خطا در کسر موجودی.")
+	}
+	h.clearState(ctx, c.Sender().ID)
+	return h.activateSubscription(ctx, c, u.ID, plan)
+}
+
+// verifyOnlinePayment پرداخت آنلاین را با gateway تأیید می‌کند.
+func (h *Handler) verifyOnlinePayment(ctx context.Context, c tele.Context, refID string) error {
+	uid := c.Sender().ID
+	st := h.getState(ctx, uid)
+	planID, err := uuid.Parse(st.Data["plan_id"])
+	if err != nil {
+		return c.Edit("❌ اطلاعات پرداخت یافت نشد.")
+	}
+	plan, _ := h.store.FindPlan(ctx, planID)
+	if plan == nil {
+		return c.Edit("❌ پلن یافت نشد.")
+	}
+	resp, err := h.gateway.VerifyPayment(ctx, refID)
+	if err != nil || resp == nil || !resp.Success {
+		return c.Edit("❌ تأیید پرداخت ناموفق بود. اگر مبلغ کسر شده با پشتیبانی تماس بگیرید.")
+	}
+	h.clearState(ctx, uid)
+	u, _ := h.getOrCreate(ctx, c)
+	if u == nil {
+		return c.Edit("❌ خطا.")
+	}
+	return h.activateSubscription(ctx, c, u.ID, plan)
+}
+
 func parseFloat(s string) float64 {
 	var f float64
 	fmt.Sscanf(s, "%f", &f)
@@ -352,11 +400,11 @@ func (h *Handler) activateSubscription(ctx context.Context, c tele.Context, user
 	// ساخت کاربر روی پنل
 	username := genVPNUsername(c.Sender().ID)
 	expiresAt := time.Now().AddDate(0, 0, plan.DurationDay)
-	dataLimit := int64(plan.DataGB * 1e9)
+	dataLimitBytes := int64(plan.DataGB * 1e9)
 
 	vpnUser, err := h.panel.CreateUser(ctx, ports.CreateVPNUserRequest{
 		Username:  username,
-		DataLimit: dataLimit,
+		DataLimit: dataLimitBytes,
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
@@ -375,7 +423,7 @@ func (h *Handler) activateSubscription(ctx context.Context, c tele.Context, user
 		Username:  vpnUser.Username,
 		Status:    models.SubActive,
 		ExpiresAt: expiresAt,
-		DataLimit: dataLimit,
+		DataLimit: float64(dataLimitBytes),
 	}
 	if err := h.store.CreateSubscription(ctx, sub); err != nil {
 		return err

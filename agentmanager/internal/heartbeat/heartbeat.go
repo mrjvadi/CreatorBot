@@ -1,31 +1,35 @@
 // Package heartbeat وضعیت سرور را به‌صورت دوره‌ای به botmanager ارسال می‌کند.
+// هیچ exec.Command اینجا وجود ندارد — همه از Docker SDK و /proc خوانده می‌شود.
 package heartbeat
 
 import (
+	"bufio"
 	"context"
-	"os/exec"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/mrjvadi/creatorbot/shared-core/agent"
+	"github.com/mrjvadi/creatorbot/agentmanager/internal/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 // Runner heartbeat ها را در فواصل منظم ارسال می‌کند.
 type Runner struct {
 	serverID string
-	channel  string
-	notifier ports.Notifier
+	nc       *natsclient.Client
+	docker   *docker.Client
 	log      ports.Logger
 	interval time.Duration
 }
 
-func New(serverID string, notifier ports.Notifier, log ports.Logger, interval time.Duration) *Runner {
+func New(serverID string, nc *natsclient.Client, d *docker.Client, log ports.Logger, interval time.Duration) *Runner {
 	return &Runner{
 		serverID: serverID,
-		channel:  "botmanager",
-		notifier: notifier,
+		nc:       nc,
+		docker:   d,
 		log:      log,
 		interval: interval,
 	}
@@ -53,68 +57,71 @@ func (r *Runner) Run(ctx context.Context) {
 }
 
 func (r *Runner) send(ctx context.Context) {
-	containers := listContainers()
-	payload := agent.NewHeartbeat(r.serverID, containers)
+	// لیست container ها از Docker SDK (نه exec.Command)
+	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	containers, err := r.docker.ListContainers(listCtx)
+	cancel()
+	if err != nil {
+		r.log.Error("list containers failed", ports.F("err", err))
+		containers = nil
+	}
 
-	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	msg := protocol.HeartbeatMsg{
+		Type:       protocol.MsgHeartbeat,
+		ServerID:   r.serverID,
+		Timestamp:  time.Now().Unix(),
+		Containers: containers,
+	}
 
-	if err := r.notifier.Publish(pubCtx, r.channel, payload); err != nil {
-		r.log.Error("heartbeat publish failed", ports.F("err", err))
+	pubCtx, pubCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer pubCancel()
+
+	if err := r.nc.Publish(pubCtx, protocol.HeartbeatSubject(r.serverID), msg); err != nil {
+		if pubCtx.Err() == nil {
+			r.log.Error("heartbeat publish failed", ports.F("err", err))
+		}
 	} else {
 		r.log.Info("heartbeat sent", ports.F("containers", len(containers)))
 	}
 }
 
-func listContainers() []agent.ContainerStatus {
-	out, err := exec.Command("docker", "ps", "-a",
-		"--format", "{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}").Output()
-	if err != nil {
-		return nil
-	}
-	var containers []agent.ContainerStatus
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 4)
-		if len(parts) < 4 {
-			continue
-		}
-		containers = append(containers, agent.ContainerStatus{
-			Name:   parts[0],
-			Image:  parts[1],
-			State:  parts[2],
-			Status: parts[3],
-		})
-	}
-	return containers
-}
-
-// SystemStats اطلاعات سیستم (load average, RAM) را برمی‌گرداند.
+// SystemStats اطلاعات سیستم را از /proc می‌خواند — بدون اجرای هیچ دستور خارجی.
 func SystemStats() map[string]string {
 	stats := map[string]string{}
-	if out, err := exec.Command("cat", "/proc/loadavg").Output(); err == nil {
-		if parts := strings.Fields(string(out)); len(parts) >= 1 {
+
+	// Load average از /proc/loadavg
+	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+		if parts := strings.Fields(string(data)); len(parts) >= 1 {
 			stats["load_1m"] = parts[0]
 		}
 	}
-	if out, err := exec.Command("free", "-m").Output(); err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.HasPrefix(line, "Mem:") {
-				parts := strings.Fields(line)
-				if len(parts) >= 3 {
-					stats["ram_total_mb"] = parts[1]
-					stats["ram_used_mb"] = parts[2]
-					if total, e1 := strconv.ParseFloat(parts[1], 64); e1 == nil {
-						if used, e2 := strconv.ParseFloat(parts[2], 64); e2 == nil && total > 0 {
-							stats["ram_pct"] = strconv.FormatFloat(used/total*100, 'f', 1, 64)
-						}
-					}
-				}
-				break
+
+	// RAM از /proc/meminfo (کیلوبایت)
+	if f, err := os.Open("/proc/meminfo"); err == nil {
+		defer f.Close()
+		memInfo := map[string]int64{}
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			parts := strings.Fields(line)
+			if len(parts) < 2 {
+				continue
+			}
+			key := strings.TrimSuffix(parts[0], ":")
+			val, err := strconv.ParseInt(parts[1], 10, 64)
+			if err == nil {
+				memInfo[key] = val
 			}
 		}
+		total := memInfo["MemTotal"]
+		avail := memInfo["MemAvailable"]
+		if total > 0 {
+			used := total - avail
+			stats["ram_total_mb"] = strconv.FormatInt(total/1024, 10)
+			stats["ram_used_mb"] = strconv.FormatInt(used/1024, 10)
+			stats["ram_pct"] = strconv.FormatFloat(float64(used)/float64(total)*100, 'f', 1, 64)
+		}
 	}
+
 	return stats
 }

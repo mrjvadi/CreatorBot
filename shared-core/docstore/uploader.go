@@ -165,7 +165,8 @@ func (s *CodeStore) CountActive(ctx context.Context) (int64, error) {
 
 // CreateFromInfo یک فایل ارسالی از ادمین را ذخیره می‌کند.
 // fileID از Telegram، fileType نوع فایل، caption متن همراه.
-func (s *FileStore) CreateFromInfo(ctx context.Context, fileID, fileType, caption string, uploaderID int64) *primitive.ObjectID {
+// شناسه‌ی رشته‌ای سند ساخته‌شده را برمی‌گرداند (یا "" در صورت خطا).
+func (s *FileStore) CreateFromInfo(ctx context.Context, fileID, fileType, caption string, uploaderID int64) string {
 	file := &documents.File{
 		TelegramFileID: fileID,
 		FileType:       fileType,
@@ -173,12 +174,11 @@ func (s *FileStore) CreateFromInfo(ctx context.Context, fileID, fileType, captio
 		UploaderID:     uploaderID,
 	}
 	file.DocBase = s.newDocBase()
-	res, err := s.col("files").InsertOne(ctx, file)
+	id, err := s.col("files").InsertOne(ctx, file)
 	if err != nil {
-		return nil
+		return ""
 	}
-	id := res.InsertedID.(primitive.ObjectID)
-	return &id
+	return id
 }
 
 func (s *FileStore) Count(ctx context.Context) (int64, error) {

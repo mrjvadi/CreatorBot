@@ -8,19 +8,19 @@ import (
 	"encoding/json"
 	"fmt"
 
-	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 )
 
 // CommandType — برای backward compat
 type CommandType = protocol.MsgType
 
 const (
-	CmdDeploy  = protocol.MsgDeploy
-	CmdStart   = protocol.MsgStart
-	CmdStop    = protocol.MsgStop
-	CmdRemove  = protocol.MsgRemove
-	CmdRestart = protocol.MsgRestart
+	CmdDeploy              = protocol.MsgDeploy
+	CmdStart               = protocol.MsgStart
+	CmdStop                = protocol.MsgStop
+	CmdRemove              = protocol.MsgRemove
+	CmdRestart             = protocol.MsgRestart
 	CmdLogs    CommandType = "logs"
 	CmdInspect CommandType = "inspect"
 )

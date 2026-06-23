@@ -4,8 +4,9 @@
 // هر دو طرف این package را import می‌کنند — نه internal یکدیگر را.
 //
 // کانال‌ها:
-//   "server_<serverID>"  ← botmanager publish می‌کند، agentmanager subscribe می‌کند
-//   "botmanager"         ← agentmanager publish می‌کند، botmanager subscribe می‌کند
+//
+//	"server_<serverID>"  ← botmanager publish می‌کند، agentmanager subscribe می‌کند
+//	"botmanager"         ← agentmanager publish می‌کند، botmanager subscribe می‌کند
 package agent
 
 import "time"

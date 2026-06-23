@@ -1,0 +1,269 @@
+2026-06-23T19:51:09.230+0330	[34mINFO[0m	logger/logger.go:48	nats connected
+2026-06-23T19:51:09.246+0330	[34mINFO[0m	logger/logger.go:48	consensus worker registered	{"id": "worker-hmac", "algo": "HMAC-SHA256"}
+2026-06-23T19:51:09.251+0330	[34mINFO[0m	logger/logger.go:48	consensus worker registered	{"id": "worker-ed25519", "algo": "Ed25519"}
+2026-06-23T19:51:09.264+0330	[34mINFO[0m	logger/logger.go:48	consensus worker registered	{"id": "worker-aes256", "algo": "AES-256-GCM"}
+2026-06-23T19:51:09.271+0330	[34mINFO[0m	logger/logger.go:48	consensus worker registered	{"id": "worker-merkle", "algo": "SHA512-Merkle"}
+2026-06-23T19:51:09.271+0330	[34mINFO[0m	logger/logger.go:48	consensus ready	{"workers": 4}
+2026-06-23T19:51:09.272+0330	[34mINFO[0m	logger/logger.go:48	payresponder started — listening on pay.* subjects
+2026-06-23T19:51:09.702+0330	[34mINFO[0m	logger/logger.go:48	botpay started	{"bot": "botpaytestsbot", "ton_address": "UQBcuzDbGmVZRKOeANbVFmhQFIR4RVpIJS9QGqnveRmA15oL"}
+2026-06-23T19:51:09.702+0330	[34mINFO[0m	logger/logger.go:48	chainguard started	{"interval": "30s"}
+2026-06-23T19:51:09.702+0330	[34mINFO[0m	logger/logger.go:48	TON watcher started	{"address": "UQBcuzDbGmVZRKOeANbVFmhQFIR4RVpIJS9QGqnveRmA15oL", "network": "mainnet", "interval": "15s"}
+2026-06-23T19:51:10.762+0330	[34mINFO[0m	logger/logger.go:48	new TON transaction	{"amount": 1.5628325, "from": "EQDeokJviFMgvQocUk_b7Q-dt3UC7kOWtaEaqDnOBpeJt9dB", "comment": "PAY-6D3D680B"}
+
+2026/06/23 19:51:10 [31;1m/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/botpay/internal/store/invoice_repo.go:28 [35;1mrecord not found
+[0m[33m[1.781ms] [34;1m[rows:0][0m SELECT * FROM "invoices" WHERE code = 'PAY-6D3D680B' AND status = 'pending' ORDER BY "invoices"."id" LIMIT 1
+
+2026/06/23 19:51:10 [31;1m/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/botpay/internal/store/wallet_repo.go:47 [35;1mrecord not found
+[0m[33m[0.540ms] [34;1m[rows:0][0m SELECT * FROM "wallets" WHERE pay_handle = 'PAY-6D3D680B' ORDER BY "wallets"."id" LIMIT 1
+2026-06-23T19:51:10.765+0330	[34mINFO[0m	logger/logger.go:48	deposit without matching comment	{"comment": "PAY-6D3D680B", "from": "EQDeokJviFMgvQocUk_b7Q-dt3UC7kOWtaEaqDnOBpeJt9dB", "amount": 1.5628325}
+2026-06-23T19:51:10.765+0330	[34mINFO[0m	logger/logger.go:48	TON txs processed	{"count": 1}
+2026-06-23T19:51:29.607+0330	[34mINFO[0m	logger/logger.go:48	invoice created	{"code": "PAY-27391838", "amount_ton": 1, "telegram_id": 5644660642}
+2026-06-23T19:53:25.011+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:54:57.893+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:55:31.306+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:56:14.860+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:57:40.337+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:58:10.210+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:58:24.986+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T19:58:55.008+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:01:10.002+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:01:55.061+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:02:40.083+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:03:10.102+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:04:55.163+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:05:55.174+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:06:10.145+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:08:40.108+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:08:55.292+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:09:09.992+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:10:10.037+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:11:25.000+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:11:40.053+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:11:55.721+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:13:10.066+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:14:09.977+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:14:55.030+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:15:55.048+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:16:11.665+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:16:40.266+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:17:39.718+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:17:54.731+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:18:09.732+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:18:24.738+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:18:39.739+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:18:54.740+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:19:09.741+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:19:24.753+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:19:39.753+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:19:51.443+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:20:04.716+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:20:39.712+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "decode: context deadline exceeded (Client.Timeout or context cancellation while "}
+2026-06-23T20:20:54.727+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:21:09.728+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:21:17.589+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:21:25.694+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:23:10.056+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:23:40.067+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:23:55.021+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:28:24.973+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:28:55.029+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:29:19.918+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:29:39.990+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:30:10.110+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:30:40.321+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:32:10.059+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:32:39.979+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:32:54.989+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:33:10.009+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:34:09.983+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:34:40.011+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:35:40.074+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:37:10.002+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:38:10.143+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:40:39.974+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:41:40.003+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:41:55.032+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:42:10.097+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:43:39.989+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:44:09.999+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:46:10.012+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:47:25.074+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:47:47.413+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:49:10.109+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:49:30.693+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:49:49.715+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T20:51:55.039+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:53:10.236+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:53:40.172+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:54:25.223+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:54:39.979+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:55:25.031+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:55:40.016+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:58:55.017+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T20:59:25.098+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:00:40.171+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:01:09.994+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:01:25.419+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:02:24.980+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:03:09.975+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:04:25.091+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:04:39.947+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:05:10.147+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:05:24.998+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:06:10.056+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:07:40.064+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:08:10.067+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:08:24.995+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:08:55.227+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:10:54.973+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:12:25.024+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:12:55.260+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:13:25.063+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:15:10.121+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:18:10.178+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:18:39.976+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:19:40.002+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:19:54.955+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:21:55.360+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:23:40.081+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:24:10.095+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:24:25.674+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:26:25.051+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:26:40.218+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:29:20.084+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T21:29:54.989+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:30:24.991+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:31:10.137+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:31:39.988+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:31:55.092+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:32:55.154+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:33:25.409+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T21:33:39.777+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T21:35:10.158+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:35:40.001+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:35:55.122+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:36:10.074+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:36:55.005+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:37:39.981+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:37:55.035+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:40:25.056+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:42:10.065+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:42:55.012+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:43:55.020+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:44:09.992+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:44:39.981+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:45:25.128+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:46:39.994+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:47:10.008+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:47:25.131+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:48:10.131+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:48:24.978+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:50:09.976+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:53:10.086+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:55:25.064+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T21:58:55.044+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:01:25.112+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:02:25.132+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:04:40.054+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:04:54.999+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:05:40.026+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:06:10.021+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:06:24.986+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:07:09.967+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:08:25.067+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:09:10.013+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:09:55.070+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:11:25.185+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:11:55.086+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:12:25.023+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:13:40.169+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:14:24.986+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:16:25.122+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:16:40.173+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:17:40.218+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:18:10.092+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:19:25.046+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:19:55.053+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:20:40.000+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:20:55.163+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:22:25.166+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:23:10.018+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:23:40.029+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:24:10.168+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:24:39.999+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:25:10.015+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:26:25.005+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:26:39.998+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:29:20.374+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T22:29:25.905+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:32:25.040+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:33:54.986+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:34:25.002+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:35:10.020+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:35:39.964+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:36:09.968+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:36:54.985+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:37:25.088+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:39:55.119+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:41:40.157+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:42:54.964+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:43:40.028+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:43:55.213+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:44:10.085+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:45:10.031+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:45:25.152+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:45:55.148+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:46:25.143+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:46:40.113+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:47:10.131+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:49:10.044+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:50:10.110+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:50:39.973+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:51:39.973+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:51:55.024+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:53:04.490+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T22:53:27.413+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T22:55:25.140+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:55:55.012+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:56:25.016+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:57:10.089+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:58:10.086+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:58:40.086+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:59:24.998+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T22:59:55.042+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:01:10.108+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:01:55.198+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:02:10.192+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:02:25.069+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:03:10.180+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:03:55.073+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:04:40.129+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:06:40.046+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:07:40.048+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:08:25.009+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:12:10.083+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:13:40.096+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:13:56.107+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:14:40.509+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:15:54.999+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:16:25.163+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:16:40.065+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:17:54.990+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:19:40.070+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:20:10.014+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:20:54.995+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:22:25.003+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:23:39.961+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:24:09.984+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:25:10.004+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:25:55.018+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:27:25.037+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:29:20.681+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: Get \"https://toncenter.com/api/v2/getTransactions?address=UQBcuzDbGmV"}
+2026-06-23T23:30:55.175+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:31:54.979+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:32:55.108+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:34:40.009+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:34:55.013+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:35:55.062+0330	[34mINFO[0m	logger/logger.go:48	TON poll skipped (transient)	{"err": "toncenter: LITE_SERVER_UNKNOWN: cannot locate transaction in block with specifie"}
+2026-06-23T23:36:14.170+0330	[34mINFO[0m	logger/logger.go:48	TON watcher stopped
+2026-06-23T23:36:14.170+0330	[34mINFO[0m	logger/logger.go:48	chainguard stopped
