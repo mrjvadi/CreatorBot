@@ -176,20 +176,24 @@ func (e *Engine) distributeMemberRewards(ctx context.Context, rev *store.Communi
 
 	for _, ms := range list {
 		share := (float64(ms.s) / float64(totalScore)) * pool
-		if share < 0.0001 { continue }
-
-		e.nc.PublishCore("community.reward.created", map[string]any{
-			"telegram_id":    ms.id,
-			"community_id":   community.ID.String(),
-			"revenue_id":     rev.ID.String(),
-			"amount_ton":     share,
-			"activity_score": ms.s,
+		if share < 0.0001 {
+			continue
+		}
+		// earning.created → revenue-service (همان مسیری که owner و platform استفاده می‌کنند)
+		// قبلاً community.reward.created publish می‌شد که هیچ subscriber ای نداشت
+		// و اعضا هیچ‌وقت واقعاً پول دریافت نمی‌کردند.
+		e.nc.PublishCore("earning.created", map[string]any{
+			"type":             "member_reward",
+			"owner_telegram_id": ms.id,
+			"total_nano":       int64(share * 1e9),
+			"ref_id":           rev.ID.String() + "_m_" + fmt.Sprint(ms.id),
+			"description":      "سهم اعضا از درآمد کمپین",
 		})
 
 		e.store.CreateDistribution(ctx, &store.CommunityDistribution{
 			RevenueID: rev.ID, CommunityID: community.ID,
 			TelegramID: ms.id, Amount: share,
-			ActivityScore: ms.s, Status: "pending",
+			ActivityScore: ms.s, Status: "paid",
 		})
 	}
 }

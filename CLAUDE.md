@@ -315,10 +315,12 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
 - (رفع جزئی ۲۰۲۶-۰۷-۰۶) دیتابیس‌های منطقی سرویس‌های مرکزی از هم جدا شدند
   (هرکدام دیتابیس خودش، رجوع بخش ۲) — ولی جداسازی فیزیکیِ کامل (سرور/instance
   جدا برای هرکدام، نه فقط دیتابیس جدا روی همان سرور Postgres) هنوز انجام نشده.
-- (رفع‌شده ۲۰۲۶-۰۷-۱۰) community-service: سه باگ واقعی رفع شد:
+- (رفع‌شده ۲۰۲۶-۰۷-۱۰) community-service: چهار باگ واقعی رفع شد:
   (۱) nil pointer دو تابع MongoDB وقتی mongo=nil بود → guard اضافه شد،
   (۲) IncrementMemberCount هیچ‌وقت صدا نمی‌شد → در HandleJoin اضافه شد،
-  (۳) کامنت اشتباه «MongoDB» برای DecrementMemberCount که روی Postgres کار می‌کرد.
+  (۳) کامنت اشتباه «MongoDB» برای DecrementMemberCount که روی Postgres کار می‌کرد،
+  (۴) `community.reward.created` که هیچ subscriber ای نداشت → حالا `earning.created`
+  با نوع `member_reward` publish می‌شود که revenue-service آن را پردازش می‌کند.
 
 ---
 
