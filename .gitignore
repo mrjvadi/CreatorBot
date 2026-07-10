@@ -8,3 +8,4 @@ agentmanager/botenv/
 # خروجی اجرای محلی run.sh
 .logs/
 .run.pids
+tools/e2e-provision/e2e-provision

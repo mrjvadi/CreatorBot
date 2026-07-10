@@ -1,0 +1,9 @@
+# رازها — هرگز کامیت نشوند
+.env
+.env.local
+*.env
+
+# باینری ساخته‌شده
+/admanager-bot
+/bot
+bin/
