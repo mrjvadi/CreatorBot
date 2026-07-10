@@ -24,18 +24,10 @@ func New(db *gorm.DB) *Store { return &Store{db: db} }
 // DB دسترسی خام به gorm (برای queryهای cross-table مثل validation سرویس).
 func (s *Store) DB() *gorm.DB { return s.db }
 
-// ValidateServiceID بررسی می‌کند که یک service_id معتبر است.
-// سرویس‌های اصلی پلتفرم همیشه معتبرند.
-// سرویس‌های bot instance با فرمت "bot_<BotID>" باید یک instance فعال در DB داشته باشند.
-func (s *Store) ValidateServiceID(ctx context.Context, serviceID string) bool {
-	if serviceID == "" {
-		return false
-	}
-	switch serviceID {
-	case "botmanager", "apimanager", "botpay", "ads-bot",
-		"community-service", "fraud-engine", "revenue-service":
-		return true
-	}
+// ValidateBotInstance بررسی می‌کند که یک service_id با فرمت "bot_<BotID>" یک
+// instance فعال در DB دارد. فقط برای ربات‌های مشتری (نه سرویس‌های مرکزی) استفاده
+// می‌شود — سرویس‌های مرکزی فقط با HMAC اعتبارسنجی می‌شوند (رجوع payresponder/authorize).
+func (s *Store) ValidateBotInstance(ctx context.Context, serviceID string) bool {
 	if !strings.HasPrefix(serviceID, "bot_") {
 		return false
 	}

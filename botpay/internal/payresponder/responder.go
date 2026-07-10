@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
@@ -94,25 +95,29 @@ func (r *Responder) Start() error {
 }
 
 // authorize بررسی می‌کند سرویس درخواست‌کننده مجاز است.
-// دو شرط لازم است، نه یکی:
-//  1. service_id یا یکی از سرویس‌های اصلی است، یا یک bot instance فعال (bot_<BotID>).
-//  2. service_key ارائه‌شده دقیقاً با HMAC(serviceHMACSecret, serviceID) برابر است.
 //
-// نکته‌ی امنیتی مهم: نسخه‌ی قبلی این تابع فقط شرط ۱ را چک می‌کرد — یعنی هر
-// کلاینت NATS که می‌دانست service_id چیست (یک رشته‌ی کاملاً عمومی مثل
-// "botmanager" که همین‌جا در کد هم دیده می‌شود) بدون داشتن هیچ رازی مجاز
-// شناخته می‌شد. چون همه‌ی سرویس‌ها یک username/password مشترک NATS دارند،
-// این یعنی هر سرویس (یا container ربات مشتری) می‌توانست جای botmanager را
-// جا بزند و pay.credit/pay.deduct/pay.transfer دلخواه بزند.
+// منطق دو لایه‌ای:
+//  1. HMAC: service_key = HMAC(masterSecret, serviceID) — اول چک می‌شود.
+//     این کافی است برای سرویس‌های مرکزی پلتفرم که masterSecret دارند.
+//  2. برای ربات‌های مشتری (bot_<BotID>): علاوه بر HMAC، بررسی می‌شود که
+//     این instance هنوز در DB فعال است (نه deleted/stopped).
+//
+// مزیت این رویکرد نسبت به allowlist هاردکود: هر سرویس جدید پلتفرم که
+// SERVICE_HMAC_SECRET داشته باشد، بدون نیاز به تغییر کد botpay مجاز است.
+// قبلاً فراموش کردن اضافه‌کردن "ads-bot" به switch باعث قطعی واقعی شد.
 func (r *Responder) authorize(ctx context.Context, serviceID, serviceKey string) bool {
-	if !r.wallet.Store().ValidateServiceID(ctx, serviceID) {
-		return false
-	}
 	if r.serviceHMACSecret == "" {
 		r.log.Error("payresponder: SERVICE_HMAC_SECRET not configured — refusing all requests (fail closed)")
 		return false
 	}
-	return auth.ValidateServiceKey(r.serviceHMACSecret, serviceID, serviceKey)
+	if !auth.ValidateServiceKey(r.serviceHMACSecret, serviceID, serviceKey) {
+		return false
+	}
+	// ربات‌های مشتری: علاوه بر HMAC، instance باید فعال باشد
+	if strings.HasPrefix(serviceID, "bot_") {
+		return r.wallet.Store().ValidateBotInstance(ctx, serviceID)
+	}
+	return true
 }
 
 // validAmount مقدار TON درخواستی را قبل از هر عملیات مالی اعتبارسنجی می‌کند:
