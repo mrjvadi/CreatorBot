@@ -9,11 +9,21 @@ import (
 )
 
 // CreateWithdraw درخواست برداشت را ثبت و موجودی را freeze می‌کند.
+// برای جلوگیری از TOCTOU race: چک موجودی و increment frozen هر دو
+// داخل همان تراکنش با SELECT FOR UPDATE انجام می‌شوند.
 func (s *Store) CreateWithdraw(ctx context.Context, req *WithdrawRequest) error {
+	total := req.Amount + req.Fee
 	return s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
-		// بلوک کردن موجودی
+		var w Wallet
+		if err := db.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", req.WalletID).First(&w).Error; err != nil {
+			return err
+		}
+		if !w.HasEnough(total) {
+			return ErrInsufficientBalance
+		}
 		if err := db.Model(&Wallet{}).Where("id = ?", req.WalletID).
-			UpdateColumn("frozen", gorm.Expr("frozen + ?", req.Amount+req.Fee)).
+			UpdateColumn("frozen", gorm.Expr("frozen + ?", total)).
 			Error; err != nil {
 			return err
 		}

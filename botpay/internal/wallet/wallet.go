@@ -289,7 +289,13 @@ func (s *Service) RequestWithdraw(ctx context.Context, telegramID int64, toAddre
 		Fee:       NetworkFeeNano,
 		Note:      note,
 	}
-	return req, s.store.CreateWithdraw(ctx, req)
+	if err := s.store.CreateWithdraw(ctx, req); err != nil {
+		if errors.Is(err, store.ErrInsufficientBalance) {
+			return nil, fmt.Errorf("%w (race condition — insufficient balance at write time)", ErrInsufficientBalance)
+		}
+		return nil, err
+	}
+	return req, nil
 }
 
 // DepositInstructions دستورالعمل واریز برای کاربر.

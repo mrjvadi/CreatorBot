@@ -304,6 +304,13 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
 - `agentmanager` قبلاً مستقیم به `docker.sock` دسترسی کامل داشت (یعنی
   هر آسیب‌پذیری در آن معادل دسترسی root به host بود) — این محدود شد
   با یک `docker-socket-proxy` که فقط endpointهای لازم را باز می‌گذارد.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۰) **TOCTOU race در `botpay/CreateWithdraw`**: چک
+  موجودی (`HasEnough`) و قفل‌کردن (`frozen += amount`) در دو مرحله‌ی جدا
+  بودند — دو درخواست هم‌زمان می‌توانستند هر دو رد شوند و `frozen` را
+  بیشتر از موجودی واقعی بالا ببرند. رفع: `SELECT FOR UPDATE` داخل همان
+  تراکنش + re-check قبل از increment. خطای `store.ErrInsufficientBalance`
+  تعریف شد و wallet آن را با `wallet.ErrInsufficientBalance` wrap می‌کند
+  تا `errors.Is` در responder همچنان کار کند.
 
 ### معماری ناتمام
 - `apimanager` (دروازه‌ی HTTP بیرونی برای وب/اپ) ساخته شده ولی هنوز
@@ -315,6 +322,14 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
 - (رفع جزئی ۲۰۲۶-۰۷-۰۶) دیتابیس‌های منطقی سرویس‌های مرکزی از هم جدا شدند
   (هرکدام دیتابیس خودش، رجوع بخش ۲) — ولی جداسازی فیزیکیِ کامل (سرور/instance
   جدا برای هرکدام، نه فقط دیتابیس جدا روی همان سرور Postgres) هنوز انجام نشده.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۰) **member-bot: Publisher هرگز ساخته نمی‌شد** —
+  `events.Publisher` تعریف شده بود و handler join/leave/activity داشت ولی
+  در `cmd/bot/main.go` هرگز instantiate یا register نمی‌شد. یعنی
+  `membership.joined`/`membership.left` برای fraud-engine و community-service
+  و `community.activity.updated` برای امتیازدهی فعالیت هرگز publish نمی‌شدند.
+  رفع: publisher ساخته و با `pub.Register(rawBot)` ثبت می‌شود. همچنین
+  `ActivityPublisher` interface به `Handler` اضافه شد تا پیام‌های گروهی
+  از طریق `onText` هم activity را track کنند.
 - (رفع‌شده ۲۰۲۶-۰۷-۱۰) community-service: چهار باگ واقعی رفع شد:
   (۱) nil pointer دو تابع MongoDB وقتی mongo=nil بود → guard اضافه شد،
   (۲) IncrementMemberCount هیچ‌وقت صدا نمی‌شد → در HandleJoin اضافه شد،

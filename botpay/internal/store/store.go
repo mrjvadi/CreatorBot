@@ -9,11 +9,15 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
 )
+
+// ErrInsufficientBalance برای تشخیص قابل‌اعتماد در کد فراخواننده.
+var ErrInsufficientBalance = errors.New("insufficient balance")
 
 // Store دسترسی به پایگاه‌داده‌ی botpay را کپسوله می‌کند.
 type Store struct{ db *gorm.DB }

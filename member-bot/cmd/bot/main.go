@@ -8,6 +8,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/member-bot/internal/dispatcher"
+	"github.com/mrjvadi/creatorbot/member-bot/internal/events"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/lock"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/memberresponder"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/models"
@@ -16,6 +17,7 @@ import (
 	"github.com/mrjvadi/creatorbot/member-bot/internal/tgbot"
 	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
@@ -109,6 +111,15 @@ func main() {
 	st := store.New(db)
 	h := tgbot.NewHandler(rawBot, st, cache, log, cfg.OwnerID, cfg.EncryptKey)
 	tgbot.Register(rawBot, h)
+
+	// events publisher — join/leave → membership.joined/left + activity → community.activity.updated
+	// قبلاً هرگز ساخته نمی‌شد: همه‌ی رویدادهای عضویت بی‌صدا از دست می‌رفتند.
+	if wnc != nil {
+		fc := fraudclient.New(wnc)
+		pub := events.NewPublisher(wnc, fc, log)
+		pub.Register(rawBot)
+		h.SetActivityPublisher(pub)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

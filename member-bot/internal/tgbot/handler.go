@@ -20,6 +20,12 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
+// ActivityPublisher گزارش فعالیت گروهی کاربران به NATS.
+// توسط events.Publisher پیاده‌سازی می‌شود.
+type ActivityPublisher interface {
+	PublishActivity(telegramID, chatID int64, messages, replies, reactions int)
+}
+
 type Handler struct {
 	bot        *tele.Bot
 	store      *store.Store
@@ -27,6 +33,7 @@ type Handler struct {
 	log        ports.Logger
 	ownerID    int64
 	encryptKey string
+	activity   ActivityPublisher
 }
 
 func NewHandler(
@@ -42,6 +49,9 @@ func NewHandler(
 		log: log, ownerID: ownerID, encryptKey: encryptKey,
 	}
 }
+
+// SetActivityPublisher wires an activity publisher for group message tracking.
+func (h *Handler) SetActivityPublisher(ap ActivityPublisher) { h.activity = ap }
 
 func Register(b *tele.Bot, h *Handler) {
 	b.Handle("/start", h.onStart)
@@ -115,6 +125,22 @@ func (h *Handler) onCancel(c tele.Context) error {
 }
 
 func (h *Handler) onText(c tele.Context) error {
+	// گروه/سوپرگروه: فقط فعالیت ثبت می‌شود — منطق private لازم نیست
+	if chat := c.Chat(); chat != nil &&
+		(chat.Type == tele.ChatGroup || chat.Type == tele.ChatSuperGroup) {
+		if h.activity != nil {
+			sender := c.Sender()
+			if sender != nil && !sender.IsBot {
+				isReply := 0
+				if msg := c.Message(); msg != nil && msg.ReplyTo != nil {
+					isReply = 1
+				}
+				h.activity.PublishActivity(sender.ID, chat.ID, 1, isReply, 0)
+			}
+		}
+		return nil
+	}
+
 	ctx := context.Background()
 	uid := c.Sender().ID
 	text := strings.TrimSpace(c.Text())
