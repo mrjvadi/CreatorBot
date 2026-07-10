@@ -94,7 +94,7 @@ func (p *Panel) CreateUser(ctx context.Context, req ports.CreateVPNUserRequest) 
 
 	clients, _ := json.Marshal([]any{client})
 	payload := map[string]any{
-		"id":      p.inboundID,
+		"id":       p.inboundID,
 		"settings": fmt.Sprintf(`{"clients":%s}`, string(clients)),
 	}
 
@@ -165,9 +165,9 @@ func (p *Panel) DisableUser(ctx context.Context, username string) error {
 
 func (p *Panel) setUserEnabled(ctx context.Context, username string, enable bool) error {
 	payload := map[string]any{
-		"id":      p.inboundID,
-		"email":   username,
-		"enable":  enable,
+		"id":     p.inboundID,
+		"email":  username,
+		"enable": enable,
 	}
 	body, _ := json.Marshal(payload)
 	_, err := p.do(ctx, http.MethodPost, "/xui/inbound/updateClientByEmail", body)

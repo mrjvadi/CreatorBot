@@ -1,21 +1,27 @@
 go 1.25.0
 
 use (
+	./admanager-bot
+	./ads-bot
+	./agentmanager
+	./apimanager
+	./archive-bot
+	./botmanager
+	./botpay
+	./community-service
+	./dbmigrate
+	./fraud-engine
+	./image-registry
+	./license-service
+	./log-collector
+	./member-bot
+	./revenue-service
 	./shared
 	./shared-core
-	./botmanager
-	./apimanager
-	./agentmanager
+	./source-service
+	./tests/integration
+	./tools/e2e-provision
 	./uploader-bot
 	./vpn-bot
-	./archive-bot
-	./member-bot
-	./source-service
-	./botpay
-	./revenue-service
 	./webhook-gateway
-	./ads-bot
-	./fraud-engine
-	./community-service
-	./tests/integration
 )

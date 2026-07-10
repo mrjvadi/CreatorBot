@@ -55,9 +55,9 @@ type FindConfig struct {
 	Sort  any
 }
 
-func WithLimit(n int64) FindOption  { return func(c *FindConfig) { c.Limit = n } }
-func WithSkip(n int64) FindOption   { return func(c *FindConfig) { c.Skip = n } }
-func WithSort(sort any) FindOption  { return func(c *FindConfig) { c.Sort = sort } }
+func WithLimit(n int64) FindOption { return func(c *FindConfig) { c.Limit = n } }
+func WithSkip(n int64) FindOption  { return func(c *FindConfig) { c.Skip = n } }
+func WithSort(sort any) FindOption { return func(c *FindConfig) { c.Sort = sort } }
 
 // ---- Common document fields ----
 

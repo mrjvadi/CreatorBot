@@ -26,10 +26,12 @@ db-reset:
 install-migrate:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-## build همه سرویس‌ها
+## build همه سرویس‌ها (۲۰۲۶-۰۷-۰۶: license-service, log-collector, image-registry
+## اضافه شدند — قبلاً از قلم افتاده بودند. ads-bot عمداً نیست، هنوز Dockerfile ندارد.)
 build-all:
 	@for svc in botmanager apimanager botpay agentmanager webhook-gateway \
-	            revenue-service community-service fraud-engine; do \
+	            revenue-service community-service fraud-engine \
+	            license-service log-collector image-registry; do \
 		echo "Building $$svc..."; \
 		go build -o bin/$$svc ./$$svc/cmd/...; \
 	done

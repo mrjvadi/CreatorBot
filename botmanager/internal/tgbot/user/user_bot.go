@@ -55,11 +55,20 @@ func (h *User) UserBotsList(ctx context.Context, c tele.Context) error {
 	// اول خلاصه
 	_ = c.Send(h.T(ctx, uid, i18n.KeyMyServicesHeader, len(instances)), tele.ModeHTML)
 
+	// قبلاً اینجا برای هر instance جداگانه FindTemplate صدا زده می‌شد (N+1).
+	// چون تعداد templateها همیشه خیلی کمتر از instanceهاست، یک‌بار همه را
+	// می‌گیریم و در حافظه map می‌کنیم.
+	templates, _ := h.Store.ListTemplates(ctx)
+	tmplByID := make(map[string]models.BotTemplate, len(templates))
+	for _, t := range templates {
+		tmplByID[t.ID.String()] = t
+	}
+
 	for _, inst := range instances {
 		// نوع سرویس از template — پویا (نوع از DB، آیکن graceful)
 		serviceType := h.T(ctx, uid, i18n.KeyServiceGeneric)
 		serviceIcon := "🤖"
-		if tmpl, _ := h.Store.FindTemplate(ctx, inst.TemplateID); tmpl != nil {
+		if tmpl, ok := tmplByID[inst.TemplateID.String()]; ok {
 			serviceType = tmpl.Type
 			serviceIcon = format.BotTypeEmoji(models.BotType(tmpl.Type))
 		}

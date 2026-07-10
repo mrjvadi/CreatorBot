@@ -5,7 +5,10 @@ package auth
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -78,6 +81,42 @@ func parseClaims(tokenStr, secret string) (*Claims, error) {
 		return nil, errors.New("invalid token")
 	}
 	return claims, nil
+}
+
+// ---- Service-to-service auth (pay.* / NATS request-reply callers) ----
+//
+// Every NATS request that touches money (protocol.PayRequest) carries a
+// ServiceID + ServiceKey pair. Historically the responder side (botpay)
+// only ever checked that ServiceID was a known string and NEVER validated
+// ServiceKey — meaning anyone who could reach NATS (all services share one
+// NATS username/password) could impersonate "botmanager" or any other
+// service by simply naming it, with no secret required at all. That let a
+// compromised/malicious NATS client mint or drain TON balances at will.
+//
+// ComputeServiceKey/ValidateServiceKey close that hole: the key is an
+// HMAC-SHA256 of the service's own name under a master secret
+// (SERVICE_HMAC_SECRET) that only trusted central services hold — never
+// distributed to per-customer bot containers. A caller who doesn't have
+// the master secret cannot forge a valid key for any service_id.
+
+// ComputeServiceKey derives the auth key a service must present for a given
+// serviceID, from the shared master secret. Deterministic — callers compute
+// it themselves at startup, no key distribution/rotation bookkeeping needed
+// beyond rotating the one master secret.
+func ComputeServiceKey(masterSecret, serviceID string) string {
+	mac := hmac.New(sha256.New, []byte(masterSecret))
+	mac.Write([]byte(serviceID))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// ValidateServiceKey checks a presented key against the expected HMAC for
+// serviceID, using a constant-time comparison to avoid timing side-channels.
+func ValidateServiceKey(masterSecret, serviceID, presentedKey string) bool {
+	if masterSecret == "" || presentedKey == "" {
+		return false
+	}
+	expected := ComputeServiceKey(masterSecret, serviceID)
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(presentedKey)) == 1
 }
 
 // ---- AES-256-GCM ----

@@ -132,8 +132,10 @@ type Invoice struct {
 	// Code کد یکتا که کاربر باید در comment تراکنش بنویسد
 	Code string `gorm:"uniqueIndex;not null"` // مثال: PAY-A1B2C3
 
-	Amount int64         `gorm:"not null"` // nano-TON
-	Status InvoiceStatus `gorm:"default:'pending';index"`
+	Amount int64 `gorm:"not null"` // nano-TON — مبلغِ موردِ انتظار (۰ = فاکتورِ باز/هر مبلغ)
+	// ReceivedNano مجموعِ مبلغِ دریافت‌شده تا این لحظه (برای واریزِ جزئی).
+	ReceivedNano int64         `gorm:"default:0"`
+	Status       InvoiceStatus `gorm:"default:'pending';index"`
 
 	// سرویس درخواست‌دهنده
 	ServiceID string

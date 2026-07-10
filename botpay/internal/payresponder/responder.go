@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 
 	walletStore "github.com/mrjvadi/creatorbot/botpay/internal/store"
@@ -24,10 +26,16 @@ type Responder struct {
 	wallet *wallet.Service
 	cache  ports.Cache // botpay مستقیم موجودی را در Redis می‌نویسد
 	log    ports.Logger
+
+	// serviceHMACSecret کلید مادر برای اعتبارسنجی PayRequest.ServiceKey.
+	// اگر خالی باشد، به‌جای شکست باز (اجازه‌ی همه)، امن بسته می‌شود — یعنی
+	// authorize همیشه false برمی‌گرداند تا یک misconfiguration خاموش
+	// دوباره به سوراخ امنیتی قدیمی (بدون هیچ چک) برنگردد.
+	serviceHMACSecret string
 }
 
-func New(nc *natsclient.Client, w *wallet.Service, cache ports.Cache, log ports.Logger) *Responder {
-	return &Responder{nc: nc, wallet: w, cache: cache, log: log}
+func New(nc *natsclient.Client, w *wallet.Service, cache ports.Cache, log ports.Logger, serviceHMACSecret string) *Responder {
+	return &Responder{nc: nc, wallet: w, cache: cache, log: log, serviceHMACSecret: serviceHMACSecret}
 }
 
 // writeBalanceCache موجودی کاربر را مستقیم در Redis می‌نویسد (botpay = تنها نویسنده).
@@ -86,9 +94,40 @@ func (r *Responder) Start() error {
 }
 
 // authorize بررسی می‌کند سرویس درخواست‌کننده مجاز است.
-// service_id یا یکی از سرویس‌های اصلی است، یا یک bot instance فعال (bot_<BotID>).
-func (r *Responder) authorize(ctx context.Context, serviceID string) bool {
-	return r.wallet.Store().ValidateServiceID(ctx, serviceID)
+// دو شرط لازم است، نه یکی:
+//  1. service_id یا یکی از سرویس‌های اصلی است، یا یک bot instance فعال (bot_<BotID>).
+//  2. service_key ارائه‌شده دقیقاً با HMAC(serviceHMACSecret, serviceID) برابر است.
+//
+// نکته‌ی امنیتی مهم: نسخه‌ی قبلی این تابع فقط شرط ۱ را چک می‌کرد — یعنی هر
+// کلاینت NATS که می‌دانست service_id چیست (یک رشته‌ی کاملاً عمومی مثل
+// "botmanager" که همین‌جا در کد هم دیده می‌شود) بدون داشتن هیچ رازی مجاز
+// شناخته می‌شد. چون همه‌ی سرویس‌ها یک username/password مشترک NATS دارند،
+// این یعنی هر سرویس (یا container ربات مشتری) می‌توانست جای botmanager را
+// جا بزند و pay.credit/pay.deduct/pay.transfer دلخواه بزند.
+func (r *Responder) authorize(ctx context.Context, serviceID, serviceKey string) bool {
+	if !r.wallet.Store().ValidateServiceID(ctx, serviceID) {
+		return false
+	}
+	if r.serviceHMACSecret == "" {
+		r.log.Error("payresponder: SERVICE_HMAC_SECRET not configured — refusing all requests (fail closed)")
+		return false
+	}
+	return auth.ValidateServiceKey(r.serviceHMACSecret, serviceID, serviceKey)
+}
+
+// validAmount مقدار TON درخواستی را قبل از هر عملیات مالی اعتبارسنجی می‌کند:
+// باید مثبت، متناهی (نه NaN/Inf)، و زیر یک سقف معقول باشد. جلوی سه کلاس باگ
+// را می‌گیرد: (۱) amount منفی که یک "کسر" را به "اعتبار نامحدود" تبدیل می‌کند،
+// (۲) overflow در تبدیل float→nano برای مقادیر خیلی بزرگ، (۳) NaN/Inf.
+func validAmount(ton float64) bool {
+	if math.IsNaN(ton) || math.IsInf(ton, 0) {
+		return false
+	}
+	if ton <= 0 {
+		return false
+	}
+	const maxTON = 1_000_000.0 // سقف معقول یک تراکنش تکی — از تنظیمات هم می‌تواند بیاید
+	return ton <= maxTON
 }
 
 // ── handlers ──────────────────────────────────────────────────
@@ -101,7 +140,7 @@ func (r *Responder) handleBalance(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		r.log.Warn("pay.balance: unauthorized", ports.F("service", req.ServiceID))
 		return protocol.BalanceResponse{Error: "unauthorized"}, nil
 	}
@@ -128,9 +167,12 @@ func (r *Responder) handleCreateInvoice(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		r.log.Warn("pay.invoice.create: unauthorized", ports.F("service", req.ServiceID))
 		return protocol.InvoiceResponse{Error: "unauthorized"}, nil
+	}
+	if !validAmount(req.AmountTON) {
+		return protocol.InvoiceResponse{Error: "invalid amount"}, nil
 	}
 
 	nano := wallet.TONToNano(req.AmountTON)
@@ -147,11 +189,8 @@ func (r *Responder) handleCreateInvoice(data []byte) (any, error) {
 	}, nil
 }
 
-// handleInvoiceStatus وضعیتِ یک فاکتور را با Code آن برمی‌گرداند.
-//
-// نکته‌ی مدل: فاکتورِ botpay وضعیتِ دودویی دارد (pending → paid) و فیلدِ
-// «مبلغِ دریافتیِ جزئی» ندارد؛ بنابراین حالتِ partial تولید نمی‌شود و
-// PaidTON یا برابرِ کلِ مبلغ (paid) است یا صفر.
+// handleInvoiceStatus وضعیتِ یک فاکتور را با Code آن برمی‌گرداند، شاملِ
+// مبلغِ دریافتیِ تجمعی (پشتیبانی از واریزِ جزئی).
 func (r *Responder) handleInvoiceStatus(data []byte) (any, error) {
 	var req protocol.InvoiceStatusRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -160,7 +199,7 @@ func (r *Responder) handleInvoiceStatus(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		r.log.Warn("pay.invoice.status: unauthorized", ports.F("service", req.ServiceID))
 		return protocol.InvoiceStatusResponse{Status: protocol.InvoiceStatusNotFound, Error: "unauthorized"}, nil
 	}
@@ -175,14 +214,16 @@ func (r *Responder) handleInvoiceStatus(data []byte) (any, error) {
 
 	resp := protocol.InvoiceStatusResponse{
 		AmountTON: wallet.NanoToTON(inv.Amount),
+		PaidTON:   wallet.NanoToTON(inv.ReceivedNano),
 		ExpiresAt: inv.ExpiresAt.Unix(),
 	}
 	switch {
 	case inv.Status == walletStore.InvoicePaid:
 		resp.Status = protocol.InvoiceStatusPaid
-		resp.PaidTON = wallet.NanoToTON(inv.Amount)
 	case inv.Status == walletStore.InvoiceExpired || (inv.Status == walletStore.InvoicePending && time.Now().After(inv.ExpiresAt)):
 		resp.Status = protocol.InvoiceStatusExpired
+	case inv.ReceivedNano > 0 && inv.Amount > 0 && inv.ReceivedNano < inv.Amount:
+		resp.Status = protocol.InvoiceStatusPartial
 	default:
 		resp.Status = protocol.InvoiceStatusPending
 	}
@@ -197,7 +238,7 @@ func (r *Responder) handleAuthorize(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		return protocol.AuthorizeResponse{Authorized: false, Error: "unauthorized"}, nil
 	}
 	// سرویس معتبر است → مطمئن شو wallet برای کاربر وجود دارد
@@ -215,9 +256,12 @@ func (r *Responder) handleDeduct(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		r.log.Warn("pay.deduct: unauthorized", ports.F("service", req.ServiceID))
 		return protocol.DeductResponse{Error: "unauthorized", Code: protocol.ErrCodeUnauthorized}, nil
+	}
+	if !validAmount(req.AmountTON) {
+		return protocol.DeductResponse{Error: "invalid amount", Code: protocol.ErrCodeInternal}, nil
 	}
 
 	nano := wallet.TONToNano(req.AmountTON)
@@ -273,8 +317,11 @@ func (r *Responder) handleCredit(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		return protocol.DeductResponse{Error: "unauthorized"}, nil
+	}
+	if !validAmount(req.AmountTON) {
+		return protocol.DeductResponse{Error: "invalid amount"}, nil
 	}
 
 	w, err := r.wallet.GetOrCreate(ctx, req.TelegramID)
@@ -318,8 +365,11 @@ func (r *Responder) handleTransfer(data []byte) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if !r.authorize(ctx, req.ServiceID) {
+	if !r.authorize(ctx, req.ServiceID, req.ServiceKey) {
 		return map[string]any{"error": "unauthorized"}, nil
+	}
+	if !validAmount(req.AmountTON) {
+		return map[string]any{"error": "invalid amount"}, nil
 	}
 
 	nano := wallet.TONToNano(req.AmountTON)

@@ -14,6 +14,7 @@ import (
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/user"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
@@ -43,8 +44,9 @@ func NewHandler(
 	tonClient *ton.Client,
 	payClient *natspayclient.Client,
 	nc *natsadapter.Client,
+	licenseClient *licenseclient.Client,
 ) *Handler {
-	deps := core.New(bot, st, cache, docker, log, ownerID, encryptKey, tonClient, payClient, nc)
+	deps := core.New(bot, st, cache, docker, log, ownerID, encryptKey, tonClient, payClient, nc, licenseClient)
 	return &Handler{
 		Deps:  deps,
 		Admin: admin.New(deps),
@@ -72,6 +74,27 @@ func Register(b *tele.Bot, h *Handler) {
 	b.Handle("/admin", safeHandler("admin", h.onEnterAdmin))
 	b.Handle(tele.OnText, safeHandler("text", h.onText))
 	b.Handle(tele.OnCallback, safeHandler("callback", h.onCallback))
+	// فقط برای «فوروارد همگانی»: وقتی ادمین در انتظارِ ارسال/فورواردِ پیامِ
+	// غیرمتنی (عکس/ویدیو/فایل/...) است. پیامِ متنی از همان مسیرِ OnText/
+	// handleStep می‌رود، چون telebot پیام‌های متنیِ فوروارد‌شده را هم OnText
+	// می‌بیند.
+	b.Handle(tele.OnMedia, safeHandler("broadcast_forward_media", h.onBroadcastForwardMedia))
+}
+
+// onBroadcastForwardMedia فقط وقتی کاری می‌کند که فرستنده ادمین باشد و در
+// حالتِ انتظارِ «فوروارد همگانی» باشد؛ در غیر این صورت بی‌صدا نادیده می‌گیرد
+// (نه اینکه پیام‌های عادیِ رسانه‌ای کاربران را اشتباهی پردازش کند).
+func (h *Handler) onBroadcastForwardMedia(c tele.Context) error {
+	ctx := context.Background()
+	uid := c.Sender().ID
+	if !h.IsAdmin(c) {
+		return nil
+	}
+	st := h.GetState(ctx, uid)
+	if st.Step != stepBroadcastForwardWait {
+		return nil
+	}
+	return h.BroadcastForwardCapture(ctx, c)
 }
 
 // ── /start ────────────────────────────────────────────────

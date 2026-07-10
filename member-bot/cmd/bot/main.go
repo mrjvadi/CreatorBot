@@ -14,6 +14,7 @@ import (
 	"github.com/mrjvadi/creatorbot/member-bot/internal/scheduler"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/tgbot"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
@@ -24,10 +25,10 @@ import (
 )
 
 type Config struct {
-	NatsURL    string `mapstructure:"NATS_URL"`
-	NatsUser   string `mapstructure:"NATS_USERNAME"`
-	NatsPass   string `mapstructure:"NATS_PASSWORD"`
-	FraudURL   string `mapstructure:"FRAUD_ENGINE_URL"`
+	NatsURL     string `mapstructure:"NATS_URL"`
+	NatsUser    string `mapstructure:"NATS_USERNAME"`
+	NatsPass    string `mapstructure:"NATS_PASSWORD"`
+	FraudURL    string `mapstructure:"FRAUD_ENGINE_URL"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
 	PostgresDSN string `mapstructure:"MASTER_DSN"`
@@ -40,6 +41,11 @@ type Config struct {
 	EncryptKey  string `mapstructure:"ENCRYPTION_KEY"`
 	BotMode     string `mapstructure:"BOT_MODE"`
 	GatewayURL  string `mapstructure:"GATEWAY_URL"`
+	ServerID    string `mapstructure:"SERVER_ID"`
+
+	// LicenseToken توکنی که botmanager هنگام deploy از license-service
+	// گرفته و به‌عنوان env var تزریق کرده — برای ضدکپی/ضدکلون.
+	LicenseToken string `mapstructure:"LICENSE_TOKEN"`
 }
 
 func main() {
@@ -64,12 +70,22 @@ func main() {
 
 	mode := webhook.ParseMode(cfg.BotMode)
 	botID := webhook.BotIDFromToken(cfg.BotToken)
+	// نکته: قبلاً این اتصال فقط در حالت webhook ساخته می‌شد، یعنی در حالت
+	// polling نه memberresponder (member.check) نه license check-in کار
+	// می‌کردند. حالا در هر دو حالت، وقتی NATS_URL تنظیم شده باشد، ساخته می‌شود.
 	var wnc *natsclient.Client
-	if mode == webhook.ModeWebhook {
+	if cfg.NatsURL != "" {
 		wnc, err = natsclient.New(natsclient.Config{URL: cfg.NatsURL, Username: cfg.NatsUser, Password: cfg.NatsPass, Name: "member-bot"})
 		if err != nil {
-			log.Fatal("nats connect (webhook mode)", ports.F("err", err))
+			if mode == webhook.ModeWebhook {
+				log.Fatal("nats connect (webhook mode)", ports.F("err", err))
+			}
+			log.Warn("nats unavailable — member.check/license check-in disabled", ports.F("err", err))
+			wnc = nil
 		}
+	}
+	if wnc != nil {
+		log.AttachNATS(wnc, "member-bot")
 	}
 	poller := webhook.BuildPoller(webhook.PollerConfig{
 		Mode: mode, BotID: botID, Token: cfg.BotToken,
@@ -96,6 +112,10 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if wnc != nil {
+		go licenseclient.RunLicenseLoop(ctx, wnc, botID, cfg.LicenseToken, cfg.ServerID, log)
+	}
 
 	// FIX 17: start scheduler
 	sched := scheduler.New(st, rawBot, log)

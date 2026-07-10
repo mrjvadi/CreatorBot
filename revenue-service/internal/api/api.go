@@ -1,14 +1,16 @@
 // Package api REST API و NATS event handler برای Revenue Service.
 //
 // REST Endpoints:
-//   POST /api/v1/revenue/earn    ← سرویس‌ها earning ایجاد می‌کنند
-//   GET  /api/v1/revenue/rules   ← لیست قوانین
-//   PUT  /api/v1/revenue/rules   ← ویرایش قانون (ادمین)
-//   GET  /api/v1/revenue/stats   ← آمار
-//   POST /api/v1/revenue/platform-wallet ← تنظیم wallet پلتفرم
+//
+//	POST /api/v1/revenue/earn    ← سرویس‌ها earning ایجاد می‌کنند
+//	GET  /api/v1/revenue/rules   ← لیست قوانین
+//	PUT  /api/v1/revenue/rules   ← ویرایش قانون (ادمین)
+//	GET  /api/v1/revenue/stats   ← آمار
+//	POST /api/v1/revenue/platform-wallet ← تنظیم wallet پلتفرم
 //
 // NATS Events:
-//   earning.created → پردازش فوری
+//
+//	earning.created → پردازش فوری
 package api
 
 import (
@@ -45,11 +47,11 @@ func (h *Handler) Register(r *gin.Engine) {
 	api := r.Group("/api/v1/revenue")
 	api.Use(h.authMiddleware())
 
-	api.POST("/earn",             h.createEarning)
-	api.GET("/rules",             h.listRules)
-	api.PUT("/rules",             h.updateRule)
-	api.GET("/stats",             h.getStats)
-	api.POST("/platform-wallet",  h.setPlatformWallet)
+	api.POST("/earn", h.createEarning)
+	api.GET("/rules", h.listRules)
+	api.PUT("/rules", h.updateRule)
+	api.GET("/stats", h.getStats)
+	api.POST("/platform-wallet", h.setPlatformWallet)
 }
 
 // RegisterNATSListeners به رویدادهای earning گوش می‌دهد.
@@ -88,6 +90,11 @@ type EarningEvent struct {
 
 // POST /earn
 func (h *Handler) createEarning(c *gin.Context) {
+	if !c.GetBool("is_admin") {
+		fail(c, http.StatusForbidden, "admin only")
+		return
+	}
+
 	var req EarningEvent
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, err.Error())
@@ -148,10 +155,10 @@ func (h *Handler) getStats(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{
-		"total_earnings":    stats.TotalEarnings,
-		"total_owner_ton":   float64(stats.TotalOwnerNano) / 1e9,
+		"total_earnings":     stats.TotalEarnings,
+		"total_owner_ton":    float64(stats.TotalOwnerNano) / 1e9,
 		"total_platform_ton": float64(stats.PlatformNano) / 1e9,
-		"pending_count":     stats.PendingCount,
+		"pending_count":      stats.PendingCount,
 	})
 }
 
@@ -188,7 +195,6 @@ func (h *Handler) authMiddleware() gin.HandlerFunc {
 		if key == h.cfg.AdminKey {
 			c.Set("is_admin", true)
 		}
-		// هر key معتبر برای earn استفاده می‌شود
 		c.Set("api_key", key)
 		c.Next()
 	}

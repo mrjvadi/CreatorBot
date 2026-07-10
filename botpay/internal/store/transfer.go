@@ -41,6 +41,9 @@ func (s *Store) GetStats(ctx context.Context) (*Stats, error) {
 // atomic — هر دو آپدیت در یک transaction انجام می‌شود. تفکیک credit/TON روی
 // گیرنده حفظ می‌شود تا اعتبار غیرقابل‌برداشت به TON قابل‌برداشت تبدیل نشود.
 func (s *Store) Transfer(ctx context.Context, fromID, toID uuid.UUID, amountNano int64, desc string) (*Transaction, *Transaction, error) {
+	if amountNano <= 0 {
+		return nil, nil, fmt.Errorf("invalid amount: must be positive")
+	}
 	var fromTx, toTx *Transaction
 
 	err := s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {

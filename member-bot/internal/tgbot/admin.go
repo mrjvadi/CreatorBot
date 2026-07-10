@@ -87,7 +87,12 @@ func (h *Handler) adminLocks(ctx context.Context, c tele.Context) error {
 	return c.Send(sb.String(), tele.ModeHTML, kbAdminMain())
 }
 
+// approvePayment فقط ادمین پلتفرم — قبلاً هیچ چکی نداشت، یعنی هر کاربری که
+// UUID یک پرداخت در انتظار را می‌دانست می‌توانست خودش آن را "تأیید" کند.
 func (h *Handler) approvePayment(ctx context.Context, c tele.Context, payIDStr string) error {
+	if !h.isAdmin(c) {
+		return c.Edit("❌ اجازه‌ی این کار را ندارید.")
+	}
 	payID, _ := uuid.Parse(payIDStr)
 	if err := h.store.ApprovePayment(ctx, payID); err != nil {
 		return c.Edit("❌ خطا.")

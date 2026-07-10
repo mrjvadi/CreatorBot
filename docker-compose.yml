@@ -7,7 +7,14 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: creatorbot
+      # (۲۰۲۶-۰۷-۰۶) جداسازی دیتابیس‌ها: این دیگر یک "creatorbot" مشترک برای
+      # همه‌ی سرویس‌ها نیست — فقط دیتابیس مشترکِ botmanager+apimanager است
+      # (این دو عمداً به هم متصل می‌مانند، رجوع به کامنت بالای
+      # deploy/migrations/000_create_databases.sql). بقیه‌ی سرویس‌های مرکزی
+      # (botpay, ads-bot, community-service, revenue-service, license-service,
+      # image-registry) هرکدام دیتابیس مخصوص خودشان را دارند — همان
+      # 000_create_databases.sql آن‌ها را در همین سرور Postgres می‌سازد.
+      POSTGRES_DB: botmanager
       POSTGRES_USER: botuser
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
@@ -17,7 +24,7 @@ services:
       # فقط برای دسترسی local (دیباگ) — در production این خط را کامل حذف کنید
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U botuser -d creatorbot"]
+      test: ["CMD-SHELL", "pg_isready -U botuser -d botmanager"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -83,7 +90,9 @@ services:
       nats:     {condition: service_healthy}
     env_file: botmanager/.env
     environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+      # botmanager+apimanager عمداً همین یک DB مشترک را دارند — رجوع کامنت
+      # بالای deploy/migrations/000_create_databases.sql.
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/botmanager?sslmode=disable
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       NATS_URL: nats://nats:4222
@@ -103,7 +112,9 @@ services:
       nats:     {condition: service_healthy}
     env_file: apimanager/.env
     environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+      # همان DB مشترک با botmanager (عمدی — رجوع کامنت docker-compose.yml
+      # سرویس postgres و 000_create_databases.sql).
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/botmanager?sslmode=disable
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       NATS_URL: nats://nats:4222
@@ -120,12 +131,55 @@ services:
       nats:     {condition: service_healthy}
     env_file: botpay/.env
     environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصی — دیگر با بقیه‌ی سرویس‌های مرکزی مشترک نیست.
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/botpay?sslmode=disable
       NATS_URL: nats://nats:4222
       NATS_USERNAME: ${NATS_USERNAME}
       NATS_PASSWORD: ${NATS_PASSWORD}
     volumes:
       - botpay_data:/app/data
+
+  # license-service: صدور/بررسی/ابطال لایسنس هر instance_id — ضدکپی/ضدکلون.
+  # botmanager هنگام deploy یک لایسنس صادر می‌کند؛ خودِ bot instance دوره‌ای
+  # (هر ۶ ساعت) چک می‌کند هنوز روی همان سرور اجرا می‌شود؛ اگر همان BotID از
+  # سرور دیگری هم check-in کند، یک رویداد license.clone_detected منتشر
+  # می‌شود. fail-open: قطعی این سرویس هرگز ربات مشتری واقعی را متوقف نمی‌کند.
+  license-service:
+    build:
+      context: .
+      dockerfile: license-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats:     {condition: service_healthy}
+    env_file: license-service/.env
+    environment:
+      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصی — دیگر با بقیه‌ی سرویس‌های مرکزی مشترک نیست.
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/license?sslmode=disable
+      NATS_URL: nats://nats:4222
+      NATS_USERNAME: ${NATS_USERNAME}
+      NATS_PASSWORD: ${NATS_PASSWORD}
+
+  # log-collector: همه‌ی سرویس‌ها لاگ‌های Warn/Error/Fatal را روی NATS
+  # (logs.events) منتشر می‌کنند؛ این سرویس آن‌ها را در Mongo ذخیره می‌کند و
+  # (اگر تلگرام تنظیم شده باشد) به topic اختصاصی هر سرویس در یک سوپرگروه
+  # فوروم هشدار می‌فرستد. یک API ساده (GET /logs?service=&level=&q=) هم دارد.
+  log-collector:
+    build:
+      context: .
+      dockerfile: log-collector/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    depends_on:
+      mongo: {condition: service_healthy}
+      nats:  {condition: service_healthy}
+    env_file: log-collector/.env
+    environment:
+      MONGO_URI: mongodb://mongouser:${MONGO_PASSWORD}@mongo:27017/creatorbot?authSource=admin
+      NATS_URL: nats://nats:4222
+      NATS_USERNAME: ${NATS_USERNAME}
+      NATS_PASSWORD: ${NATS_PASSWORD}
 
   # docker-socket-proxy: agentmanager فقط از طریق این پروکسی به docker.sock
   # دسترسی دارد — فقط endpointهای لازم (CONTAINERS, IMAGES) باز هستند؛
@@ -147,6 +201,32 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+  # image-registry: استخر ثبت‌شده‌ی image:tag های مجاز + whitelist بر اساس
+  # IP/CIDR واقعیِ فراخوان (نه فقط یک ادعای payload) — جایگزین whitelist
+  # محلیِ قدیمی agentmanager (ALLOWED_IMAGES). تنها سرویس این پلتفرم که با
+  # HTTP کار می‌کند نه NATS، چون IP واقعی فقط از یک اتصال مستقیم قابل‌اعتماد
+  # است. رجوع image-registry/README.md.
+  image-registry:
+    build:
+      context: .
+      dockerfile: image-registry/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres: {condition: service_healthy}
+    env_file: image-registry/.env
+    environment:
+      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصی — دیگر با بقیه‌ی سرویس‌های مرکزی مشترک نیست.
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/imageregistry?sslmode=disable
+      NATS_URL: nats://nats:4222
+      NATS_USERNAME: ${NATS_USERNAME}
+      NATS_PASSWORD: ${NATS_PASSWORD}
+    volumes:
+      # بدون این، فایل‌های image (خروجی docker save) با هر recreate این
+      # container گم می‌شوند — رجوع image-registry/NEEDS.md.
+      - image_registry_data:/data/images
+
   agentmanager:
     build:
       context: .
@@ -155,12 +235,14 @@ services:
     depends_on:
       nats: {condition: service_healthy}
       docker-socket-proxy: {condition: service_started}
+      image-registry: {condition: service_started}
     env_file: agentmanager/.env
     environment:
       NATS_URL: nats://nats:4222
       NATS_USERNAME: ${NATS_USERNAME}
       NATS_PASSWORD: ${NATS_PASSWORD}
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      IMAGE_REGISTRY_URL: http://image-registry:8100
 
   webhook-gateway:
     build:
@@ -188,7 +270,8 @@ services:
       nats:     {condition: service_healthy}
     env_file: revenue-service/.env
     environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصی — دیگر با بقیه‌ی سرویس‌های مرکزی مشترک نیست.
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/revenue?sslmode=disable
       NATS_URL: nats://nats:4222
 
   community-service:
@@ -204,7 +287,8 @@ services:
       nats:     {condition: service_healthy}
     env_file: community-service/.env
     environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصی — دیگر با بقیه‌ی سرویس‌های مرکزی مشترک نیست.
+      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/community?sslmode=disable
       MONGO_URI: mongodb://mongouser:${MONGO_PASSWORD}@mongo:27017/creatorbot?authSource=admin
       NATS_URL: nats://nats:4222
 
@@ -216,12 +300,14 @@ services:
     ports:
       - "8092:8092"
     depends_on:
-      postgres: {condition: service_healthy}
       redis:    {condition: service_healthy}
       nats:     {condition: service_healthy}
     env_file: fraud-engine/.env
     environment:
-      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/creatorbot?sslmode=disable
+      # (تمیزکاری ۲۰۲۶-۰۷-۰۶) POSTGRES_DSN این‌جا حذف شد — fraud-engine اصلاً
+      # از Postgres استفاده نمی‌کند (فقط Mongo)؛ کد آن هیچ فیلد PostgresDSN ای
+      # ندارد، پس این env var تا امروز کاملاً بی‌اثر بود. depends_on روی
+      # postgres هم به همین دلیل حذف شد.
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       NATS_URL: nats://nats:4222
@@ -277,6 +363,7 @@ volumes:
   mongo_data:
   redis_data:
   botpay_data:
+  image_registry_data:
   prometheus_data:
   grafana_data:
   loki_data:

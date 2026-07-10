@@ -68,10 +68,10 @@ func (p *Panel) Login(ctx context.Context) error {
 
 func (p *Panel) CreateUser(ctx context.Context, req ports.CreateVPNUserRequest) (*ports.VPNUser, error) {
 	body, _ := json.Marshal(map[string]any{
-		"username":         req.Username,
-		"proxies":          map[string]any{"vless": map[string]any{}, "vmess": map[string]any{}},
-		"data_limit":       req.DataLimit,
-		"expire":           unixOrZero(req.ExpiresAt),
+		"username":                  req.Username,
+		"proxies":                   map[string]any{"vless": map[string]any{}, "vmess": map[string]any{}},
+		"data_limit":                req.DataLimit,
+		"expire":                    unixOrZero(req.ExpiresAt),
 		"data_limit_reset_strategy": "no_reset",
 	})
 	return p.doUserRequest(ctx, http.MethodPost, "/api/user", body)
@@ -141,12 +141,12 @@ func (p *Panel) ActiveCount(ctx context.Context) (int, error) {
 // ---- helpers ----
 
 type marzbanUser struct {
-	Username  string   `json:"username"`
-	Status    string   `json:"status"`
-	DataLimit int64    `json:"data_limit"`
-	UsedTraffic int64  `json:"used_traffic"`
-	Expire    *int64   `json:"expire"`
-	Links     []string `json:"links"`
+	Username    string   `json:"username"`
+	Status      string   `json:"status"`
+	DataLimit   int64    `json:"data_limit"`
+	UsedTraffic int64    `json:"used_traffic"`
+	Expire      *int64   `json:"expire"`
+	Links       []string `json:"links"`
 }
 
 func (p *Panel) doUserRequest(ctx context.Context, method, path string, body []byte) (*ports.VPNUser, error) {

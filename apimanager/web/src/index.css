@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-ink-950 dark:text-slate-100;
+}
+
+/* پس‌زمینه‌ی گرادیانی ثابت پشتِ کل اپ در حالت تیره — الهام از رفرنس دارک دشبورد:
+   یک درخشش بنفش بالای صفحه که به سیاه محو می‌شود، ثابت (fixed) تا با اسکرول تکرار نشود. */
+.app-dark-glow {
+  @apply pointer-events-none fixed inset-0 -z-10 hidden dark:block;
+  background:
+    radial-gradient(60% 40% at 15% 0%, rgba(124, 58, 237, 0.22) 0%, rgba(10, 7, 19, 0) 60%),
+    radial-gradient(50% 35% at 85% 10%, rgba(236, 72, 153, 0.16) 0%, rgba(10, 7, 19, 0) 60%),
+    #0a0713;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-ink-600 rounded-full;
+}
+
+/* اسکرین‌ریدر-فقط: برای دسترس‌پذیری بدون بهم‌ریختن چیدمان */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.animate-pulse-soft {
+  animation: pulse-soft 1.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+/* کارت شیشه‌ای — واحدِ بصریِ اصلیِ طراحی تازه (رجوع به رفرنس دارک دشبورد):
+   پس‌زمینه‌ی نیمه‌شفاف + blur + حاشیه‌ی ظریفِ نورانی، فقط در حالت تیره فعال است؛
+   در حالت روشن به همان کارت ساده‌ی قبلی برمی‌گردد. */
+.glass-card {
+  @apply rounded-2xl border border-slate-200 bg-white shadow-card;
+}
+.dark .glass-card {
+  @apply border-white/10 shadow-glass;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 100%),
+    rgba(23, 18, 38, 0.55);
+  backdrop-filter: blur(20px);
+}
+
+/* چیدمان فشرده/داده‌محور: جدول‌ها منظم، یکنواخت و با خطوط ظریف */
+.data-table th {
+  @apply select-none whitespace-nowrap;
+}
+.data-table tbody tr:hover {
+  @apply bg-slate-50 dark:bg-white/5;
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* اسکرول‌بار نازک هم برای عناصر با overflow-auto در حالت‌های تیره/روشن */
+.kbd {
+  @apply inline-flex items-center justify-center rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400;
+}

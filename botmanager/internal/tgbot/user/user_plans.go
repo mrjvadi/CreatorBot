@@ -276,7 +276,20 @@ func (h *User) ExecutePlanPurchase(ctx context.Context, c tele.Context, planID s
 		UserID: u.ID, PlanID: plan.ID,
 		StartedAt: time.Now(), ExpiresAt: expiresAt, IsActive: true,
 	}
-	_ = h.Store.CreateSubscription(ctx, newSub)
+	if err := h.Store.CreateSubscription(ctx, newSub); err != nil {
+		// پول از کاربر کسر شده ولی اشتراک فعال نشد — این حالت را هرگز به‌عنوان
+		// موفقیت نشان نمی‌دهیم. تلاش می‌کنیم مبلغ را فوراً برگردانیم؛ حتی اگر
+		// خودِ refund هم شکست بخورد، حداقل لاگِ بحرانی برای پیگیریِ دستی ثبت
+		// می‌شود (به‌جای گم‌شدنِ کامل خطا پشتِ یک "_ =").
+		h.Log.Error("executePlanPurchase: subscription create failed after deduct — refunding",
+			ports.F("err", err), ports.F("user", u.TelegramID), ports.F("plan", plan.Name))
+		if refundErr := h.Pay.RefundService(ctx, u.TelegramID, plan.Price, plan.ID.String()+":sub_create_failed"); refundErr != nil {
+			h.Log.Error("executePlanPurchase: refund after failed subscription ALSO failed — needs manual reconciliation",
+				ports.F("refundErr", refundErr), ports.F("user", u.TelegramID), ports.F("plan", plan.Name))
+		}
+		metrics.IncPlanPurchase(plan.Name, "failed")
+		return c.Edit(h.T(ctx, uid, i18n.KeyPurchaseActivationFailed))
+	}
 
 	// ── reset quota cache ─────────────────────────────────
 	// plan.upgraded → سرویس‌ها quota را ریست می‌کنند

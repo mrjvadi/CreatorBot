@@ -47,14 +47,14 @@ func (p *Panel) CreateUser(ctx context.Context, req ports.CreateVPNUserRequest) 
 	}
 
 	payload := map[string]any{
-		"name":                req.Username,
-		"comment":             "created by creatorbot",
-		"package_days":        expireDay,
-		"usage_limit_GB":      float64(req.DataLimit) / 1e9,
-		"enable":              true,
-		"telegram_id":         nil,
-		"added_by_uuid":       nil,
-		"last_online":         nil,
+		"name":           req.Username,
+		"comment":        "created by creatorbot",
+		"package_days":   expireDay,
+		"usage_limit_GB": float64(req.DataLimit) / 1e9,
+		"enable":         true,
+		"telegram_id":    nil,
+		"added_by_uuid":  nil,
+		"last_online":    nil,
 	}
 
 	body, _ := json.Marshal(payload)
@@ -173,14 +173,14 @@ func (p *Panel) do(ctx context.Context, method, path string, body []byte) ([]byt
 // ── Hiddify response types ────────────────────────────────────
 
 type hiddifyUser struct {
-	UUID         string  `json:"uuid"`
-	Name         string  `json:"name"`
-	Enable       bool    `json:"enable"`
-	UsageLimitGB float64 `json:"usage_limit_GB"`
-	CurrentUsageGB float64 `json:"current_usage_GB"`
-	PackageDays  int     `json:"package_days"`
-	StartDate    *string `json:"start_date"`
-	Links        []string `json:"configs"`
+	UUID           string   `json:"uuid"`
+	Name           string   `json:"name"`
+	Enable         bool     `json:"enable"`
+	UsageLimitGB   float64  `json:"usage_limit_GB"`
+	CurrentUsageGB float64  `json:"current_usage_GB"`
+	PackageDays    int      `json:"package_days"`
+	StartDate      *string  `json:"start_date"`
+	Links          []string `json:"configs"`
 }
 
 func (u *hiddifyUser) toVPNUser() *ports.VPNUser {

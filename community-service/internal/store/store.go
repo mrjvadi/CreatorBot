@@ -30,21 +30,27 @@ func (s *Store) CreateCommunity(ctx context.Context, c *Community) error {
 func (s *Store) FindCommunityByChatID(ctx context.Context, telegramID int64) (*Community, error) {
 	var c Community
 	err := s.pg.WithContext(ctx).Where("chat_id = ?", telegramID).First(&c).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &c, err
 }
 
 func (s *Store) FindCommunityByInviteHash(ctx context.Context, hash string) (*Community, error) {
 	var c Community
 	err := s.pg.WithContext(ctx).Where("invite_hash = ? AND status = 'active'", hash).First(&c).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &c, err
 }
 
 func (s *Store) FindCommunityByID(ctx context.Context, id uuid.UUID) (*Community, error) {
 	var c Community
 	err := s.pg.WithContext(ctx).Where("id = ?", id).First(&c).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &c, err
 }
 
@@ -80,7 +86,9 @@ func (s *Store) FindParticipant(ctx context.Context, campaignID uuid.UUID, teleg
 	err := s.pg.WithContext(ctx).
 		Where("campaign_id = ? AND telegram_id = ?", campaignID, telegramID).
 		First(&p).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &p, err
 }
 
@@ -114,7 +122,25 @@ func (s *Store) CreateRevenue(ctx context.Context, r *CommunityRevenue) error {
 func (s *Store) FindRevenue(ctx context.Context, id uuid.UUID) (*CommunityRevenue, error) {
 	var r CommunityRevenue
 	err := s.pg.WithContext(ctx).Where("id = ?", id).First(&r).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &r, err
+}
+
+// FindRevenueByCampaignCommunity یک CommunityRevenue موجود برای همین جفت
+// (campaign, community) را برمی‌گرداند — برای idempotency روی رویداد NATS
+// campaign.revenue.generated، چون این subject هیچ auth ندارد و هر کلاینتی
+// که به NATS دسترسی دارد می‌تواند آن را replay/spoof کند (رجوع به گزارش
+// امنیتی). بدون این چک، هر replay یک توزیع درآمد جدید و واقعی می‌ساخت.
+func (s *Store) FindRevenueByCampaignCommunity(ctx context.Context, campaignID, communityID uuid.UUID) (*CommunityRevenue, error) {
+	var r CommunityRevenue
+	err := s.pg.WithContext(ctx).
+		Where("campaign_id = ? AND community_id = ?", campaignID, communityID).
+		First(&r).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &r, err
 }
 
@@ -159,7 +185,9 @@ func (s *Store) GetActiveMembers(ctx context.Context, communityID int64, since t
 		bson.M{"community_id": communityID, "updated_at": bson.M{"$gte": since}},
 		options.Find().SetSort(bson.M{"activity_score": -1}),
 	)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	var list []MemberActivity
 	cur.All(ctx, &list)
 	return list, nil
@@ -172,12 +200,16 @@ func CalcActivityScore(m MemberActivity) int {
 	score += min(m.Replies*3, 30)
 	score += min(m.Reactions, 15)
 	score += min(m.ActiveDays*5, 15)
-	if score > 100 { score = 100 }
+	if score > 100 {
+		score = 100
+	}
 	return score
 }
 
 func min(a, b int) int {
-	if a < b { return a }
+	if a < b {
+		return a
+	}
 	return b
 }
 
@@ -201,8 +233,6 @@ func (s *Store) ListPendingCommunities(ctx context.Context) ([]Community, error)
 	var list []Community
 	return list, s.pg.WithContext(ctx).Where("status = ?", CommunityPending).Find(&list).Error
 }
-
-
 
 func (s *Store) UpdateValidationWindow(ctx context.Context, id uuid.UUID, windowSec int) error {
 	return s.pg.WithContext(ctx).Model(&Community{}).

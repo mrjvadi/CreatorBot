@@ -43,8 +43,11 @@ func (h *Admin) AdminUsersList(ctx context.Context, c tele.Context) error {
 	for _, u := range users {
 		lines = append(lines, format.FmtUser(u))
 	}
-	lines = append(lines, "", "TelegramID:")
+	lines = append(lines, "", h.T(ctx, uid, i18n.KeyUsersSearchPrompt))
 
+	// قبلاً اینجا هیچ state‌ای فعال نمی‌شد، پس تایپِ یک TelegramID بعد از این
+	// پیام به هیچ‌جا نمی‌رفت (state idle می‌ماند). حالا واقعاً منتظرِ ورودی می‌مانیم.
+	h.SetStep(ctx, uid, state.StepAdminUserSearch)
 	return c.Send(format.JoinLines(lines), tele.ModeHTML, h.KbBack(ctx, uid))
 }
 
@@ -72,6 +75,20 @@ func (h *Admin) AdminUserDetail(ctx context.Context, c tele.Context, telegramID 
 
 	h.SetStep(ctx, uid, state.StepUserAction, "user_id", u.ID.String())
 	return c.Send(text, tele.ModeHTML, h.KbUserActions(ctx, uid, u.TelegramID))
+}
+
+// AdminUserSearchSubmit ورودیِ متنیِ TelegramID را که بعد از AdminUsersList
+// تایپ می‌شود پردازش می‌کند.
+func (h *Admin) AdminUserSearchSubmit(ctx context.Context, c tele.Context, text string) error {
+	uid := c.Sender().ID
+	var tid int64
+	if _, err := fmt.Sscanf(strings.TrimSpace(text), "%d", &tid); err != nil || tid <= 0 {
+		// دوباره منتظرِ ورودیِ درست می‌مانیم به‌جای پاک‌کردنِ بی‌سروصدای state.
+		h.SetStep(ctx, uid, state.StepAdminUserSearch)
+		return c.Send(h.T(ctx, uid, i18n.KeyUsersSearchInvalid), h.KbBackCancel(ctx, uid))
+	}
+	h.ClearState(ctx, uid)
+	return h.AdminUserDetail(ctx, c, tid)
 }
 
 func (h *Admin) AdminUserHandleAction(ctx context.Context, c tele.Context, userID, action string) error {

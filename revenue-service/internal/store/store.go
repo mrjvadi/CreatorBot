@@ -68,6 +68,22 @@ func (s *Store) UpdateEarning(ctx context.Context, e *Earning) error {
 	return s.db.WithContext(ctx).Save(e).Error
 }
 
+// FindEarningByRefID یک Earning موجود با همان ref_id را برمی‌گرداند (اگر
+// باشد) — برای idempotency در CreateAndProcess، تا رویداد earning.created
+// تکراری/replay-شده دوباره پرداخت نشود. ref_id خالی هرگز match نمی‌شود
+// (چون بعضی انواع Earning اصلاً ref ندارند و نباید با هم تداخل کنند).
+func (s *Store) FindEarningByRefID(ctx context.Context, refID string) (*Earning, error) {
+	if refID == "" {
+		return nil, nil
+	}
+	var e Earning
+	err := s.db.WithContext(ctx).Where("ref_id = ?", refID).First(&e).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &e, err
+}
+
 func (s *Store) ListPendingEarnings(ctx context.Context, limit int) ([]Earning, error) {
 	var earnings []Earning
 	return earnings, s.db.WithContext(ctx).
@@ -87,12 +103,12 @@ func (s *Store) MarkDone(ctx context.Context, id uuid.UUID, ownerTxID, platformT
 	now := time.Now()
 	return s.db.WithContext(ctx).Model(&Earning{}).Where("id = ?", id).
 		Updates(map[string]any{
-			"status":        EarningDone,
-			"owner_tx_id":   ownerTxID,
+			"status":         EarningDone,
+			"owner_tx_id":    ownerTxID,
 			"platform_tx_id": platformTxID,
-			"owner_nano":    ownerNano,
-			"platform_nano": platformNano,
-			"processed_at":  &now,
+			"owner_nano":     ownerNano,
+			"platform_nano":  platformNano,
+			"processed_at":   &now,
 		}).Error
 }
 
@@ -136,10 +152,10 @@ func (s *Store) SetPlatformWallet(ctx context.Context, telegramID int64, label s
 
 // Stats آمار درآمد.
 type EarningStats struct {
-	TotalEarnings   int64
-	TotalOwnerNano  int64
-	PlatformNano    int64
-	PendingCount    int64
+	TotalEarnings  int64
+	TotalOwnerNano int64
+	PlatformNano   int64
+	PendingCount   int64
 }
 
 func (s *Store) GetStats(ctx context.Context) (*EarningStats, error) {

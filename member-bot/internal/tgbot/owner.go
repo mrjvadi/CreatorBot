@@ -162,14 +162,49 @@ func (h *Handler) handleLockPrice(ctx context.Context, c tele.Context, st wizard
 	)
 }
 
+// canManageLock بررسی می‌کند فرستنده‌ی callback مالک واقعی این قفل است یا
+// ادمین پلتفرم. قبلاً pauseLock/deleteLock هیچ چکی نداشتند — هر کاربری که
+// UUID یک قفل را می‌دانست (که در همان کیبورد /mylocks خود مالک واقعی درج
+// می‌شود و می‌تواند فوروارد/اسکرین‌شات شود) می‌توانست قفل پولیِ کاربر دیگری
+// را متوقف یا حذف کند.
+func (h *Handler) canManageLock(ctx context.Context, c tele.Context, lockID uuid.UUID) (bool, error) {
+	if h.isAdmin(c) {
+		return true, nil
+	}
+	lock, err := h.store.FindLockByID(ctx, lockID)
+	if err != nil {
+		return false, err
+	}
+	if lock == nil {
+		return false, nil
+	}
+	owner, err := h.store.FindOwnerByTelegramID(ctx, c.Sender().ID)
+	if err != nil || owner == nil {
+		return false, err
+	}
+	return lock.OwnerID == owner.ID, nil
+}
+
 func (h *Handler) pauseLock(ctx context.Context, c tele.Context, lockIDStr string) error {
-	lockID, _ := uuid.Parse(lockIDStr)
+	lockID, err := uuid.Parse(lockIDStr)
+	if err != nil {
+		return c.Edit("❌ شناسه نامعتبر.")
+	}
+	if ok, err := h.canManageLock(ctx, c, lockID); err != nil || !ok {
+		return c.Edit("❌ اجازه‌ی این کار را ندارید.")
+	}
 	h.store.ExpireLock(ctx, lockID)
 	return c.Edit("⏸ قفل متوقف شد.")
 }
 
 func (h *Handler) deleteLock(ctx context.Context, c tele.Context, lockIDStr string) error {
-	lockID, _ := uuid.Parse(lockIDStr)
+	lockID, err := uuid.Parse(lockIDStr)
+	if err != nil {
+		return c.Edit("❌ شناسه نامعتبر.")
+	}
+	if ok, err := h.canManageLock(ctx, c, lockID); err != nil || !ok {
+		return c.Edit("❌ اجازه‌ی این کار را ندارید.")
+	}
 	h.store.DeleteLock(ctx, lockID)
 	return c.Edit("🗑 قفل حذف شد.")
 }

@@ -13,63 +13,68 @@ import (
 
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+	"github.com/mrjvadi/creatorbot/uploader-bot/internal/core"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/store"
+	"github.com/mrjvadi/creatorbot/uploader-bot/internal/util"
 )
 
-// Handler اصلی.
+// Handler اصلی — وابستگی‌های مشترک را از core.App می‌گیرد (امبد).
 type Handler struct {
-	store      *store.Store
-	bot        *tele.Bot
-	log        ports.Logger
-	ownerID    int64
-	channelID  int64
-	instanceID string // برای cache key
-	cache      ports.Cache
-	eng        *engine.Engine // برای دسترسی به Nats/BotID/InstanceInfo (تأیید ادمین کانال)
+	*core.App
+	bcJobs chan bcJobMsg // صف ارسال همگانی پس‌زمینه
 }
 
 // Deps وابستگی‌های Handler — هماهنگ با الگوی سایر bot های فرعی.
 type Deps struct {
-	Engine    *engine.Engine
-	Bot       *tele.Bot
-	OwnerID   int64
-	ChannelID int64
+	Engine     *engine.Engine
+	Bot        *tele.Bot
+	OwnerID    int64
+	ChannelID  int64
+	EncryptKey string // برای رمزنگاری BotToken قفل‌های نوع «ربات» قبل از ذخیره
 }
 
 // NewHandler سازنده‌ی هماهنگ با Deps. از engine، DB/Cache را می‌سازد
 // تا main.go مجبور به ساخت دستی store نباشد.
 func NewHandler(d Deps) *Handler {
-	st := store.New(d.Engine.DB)
-	return &Handler{
-		store:      st,
-		bot:        d.Bot,
-		cache:      d.Engine.Cache,
-		log:        d.Engine.Log,
-		ownerID:    d.OwnerID,
-		channelID:  d.ChannelID,
-		eng:        d.Engine,
-		instanceID: d.Engine.InstanceID,
+	st := store.New(d.Engine.Mongo, d.Engine.InstanceID, d.Engine.Cache, d.Engine.Log)
+	h := &Handler{
+		App: &core.App{
+			Bot:        d.Bot,
+			Store:      st,
+			Cache:      d.Engine.Cache,
+			Log:        d.Engine.Log,
+			OwnerID:    d.OwnerID,
+			ChannelID:  d.ChannelID,
+			InstanceID: d.Engine.InstanceID,
+			Eng:        d.Engine,
+			EncryptKey: d.EncryptKey,
+		},
+		bcJobs: make(chan bcJobMsg, 50),
 	}
+	go h.broadcastWorker()                      // یک worker تکی → نرخ کل کنترل‌شده
+	go h.broadcastSweeper(context.Background()) // حذف خودکار پیام‌های همگانی
+	h.startNATS()                               // دریافت آپدیت تنظیمات/متن‌ها از NATS
+	h.startQueryNATS()                          // مدیریتِ محتوا (کدها/پوشه‌ها) از پنل وب apimanager
+	return h
 }
 
 // New سازنده‌ی قدیمی — برای سازگاری با کد موجود نگه داشته شده.
 func New(st *store.Store, bot *tele.Bot, cache ports.Cache, log ports.Logger, ownerID int64, instanceID string, eng *engine.Engine) *Handler {
-	return &Handler{
-		store:      st,
-		bot:        bot,
-		cache:      cache,
-		log:        log,
-		ownerID:    ownerID,
-		eng:        eng,
-		instanceID: instanceID,
-	}
+	return &Handler{App: &core.App{
+		Bot: bot, Store: st, Cache: cache, Log: log,
+		OwnerID: ownerID, InstanceID: instanceID, Eng: eng,
+	}}
 }
+
+// EnsureDefaults مقادیر پیش‌فرض تنظیمات را در صورت نبود ست می‌کند.
+func (h *Handler) EnsureDefaults(ctx context.Context) { h.Store.SeedDefaults(ctx) }
 
 // Register همه handler ها را ثبت می‌کند. b همچنان *tele.Bot خام است چون
 // دریافت update (برخلاف ارسال پاسخ) انتزاع نشده — این الگوی رایج پلتفرم است.
 func Register(b *tele.Bot, h *Handler) {
 	b.Handle("/start", h.onStart)
+	b.Handle("/panel", h.onPanel)
 	b.Handle(tele.OnText, h.onText)
 	b.Handle(tele.OnCallback, h.onCallback)
 	b.Handle(tele.OnPhoto, h.onMedia)
@@ -81,6 +86,7 @@ func Register(b *tele.Bot, h *Handler) {
 	b.Handle(tele.OnSticker, h.onMedia)
 	b.Handle(tele.OnQuery, h.onInlineQuery)
 	b.Handle(tele.OnMyChatMember, h.onMyChatMember)
+	b.Handle(tele.OnChatMember, h.onChatMember) // تشخیص لفت برای گزارش لفت
 }
 
 // ── /start ────────────────────────────────────────────────────
@@ -90,38 +96,45 @@ func (h *Handler) onStart(c tele.Context) error {
 	uid := c.Sender().ID
 
 	// بررسی bot active
-	if h.store.GetSetting(ctx, models.SettingBotActive) == "false" && !h.isAdmin(c) {
-		return c.Send("ربات در حال حاضر در دسترس نیست.")
+	if h.Store.GetSetting(ctx, models.SettingBotActive) == "false" && !h.isAdmin(c) {
+		return c.Send("😴 ربات فعلاً خاموشه، کمی بعد دوباره سر بزن.")
 	}
 
 	// ثبت/آپدیت کاربر
-	user, _ := h.store.GetOrCreateUser(ctx, uid,
+	user, err := h.Store.GetOrCreateUser(ctx, uid,
 		c.Sender().Username, c.Sender().FirstName)
+	h.LogErr("onStart: get/create user", err)
 
 	if user != nil && user.IsBlocked {
-		return c.Send("⛔️ دسترسی شما محدود شده است.")
+		return c.Send("⛔️ دسترسی شما به این ربات محدود شده. اگه فکر می‌کنی اشتباهیه، با پشتیبانی در تماس باش.")
 	}
 
 	// بررسی deep link — /start CODE
 	args := c.Message().Payload
 	if args != "" {
+		if !h.spamOK(ctx, c) {
+			return c.Send("⏳ یه‌کم آروم‌تر! چند لحظه صبر کن و دوباره امتحان کن.")
+		}
 		return h.userDeliverCode(ctx, c, user, args)
 	}
 
 	// منو اصلی
 	if h.isAdmin(c) {
-		welcome := h.store.GetSetting(ctx, "admin_welcome")
-		if welcome == "" {
-			welcome = fmt.Sprintf("👑 پنل مدیریت\n\nربات: @%s", c.Bot().(*tele.Bot).Me.Username)
-		}
-		return c.Send(welcome, kbAdmin())
+		return h.OpenPanel(ctx, c)
 	}
 
-	welcome := h.store.GetSetting(ctx, models.SettingWelcomeText)
+	welcome := h.Store.GetSetting(ctx, models.SettingWelcomeText)
 	if welcome == "" {
-		welcome = fmt.Sprintf("👋 سلام %s!\n\nکد رسانه خود را ارسال کنید.", c.Sender().FirstName)
+		welcome = fmt.Sprintf("👋 سلام %s، خوش اومدی!\n\n📮 فقط کافیه کد رسانه‌ای که می‌خوای رو برام بفرستی تا سریع تحویلت بدم.", c.Sender().FirstName)
 	}
-	return c.Send(welcome, tele.ModeHTML, kbUser(h.showSearch(ctx)))
+	if err := c.Send(welcome, tele.ModeHTML, h.kbUserMenu(ctx)); err != nil {
+		return err
+	}
+	// دکمه‌های شروع پیشرفته (در صورت تنظیم)
+	if sb := h.startButtons(ctx); sb != nil {
+		return c.Send("👇", sb)
+	}
+	return nil
 }
 
 // ── onText ────────────────────────────────────────────────────
@@ -132,18 +145,18 @@ func (h *Handler) onText(c tele.Context) error {
 	text := strings.TrimSpace(c.Text())
 
 	// state فعال
-	st := h.getState(ctx, uid)
+	st := h.GetState(ctx, uid)
 	if st.Step != stepIdle {
 		return h.handleStep(ctx, c, st, text)
 	}
 
 	// cancel
 	if text == btnCancel || text == btnBack {
-		h.clearState(ctx, uid)
+		h.ClearState(ctx, uid)
 		if h.isAdmin(c) {
-			return c.Send("لغو شد.", kbAdmin())
+			return c.Send(msgDone, kbAdmin())
 		}
-		return c.Send("لغو شد.", kbUser(h.showSearch(ctx)))
+		return c.Send(msgDone, h.kbUserMenu(ctx))
 	}
 
 	// ── ادمین routing ────────────────────────────────────────
@@ -151,9 +164,8 @@ func (h *Handler) onText(c tele.Context) error {
 		return h.adminOnText(ctx, c, text)
 	}
 
-	// ── کاربر: دریافت کد ────────────────────────────────────
-	user, _ := h.store.GetUser(ctx, uid)
-	return h.userDeliverCode(ctx, c, user, text)
+	// ── کاربر: منو یا دریافت کد ──────────────────────────────
+	return h.userOnText(ctx, c, text)
 }
 
 // ── onMedia ───────────────────────────────────────────────────
@@ -164,7 +176,7 @@ func (h *Handler) onMedia(c tele.Context) error {
 
 	if !h.isAdmin(c) {
 		// بررسی user upload
-		if h.store.GetSetting(ctx, models.SettingUserUpload) != "true" {
+		if h.Store.GetSetting(ctx, models.SettingUserUpload) != "true" {
 			return nil
 		}
 		return h.userUploadMedia(ctx, c)
@@ -173,86 +185,13 @@ func (h *Handler) onMedia(c tele.Context) error {
 	return h.adminHandleMedia(ctx, c, uid)
 }
 
-// ── onCallback ────────────────────────────────────────────────
-
-func (h *Handler) onCallback(c tele.Context) error {
-	ctx := context.Background()
-	data := strings.TrimPrefix(c.Callback().Data, "\f")
-	defer c.Respond()
-
-	parts := strings.SplitN(data, ":", 3)
-	action := parts[0]
-	arg := ""
-	if len(parts) > 1 {
-		arg = parts[1]
-	}
-	arg2 := ""
-	if len(parts) > 2 {
-		arg2 = parts[2]
-	}
-
-	switch action {
-	// ── ادمین ────────────────────────────────────────────────
-	case "admin_code_del":
-		return h.adminDeleteCode(ctx, c, arg)
-	case "admin_code_edit":
-		return h.adminEditCodeMenu(ctx, c, arg)
-	case "admin_code_set_forward":
-		return h.adminToggleCodeProp(ctx, c, arg, "forward_lock")
-	case "admin_code_set_delete":
-		return h.adminSetAutoDelete(ctx, c, arg, arg2)
-	case "admin_code_set_sub":
-		return h.adminToggleCodeProp(ctx, c, arg, "sub_required")
-	case "admin_code_set_channel":
-		return h.adminToggleCodeProp(ctx, c, arg, "channel_lock")
-	case "admin_folder_open":
-		return h.adminFolderOpen(ctx, c, arg)
-	case "admin_folder_del":
-		return h.adminFolderDelete(ctx, c, arg)
-	case "admin_sub_del":
-		return h.adminSubPlanDelete(ctx, c, arg)
-	case "admin_ch_del":
-		return h.adminForceJoinDelete(ctx, c, arg)
-	case "admin_backup_restore":
-		return h.adminBackupRestore(ctx, c, arg)
-	case "admin_user_block":
-		return h.adminToggleBlock(ctx, c, arg, true)
-	case "admin_user_unblock":
-		return h.adminToggleBlock(ctx, c, arg, false)
-	case "admin_pay_confirm":
-		return h.adminConfirmPayment(ctx, c, arg)
-	case "admin_pay_reject":
-		return h.adminRejectPayment(ctx, c, arg)
-
-	// ── کاربر ─────────────────────────────────────────────────
-	case "sub_buy":
-		return h.userBuySubPlan(ctx, c, arg)
-	case "sub_pay":
-		return h.userPaySub(ctx, c, arg, arg2) // planID:gateway
-	case "folder_open":
-		return h.userOpenFolder(ctx, c, arg)
-	case "code_resend":
-		user, _ := h.store.GetUser(ctx, c.Sender().ID)
-		return h.userDeliverCode(ctx, c, user, arg)
-	case "react_like":
-		return c.Respond(&tele.CallbackResponse{Text: "👍 ثبت شد"})
-	case "react_dislike":
-		return c.Respond(&tele.CallbackResponse{Text: "👎 ثبت شد"})
-	case "report":
-		h.notifyAdminsReport(ctx, c, arg)
-		return c.Respond(&tele.CallbackResponse{Text: "⚠️ گزارش شما ثبت شد. ممنون!"})
-	}
-
-	return nil
-}
-
 // ── Inline Query ──────────────────────────────────────────────
 
 func (h *Handler) onInlineQuery(c tele.Context) error {
 	ctx := context.Background()
 	query := strings.TrimSpace(c.Query().Text)
 
-	if h.store.GetSetting(ctx, models.SettingShowSearch) != "true" {
+	if h.Store.GetSetting(ctx, models.SettingShowSearch) != "true" {
 		return c.Answer(&tele.QueryResponse{Results: tele.Results{}})
 	}
 
@@ -260,7 +199,8 @@ func (h *Handler) onInlineQuery(c tele.Context) error {
 		return c.Answer(&tele.QueryResponse{Results: tele.Results{}})
 	}
 
-	codes, _ := h.store.SearchCodes(ctx, query)
+	codes, err := h.Store.SearchCodes(ctx, query)
+	h.LogErr("onInlineQuery", err)
 	var results tele.Results
 	for i, code := range codes {
 		title := code.Code
@@ -290,56 +230,60 @@ func (h *Handler) userDeliverCode(ctx context.Context, c tele.Context, user *mod
 
 	// ثبت کاربر
 	if user == nil {
-		user, _ = h.store.GetOrCreateUser(ctx, uid, c.Sender().Username, c.Sender().FirstName)
+		var err error
+		user, err = h.Store.GetOrCreateUser(ctx, uid, c.Sender().Username, c.Sender().FirstName)
+		h.LogErr("userDeliverCode: get/create user", err)
 	}
 	if user != nil && user.IsBlocked {
 		return c.Send("⛔️ دسترسی محدود شده است.")
 	}
 
-	// پیدا کردن کد
-	code, _ := h.store.FindCode(ctx, codeStr)
+	// پیدا کردن کد + فایل‌ها (با کش برای کاهش درخواست به دیتابیس)
+	code, deliverFiles, err := h.Store.FindCodeForDelivery(ctx, codeStr)
+	h.LogErr("userDeliverCode: find code", err)
 	if code == nil {
-		return c.Send(h.store.GetSetting(ctx, "not_found_text") + "❌ کد یافت نشد.")
+		return c.Send(h.Store.GetSetting(ctx, "not_found_text") + msgCodeNF)
+	}
+
+	// در انتظار تایید
+	if code.Pending {
+		return c.Send("⏳ این رسانه هنوز منتظر تایید ادمینه؛ یه‌کم صبر کن و بعد دوباره امتحان کن.")
 	}
 
 	// انقضا
 	if code.ExpiresAt != nil && code.ExpiresAt.Before(time.Now()) {
-		return c.Send("⏰ این کد منقضی شده است.")
+		return c.Send("⏰ مهلت این کد تموم شده. از فرستنده بخواه یه کد تازه برات بفرسته.")
 	}
 
 	// محدودیت استفاده
 	if code.Type == models.CodeLimited && code.UsedCount >= code.MaxUse {
-		return c.Send("⚠️ ظرفیت این کد تکمیل شده است.")
+		return c.Send("🚫 ظرفیت استفاده از این کد پر شده.")
 	}
 
-	// جوین اجباری
-	if code.ChannelLock || h.store.GetSetting(ctx, models.SettingBotActive) != "" {
-		if notJoined := h.checkForceJoin(ctx, c); len(notJoined) > 0 {
-			return h.sendJoinRequest(c, notJoined)
-		}
+	// جوین اجباری — قفل‌های اجباری (سراسری) بررسی می‌شوند
+	if notJoined := h.checkForceJoin(ctx, c); len(notJoined) > 0 {
+		return h.sendJoinRequest(c, notJoined)
 	}
 
 	// رمز عبور
 	if code.Password != "" {
-		st := h.getState(ctx, uid)
+		st := h.GetState(ctx, uid)
 		if st.Data["pwd_verified"] != code.Code {
-			h.setStepData(ctx, uid, stepPassword, "code_id", code.ID.String())
-			return c.Send(h.store.GetSetting(ctx, models.SettingPasswordText) + "🔐 رمز عبور را وارد کنید:")
+			h.SetStepData(ctx, uid, stepPassword, "code_id", code.ID)
+			return c.Send(h.Store.GetSetting(ctx, models.SettingPasswordText) + "🔐 این رسانه رمز داره؛ رمزش رو برام بفرست:")
 		}
 	}
 
 	// اشتراک
-	if code.SubRequired || h.store.GetSetting(ctx, models.SettingSubRequired) == "true" {
+	if code.SubRequired || h.Store.GetSetting(ctx, models.SettingSubRequired) == "true" {
 		if user == nil || !user.HasActiveSub() {
 			// بررسی دانلود رایگان
 			freeLimit := 0
-			fmt.Sscan(h.store.GetSetting(ctx, models.SettingFreeDownloads), &freeLimit)
+			fmt.Sscan(h.Store.GetSetting(ctx, models.SettingFreeDownloads), &freeLimit)
 			if freeLimit > 0 && user != nil && user.FreeDownloads < freeLimit {
-				// هنوز دانلود رایگان دارد
-				h.store.UpdateUser(ctx, &models.User{
-					Base:          user.Base,
-					FreeDownloads: user.FreeDownloads + 1,
-				})
+				// هنوز دانلود رایگان دارد — کل سند کاربر را حفظ می‌کنیم
+				user.FreeDownloads++
+				h.LogErr("userDeliverCode: update free downloads", h.Store.UpdateUser(ctx, user))
 			} else {
 				return h.sendSubRequired(ctx, c)
 			}
@@ -348,43 +292,70 @@ func (h *Handler) userDeliverCode(ctx context.Context, c tele.Context, user *mod
 
 	// محدودیت دانلود per user
 	if code.DownloadLimit > 0 && user != nil {
-		count := h.store.GetDownloadCount(ctx, user.ID, code.ID)
+		count := h.Store.GetDownloadCount(ctx, user.ID, code.ID)
 		if count >= code.DownloadLimit {
-			return c.Send("⚠️ محدودیت دانلود شما برای این رسانه تکمیل شده است.")
+			return c.Send("🚫 سهمیه‌ی دانلود شما برای این رسانه به پایان رسیده.")
 		}
 	}
 
-	// ارسال فایل‌ها
-	files, _ := h.store.GetFilesForCode(ctx, code.ID)
-	if len(files) == 0 {
-		return c.Send("❌ فایلی یافت نشد.")
+	// گیت سین/ری‌اکشن اجباری فیک
+	if (code.ForceSeen || code.ForceReact) && !h.gatePassed(ctx, uid, code.Code) {
+		return h.sendGate(c, code)
 	}
 
-	// signature
-	sig := h.store.GetSetting(ctx, models.SettingSignature)
+	// ارسال فایل‌ها (از کش تحویل بالا آمده‌اند)
+	files := deliverFiles
+	if len(files) == 0 {
+		return c.Send("😕 فایلی برای این کد پیدا نکردم.")
+	}
 
-	msgIDs := h.sendFiles(ctx, c, code, files, sig)
+	// signature — فقط اگر فعال باشد
+	sig := ""
+	if h.Store.GetSetting(ctx, models.SettingSignatureEnabled) == "true" {
+		sig = h.Store.GetSetting(ctx, models.SettingSignature)
+	}
+
+	autoDelete := h.computeAutoDelete(ctx, code)
+	warnWillSend := h.warnWillSend(ctx, code)
+	adWillSend := h.adWillSend(ctx)
+	showResend := h.Store.GetSetting(ctx, models.SettingShowResendButton) == "true"
+
+	// رای‌ها + گزارش (+ ارسال مجدد فقط اگر روی فایل باشد) → زیر خودِ فایل‌ها
+	fileKb, _ := h.buildFileKb(ctx, code)
+	msgIDs := h.sendFiles(ctx, c, code, files, sig, fileKb)
 
 	// ثبت دانلود
 	if user != nil {
-		h.store.LogDownload(ctx, user.ID, code.ID)
+		h.LogErr("userDeliverCode: log download", h.Store.LogDownload(ctx, user.ID, code.ID))
 	}
-	h.store.IncrementCodeUse(ctx, code.ID)
+	h.LogErr("userDeliverCode: increment use", h.Store.IncrementCodeUse(ctx, code.ID))
 
-	// ضد فیلتر — حذف خودکار
-	autoDelete := code.AutoDelete
-	if autoDelete == 0 {
-		fmt.Sscan(h.store.GetSetting(ctx, models.SettingAutoDeleteDefault), &autoDelete)
+	// تبلیغ حین نمایش — اگر هشدار نباشد، «ارسال مجدد» اینجا می‌آید.
+	if adWillSend {
+		var adRows []tele.Row
+		if showResend && !warnWillSend {
+			adRows = []tele.Row{resendRow(code)}
+		}
+		h.sendActiveAd(ctx, c, adRows)
 	}
+
+	// ضد فیلتر — هشدار حذف خودکار. «ارسال مجدد» روی پیام هشدار می‌نشیند.
 	if autoDelete > 0 && len(msgIDs) > 0 {
+		if warnWillSend {
+			warnText := h.GetSetting(ctx, models.SettingAutoDeleteWarn,
+				"⏳ این فایل‌ها تا {sec} ثانیه‌ی دیگه خودکار پاک می‌شن؛ اگه می‌خوایشون، همین الان ذخیره یا فوروارد کن 🙏")
+			warnText = strings.ReplaceAll(warnText, "{sec}", fmt.Sprintf("%d", autoDelete))
+			opts := []any{tele.ModeHTML}
+			if rk := h.resendKb(ctx, code); rk != nil {
+				opts = append(opts, rk)
+			}
+			if wm, err := c.Bot().Send(c.Recipient(), warnText, opts...); err == nil && wm != nil {
+				if h.Store.GetSetting(ctx, models.SettingAutoDeleteWarnKeep) != "true" {
+					msgIDs = append(msgIDs, wm.ID)
+				}
+			}
+		}
 		go h.scheduleDelete(ctx, c.Chat().ID, msgIDs, autoDelete)
-	}
-
-	// دکمه ارسال مجدد
-	if h.store.GetSetting(ctx, "show_resend") == "true" {
-		kb := &tele.ReplyMarkup{}
-		kb.Inline(kb.Row(kb.Data("🔁 ارسال مجدد", "code_resend:"+codeStr)))
-		c.Send(" ", kb)
 	}
 
 	return nil
@@ -394,32 +365,33 @@ func (h *Handler) userDeliverCode(ctx context.Context, c tele.Context, user *mod
 
 func (h *Handler) isAdmin(c tele.Context) bool {
 	uid := c.Sender().ID
-	if uid == h.ownerID {
+	if uid == h.OwnerID {
 		return true
 	}
-	return h.store.IsAdmin(context.Background(), uid)
+	return h.Store.IsAdmin(context.Background(), uid)
 }
 
 func (h *Handler) showSearch(ctx context.Context) bool {
-	return h.store.GetSetting(ctx, models.SettingShowSearch) == "true"
+	return h.Store.GetSetting(ctx, models.SettingShowSearch) == "true"
 }
 
 func (h *Handler) sendSubRequired(ctx context.Context, c tele.Context) error {
-	plans, _ := h.store.ListSubPlans(ctx)
+	plans, err := h.Store.ListSubPlans(ctx)
+	h.LogErr("sendSubRequired", err)
 	if len(plans) == 0 {
-		return c.Send("💎 برای دسترسی به این رسانه اشتراک لازم است.")
+		return c.Send("💎 این رسانه فقط برای مشترک‌هاست، ولی فعلاً پلنی برای فروش تعریف نشده. با ادمین هماهنگ کن.")
 	}
 
-	msg := h.store.GetSetting(ctx, models.SettingSubRequiredText)
+	msg := h.Store.GetSetting(ctx, models.SettingSubRequiredText)
 	if msg == "" {
-		msg = "💎 <b>برای دسترسی نیاز به اشتراک دارید:</b>"
+		msg = "💎 <b>این رسانه مخصوص مشترک‌هاست.</b>\nیکی از پلن‌های زیر رو انتخاب کن تا بهت دسترسی بدیم:"
 	}
 
 	kb := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	for _, p := range plans {
 		label := fmt.Sprintf("💎 %s — %g تومان (%d روز)", p.Name, p.Price, p.Days)
-		rows = append(rows, kb.Row(kb.Data(label, "sub_buy:"+p.ID.String())))
+		rows = append(rows, kb.Row(kb.Data(label, "sub_buy:"+p.ID)))
 	}
 	kb.Inline(rows...)
 
@@ -429,45 +401,120 @@ func (h *Handler) sendSubRequired(ctx context.Context, c tele.Context) error {
 func (h *Handler) scheduleDelete(ctx context.Context, chatID int64, msgIDs []int, delaySec int) {
 	time.Sleep(time.Duration(delaySec) * time.Second)
 	for _, msgID := range msgIDs {
-		if err := h.bot.Delete(&tele.Message{ID: msgID, Chat: &tele.Chat{ID: chatID}}); err != nil {
-			h.log.Error("scheduleDelete", ports.F("err", err))
+		if err := h.Bot.Delete(&tele.Message{ID: msgID, Chat: &tele.Chat{ID: chatID}}); err != nil {
+			h.Log.Error("scheduleDelete", ports.F("err", err))
 		}
 	}
 }
 
-// sendFiles فایل‌ها را ارسال می‌کند و ID پیام‌ها را برمی‌گرداند.
+// computeAutoDelete زمان حذف خودکار یک کد (تکی یا پیش‌فرض) را برمی‌گرداند.
+func (h *Handler) computeAutoDelete(ctx context.Context, code *models.Code) int {
+	ad := code.AutoDelete
+	if ad == 0 {
+		fmt.Sscan(h.Store.GetSetting(ctx, models.SettingAutoDeleteDefault), &ad)
+	}
+	return ad
+}
+
+func (h *Handler) warnWillSend(ctx context.Context, code *models.Code) bool {
+	return h.computeAutoDelete(ctx, code) > 0 &&
+		h.Store.GetSetting(ctx, models.SettingAutoDeleteWarnOff) != "true"
+}
+
+func (h *Handler) adWillSend(ctx context.Context) bool { return h.adsCount(ctx) > 0 }
+
+// resendOnFile مشخص می‌کند ارسال مجدد باید روی خود فایل باشد یا روی پیام دنباله.
+func (h *Handler) resendOnFile(ctx context.Context, code *models.Code) bool {
+	if h.Store.GetSetting(ctx, models.SettingShowResendButton) != "true" {
+		return false
+	}
+	return !h.warnWillSend(ctx, code) && !h.adWillSend(ctx)
+}
+
+// buildFileKb کیبورد زیر خودِ فایل: رای‌ها + گزارش (+ ارسال مجدد اگر روی فایل باشد).
+func (h *Handler) buildFileKb(ctx context.Context, code *models.Code) (*tele.ReplyMarkup, bool) {
+	showLikes := h.Store.GetSetting(ctx, models.SettingShowLikesButtons) == "true"
+	showReport := h.Store.GetSetting(ctx, models.SettingShowReportButton) == "true"
+	var rLikes, rDislikes int64
+	if showLikes {
+		rLikes, rDislikes = h.Store.CountReactions(ctx, code.Code)
+	}
+	rows := reactReportRows(code, showLikes, showReport, rLikes, rDislikes)
+	if h.resendOnFile(ctx, code) {
+		rows = append(rows, resendRow(code))
+	}
+	if len(rows) == 0 {
+		return nil, false
+	}
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(rows...)
+	return kb, true
+}
+
+// resendKb کیبوردِ تنها‌شاملِ «ارسال مجدد» (برای پیام هشدار/تبلیغ).
+func (h *Handler) resendKb(ctx context.Context, code *models.Code) *tele.ReplyMarkup {
+	if h.Store.GetSetting(ctx, models.SettingShowResendButton) != "true" {
+		return nil
+	}
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(resendRow(code))
+	return kb
+}
+
+// sendFiles فایل‌ها را ارسال می‌کند. lastKb (در صورت غیر nil) به آخرین پیام می‌چسبد.
 func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
-	code *models.Code, files []models.File, signature string) []int {
+	code *models.Code, files []models.File, signature string, lastKb *tele.ReplyMarkup) []int {
 
 	var msgIDs []int
 
-	// caption آخرین فایل + امضا + شمارنده fake views
-	caption := code.Caption
+	// پسوندِ آخرین پیام: بازدید فیک + امضا (به انتها اضافه می‌شود تا offset
+	// قالب‌بندی‌ها به‌هم نریزد).
+	suffix := ""
 	if code.FakeViews > 0 {
-		caption += fmt.Sprintf("\n\n👁 %d بازدید", code.FakeViews)
+		suffix += fmt.Sprintf("\n\n👁 %d بازدید", code.FakeViews)
 	}
 	if signature != "" {
-		caption += "\n\n" + signature
+		sig := strings.ReplaceAll(signature, "{code}", code.Code)
+		sig = strings.ReplaceAll(sig, "{count}", fmt.Sprintf("%d", len(files)))
+		sig = strings.ReplaceAll(sig, "{downloads}", fmt.Sprintf("%d", code.UsedCount))
+		suffix += "\n\n" + sig
 	}
 
-	// تنظیمات نمایش دکمه‌ها
-	showLikes := h.store.GetSetting(ctx, models.SettingShowLikesButtons) == "true"
-	showReport := h.store.GetSetting(ctx, models.SettingShowReportButton) == "true"
-
-	// قفل فوروارد واقعی (Protected) — نه Silent
 	protected := code.ForwardLock
 
-	// آلبوم
-	if code.IsAlbum && len(files) > 1 {
+	// کپشن مؤثرِ هر فایل: اگر ادمین کپشنِ کد را ویرایش کرده، همان (متنی)؛
+	// وگرنه کپشن و قالب‌بندیِ اصلیِ خودِ فایل.
+	effCaption := func(f models.File) (string, []models.Entity) {
+		if code.Caption != "" {
+			return code.Caption, nil
+		}
+		return f.Caption, f.CaptionEntities
+	}
+
+	// آلبوم — فقط وقتی همه‌ی فایل‌ها با آلبوم سازگارند (ویس/استیکر/ویدیونوت نه)
+	if code.IsAlbum && len(files) > 1 && albumCompatible(files) {
 		var album tele.Album
+		used := files[:0:0]
 		for _, f := range files {
 			inp := fileToInput(f)
 			if inp == nil {
 				continue
 			}
+			// هر آیتم با کپشن HTMLِ خودش (حفظ قالب‌بندی)
+			setInputCaption(inp, util.EntitiesToHTML(f.Caption, f.CaptionEntities))
 			album = append(album, inp)
+			used = append(used, f)
 		}
-		album.SetCaption(caption)
+		// کپشن آیتم اول = کپشن مؤثرِ فایل اول + پسوند (به HTML)
+		if len(album) > 0 && len(used) > 0 {
+			var cap0 string
+			if code.Caption != "" {
+				cap0 = code.Caption // override ادمین (ممکن است HTML باشد)
+			} else {
+				cap0 = util.EntitiesToHTML(used[0].Caption, used[0].CaptionEntities)
+			}
+			setInputCaption(album[0], cap0+util.EscapeHTML(suffix))
+		}
 		opts := []any{tele.ModeHTML}
 		if protected {
 			opts = append(opts, tele.Protected)
@@ -477,10 +524,8 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 			for _, m := range msgs {
 				msgIDs = append(msgIDs, m.ID)
 			}
-			// دکمه‌ها زیر یک پیام جداگانه بعد از آلبوم
-			if showLikes || showReport {
-				kb := kbMediaButtons(code, showLikes, showReport)
-				if bm, e := c.Bot().Send(c.Recipient(), "⬆️ رسانه بالا", kb); e == nil {
+			if lastKb != nil {
+				if bm, e := c.Bot().Send(c.Recipient(), "⬆️ رسانه بالا", lastKb); e == nil {
 					msgIDs = append(msgIDs, bm.ID)
 				}
 			}
@@ -488,24 +533,26 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 		return msgIDs
 	}
 
-	// تک یا چند فایل غیرآلبوم
+	// تک یا چند فایل غیرآلبوم — هر فایل با کپشن/قالب‌بندیِ خودش
 	for i, f := range files {
-		var cap string
-		var opts []any
+		cap, ents := effCaption(f)
+		so := &tele.SendOptions{}
+		if protected {
+			so.Protected = true
+		}
 		if i == len(files)-1 {
-			cap = caption
-			// دکمه‌ها فقط روی آخرین فایل
-			if showLikes || showReport {
-				opts = append(opts, kbMediaButtons(code, showLikes, showReport))
+			cap += suffix
+			if lastKb != nil {
+				so.ReplyMarkup = lastKb
 			}
 		}
-		if protected {
-			opts = append(opts, tele.Protected)
+		msg, err := sendMedia(c, f, cap, ents, so)
+		if err != nil && f.StorageMsgID != 0 {
+			// file_id کار نکرد (مثلاً تغییر توکن) → کپی از کانال ذخیره‌سازی
+			msg, err = h.sendFromStorage(c, f, so)
 		}
-
-		msg, err := sendSingleFile(c, f, cap, opts...)
 		if err != nil {
-			h.log.Error("sendFiles", ports.F("err", err))
+			h.Log.Error("sendFiles", ports.F("err", err))
 			continue
 		}
 		if msg != nil {
@@ -518,35 +565,60 @@ func (h *Handler) sendFiles(ctx context.Context, c tele.Context,
 
 // userUploadMedia کاربر فایل آپلود می‌کند.
 func (h *Handler) userUploadMedia(ctx context.Context, c tele.Context) error {
-	autoApprove := h.store.GetSetting(ctx, models.SettingAutoApproveFiles) == "true"
+	autoApprove := h.Store.GetSetting(ctx, models.SettingAutoApproveFiles) == "true"
 
 	fi := extractFileInfo(c)
 	if fi == nil {
 		return nil
 	}
 
-	// ذخیره فایل
+	// ذخیره فایل (با کپشن و قالب‌بندی اصلی)
 	f := &models.File{
-		FileID:   fi.fileID,
-		FileType: fi.fileType,
-		Caption:  c.Message().Caption,
+		FileID:          fi.fileID,
+		FileType:        fi.fileType,
+		Caption:         c.Message().Caption,
+		CaptionEntities: util.ToModelEntities(c.Message().CaptionEntities),
+		UploaderID:      c.Sender().ID,
 	}
-	if err := h.store.CreateFile(ctx, f); err != nil {
-		return c.Send("❌ خطا در ذخیره فایل.")
+	if err := h.Store.CreateFile(ctx, f); err != nil {
+		h.LogErr("userUploadMedia: create file", err)
+		return c.Send("⚠️ نشد فایل رو ذخیره کنم؛ یه بار دیگه امتحان کن.")
+	}
+	if cid, mid, ok := h.archiveToStorage(ctx, c); ok {
+		h.LogErr("userUploadMedia: set storage", h.Store.SetFileStorage(ctx, f.ID, cid, mid))
+		f.StorageChatID, f.StorageMsgID = cid, mid
 	}
 
 	if autoApprove {
-		// ساخت کد خودکار
+		// ساخت کد خودکار با اعمال تنظیمات پیش‌فرض آپلود
 		code := &models.Code{
-			Code:       h.store.GenerateUniqueCode(ctx),
+			Code:       h.Store.GenerateUniqueCode(ctx),
 			Type:       models.CodeUnlimited,
 			UploaderID: c.Sender().ID,
+			FileIDs:    []string{f.ID},
 		}
-		h.store.CreateCode(ctx, code)
-		h.store.AddFileToCode(ctx, code.ID, f.ID, 0)
-		return c.Send(fmt.Sprintf("✅ فایل آپلود شد!\n🔑 کد: <code>%s</code>", code.Code), tele.ModeHTML)
+		h.applyUploadDefaults(ctx, code)
+		if err := h.Store.CreateCode(ctx, code); err != nil {
+			h.LogErr("userUploadMedia: create code", err)
+			return c.Send("⚠️ فایلت ذخیره شد ولی ساخت کد به مشکل خورد؛ لطفاً با پشتیبانی تماس بگیر.")
+		}
+		return c.Send(fmt.Sprintf("🎉 آپلود شد!\n🔑 کد رسانه‌ات: <code>%s</code>\nهر وقت خواستی همین کد رو بفرست تا دوباره برات بفرستمش.", code.Code), tele.ModeHTML)
 	}
 
-	// ارسال به ادمین برای تأیید
-	return c.Send("✅ فایل دریافت شد. در انتظار تأیید ادمین...")
+	// ساخت کد در حالت انتظار + اطلاع به ادمین‌ها
+	code := &models.Code{
+		Code:       h.Store.GenerateUniqueCode(ctx),
+		Type:       models.CodeUnlimited,
+		UploaderID: c.Sender().ID,
+		FileIDs:    []string{f.ID},
+		MediaTypes: []string{fi.fileType},
+		Pending:    true,
+	}
+	h.applyUploadDefaults(ctx, code)
+	if err := h.Store.CreateCode(ctx, code); err != nil {
+		h.LogErr("userUploadMedia: create pending code", err)
+		return c.Send("⚠️ فایلت ذخیره شد ولی ساخت کد به مشکل خورد؛ لطفاً با پشتیبانی تماس بگیر.")
+	}
+	h.notifyAdminsPending(ctx, code, c.Sender())
+	return c.Send("📬 فایلت رسید! به‌محض تایید ادمین در دسترس قرار می‌گیره و بهت خبر می‌دیم.")
 }

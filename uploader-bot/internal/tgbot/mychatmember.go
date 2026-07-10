@@ -16,7 +16,7 @@ import (
 
 func (h *Handler) onMyChatMember(c tele.Context) error {
 	// فقط برای instance های اجاره‌ای این رویداد معنی دارد.
-	if h.eng == nil || h.eng.InstanceInfo == nil || !h.eng.InstanceInfo.IsRentedLock() {
+	if h.Eng == nil || h.Eng.InstanceInfo == nil || !h.Eng.InstanceInfo.IsRentedLock() {
 		return nil
 	}
 
@@ -31,19 +31,19 @@ func (h *Handler) onMyChatMember(c tele.Context) error {
 		return nil // فقط وقتی ادمین شد اهمیت دارد، نه ترفیع/تنزل دیگر
 	}
 
-	if h.eng.Nats == nil {
-		h.log.Warn("my_chat_member: nats unavailable, cannot confirm to ads-bot")
+	if h.Eng.Nats == nil {
+		h.Log.Warn("my_chat_member: nats unavailable, cannot confirm to ads-bot")
 		return nil
 	}
 
-	mc := memberclient.New(h.eng.Nats)
+	mc := memberclient.New(h.Eng.Nats)
 	ctx := context.Background()
-	if err := mc.ConfirmChannelAdmin(ctx, h.eng.BotID); err != nil {
-		h.log.Error("confirm channel admin failed", ports.F("err", err))
+	if err := mc.ConfirmChannelAdmin(ctx, h.Eng.BotID); err != nil {
+		h.Log.Error("confirm channel admin failed", ports.F("err", err))
 		return nil
 	}
 
-	h.log.Info("confirmed channel admin to ads-bot — lock enforcement starting",
-		ports.F("bot_id", h.eng.BotID))
+	h.Log.Info("confirmed channel admin to ads-bot — lock enforcement starting",
+		ports.F("bot_id", h.Eng.BotID))
 	return nil
 }

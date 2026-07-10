@@ -55,8 +55,8 @@ func New(cfg Config) (*DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(cfg.MaxOpenConn)
 	sqlDB.SetMaxIdleConns(cfg.MaxIdleConn)
-	sqlDB.SetConnMaxLifetime(30 * time.Minute)   // connection بعد از ۳۰ دقیقه recycle می‌شود
-	sqlDB.SetConnMaxIdleTime(10 * time.Minute)   // idle connection بعد از ۱۰ دقیقه بسته می‌شود
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // connection بعد از ۳۰ دقیقه recycle می‌شود
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute) // idle connection بعد از ۱۰ دقیقه بسته می‌شود
 
 	return &DB{db: gormDB}, nil
 }

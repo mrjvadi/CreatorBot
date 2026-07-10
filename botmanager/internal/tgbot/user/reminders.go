@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
+	"github.com/mrjvadi/creatorbot/shared-core/models"
 )
 
 const (
@@ -46,6 +48,26 @@ func (h *User) RunExpiryScan(ctx context.Context) {
 		return
 	}
 
+	// قبلاً اینجا برای هر instance جداگانه FindUserByID صدا زده می‌شد (N+1).
+	// یک‌بار همه‌ی owner‌های درگیر را می‌گیریم.
+	ownerIDs := make([]uuid.UUID, 0, len(insts))
+	seen := make(map[uuid.UUID]bool, len(insts))
+	for _, inst := range insts {
+		if !seen[inst.OwnerID] {
+			seen[inst.OwnerID] = true
+			ownerIDs = append(ownerIDs, inst.OwnerID)
+		}
+	}
+	owners, err := h.Store.FindUsersByIDs(ctx, ownerIDs)
+	if err != nil {
+		h.Log.Error("expiry scan: owners lookup", h.F("err", err))
+		return
+	}
+	ownerByID := make(map[uuid.UUID]models.User, len(owners))
+	for _, o := range owners {
+		ownerByID[o.ID] = o
+	}
+
 	for _, inst := range insts {
 		if inst.ExpiresAt == nil {
 			continue
@@ -56,8 +78,8 @@ func (h *User) RunExpiryScan(ctx context.Context) {
 			continue
 		}
 
-		owner, _ := h.Store.FindUserByID(ctx, inst.OwnerID)
-		if owner == nil || owner.TelegramID == 0 {
+		owner, ok := ownerByID[inst.OwnerID]
+		if !ok || owner.TelegramID == 0 {
 			continue
 		}
 

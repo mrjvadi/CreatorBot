@@ -1,12 +1,13 @@
 // Package tgbot قابلیت‌های ربات VPN را پیاده‌سازی می‌کند.
 //
 // فایل‌ها:
-//   handler.go   ← Handler، Register، /start، onText، onCallback
-//   user.go      ← خرید، اشتراک من، کیف پول
-//   admin.go     ← پنل ادمین
-//   state.go     ← state machine در Redis
-//   keyboards.go ← keyboard ها
-//   helpers.go   ← توابع کمکی
+//
+//	handler.go   ← Handler، Register، /start، onText، onCallback
+//	user.go      ← خرید، اشتراک من، کیف پول
+//	admin.go     ← پنل ادمین
+//	state.go     ← state machine در Redis
+//	keyboards.go ← keyboard ها
+//	helpers.go   ← توابع کمکی
 package tgbot
 
 import (
@@ -53,16 +54,16 @@ func NewHandler(
 }
 
 func Register(b *tele.Bot, h *Handler) {
-	b.Handle("/start",  h.onStart)
-	b.Handle("/help",   h.onHelp)
-	b.Handle("/buy",    h.onBuy)
-	b.Handle("/myvpn",  h.onMyVPN)
+	b.Handle("/start", h.onStart)
+	b.Handle("/help", h.onHelp)
+	b.Handle("/buy", h.onBuy)
+	b.Handle("/myvpn", h.onMyVPN)
 	b.Handle("/wallet", h.onWallet)
-	b.Handle("/admin",  h.onAdmin)
+	b.Handle("/admin", h.onAdmin)
 	b.Handle("/cancel", h.onCancel)
 
-	b.Handle(tele.OnText,     h.onText)
-	b.Handle(tele.OnPhoto,    h.onPhoto)
+	b.Handle(tele.OnText, h.onText)
+	b.Handle(tele.OnPhoto, h.onPhoto)
 	b.Handle(tele.OnCallback, h.onCallback)
 }
 
@@ -188,18 +189,33 @@ func (h *Handler) onCallback(c tele.Context) error {
 			return h.onRenewSelected(ctx, c, parts[1])
 		}
 	case "panel_add":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		return h.startAddPanel(ctx, c)
 	case "panel_test_all":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		return h.testAllPanels(ctx, c)
 	case "ptype":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		if len(parts) == 2 {
 			return h.handlePanelType(ctx, c, parts[1])
 		}
 	case "panel_toggle":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		if len(parts) == 2 {
 			return h.togglePanel(ctx, c, parts[1])
 		}
 	case "panel_del":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		if len(parts) == 2 {
 			return h.deletePanel(ctx, c, parts[1])
 		}
@@ -214,10 +230,16 @@ func (h *Handler) onCallback(c tele.Context) error {
 			return h.verifyOnlinePayment(ctx, c, parts[1])
 		}
 	case "approve_pay":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		if len(parts) == 2 {
 			return h.approvePayment(ctx, c, parts[1])
 		}
 	case "reject_pay":
+		if !h.isAdmin(c) {
+			return nil
+		}
 		if len(parts) == 2 {
 			return h.rejectPayment(ctx, c, parts[1])
 		}
@@ -235,10 +257,14 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st wizardState
 		return c.Send("لغو شد.", kbMain())
 	}
 	switch st.Step {
-	case stepAddPanelURL:  return h.handlePanelURL(ctx, c, st, text)
-	case stepAddPanelUser: return h.handlePanelUser(ctx, c, st, text)
-	case stepAddPanelPass: return h.handlePanelPass(ctx, c, st, text)
-	case stepAddPanelCap:  return h.handlePanelCap(ctx, c, st, text)
+	case stepAddPanelURL:
+		return h.handlePanelURL(ctx, c, st, text)
+	case stepAddPanelUser:
+		return h.handlePanelUser(ctx, c, st, text)
+	case stepAddPanelPass:
+		return h.handlePanelPass(ctx, c, st, text)
+	case stepAddPanelCap:
+		return h.handlePanelCap(ctx, c, st, text)
 	case stepBuyPayment, stepRenewPayment:
 		return h.handlePaymentInput(ctx, c, st, text)
 	case stepAdminBroadcast:

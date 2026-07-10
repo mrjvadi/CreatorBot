@@ -19,12 +19,12 @@ type PayClient interface {
 
 // Engine پردازش و تقسیم درآمد.
 type Engine struct {
-	store               *store.Store
-	pay                 PayClient
-	log                 ports.Logger
-	retryInterval       time.Duration
-	platformTelegramID  int64
-	nc                  natsPublisher
+	store              *store.Store
+	pay                PayClient
+	log                ports.Logger
+	retryInterval      time.Duration
+	platformTelegramID int64
+	nc                 natsPublisher
 }
 
 // natsPublisher interface برای publish به NATS.
@@ -34,7 +34,7 @@ type natsPublisher interface {
 
 func New(st *store.Store, pay PayClient, log ports.Logger) *Engine {
 	return &Engine{
-		store:        st,
+		store:         st,
 		pay:           pay,
 		log:           log,
 		retryInterval: 30 * time.Second,
@@ -45,6 +45,12 @@ func New(st *store.Store, pay PayClient, log ports.Logger) *Engine {
 
 // ProcessEarning یک Earning را پردازش و تقسیم می‌کند.
 func (e *Engine) ProcessEarning(ctx context.Context, earning *store.Earning) error {
+	// ── ۰. اعتبارسنجی مبلغ ───────────────────────────────────
+	if earning.TotalNano <= 0 {
+		e.store.MarkFailed(ctx, earning.ID, "invalid total_nano: must be > 0")
+		return fmt.Errorf("invalid total_nano: %d (must be > 0)", earning.TotalNano)
+	}
+
 	e.log.Info("processing earning",
 		ports.F("id", earning.ID),
 		ports.F("type", earning.Type),
@@ -157,6 +163,23 @@ func (e *Engine) CreateAndProcess(ctx context.Context,
 	totalNano int64,
 	botID, refID, desc string,
 ) error {
+	if totalNano <= 0 {
+		return fmt.Errorf("invalid total_nano: %d (must be > 0)", totalNano)
+	}
+
+	// ── idempotency: اگر RefID قبلاً ثبت شده، همان رکورد را برگردان ──
+	if refID != "" {
+		existing, err := e.store.FindEarningByRefID(ctx, refID)
+		if err != nil {
+			return fmt.Errorf("check existing earning: %w", err)
+		}
+		if existing != nil {
+			e.log.Info("duplicate earning skipped",
+				ports.F("ref_id", refID), ports.F("existing_id", existing.ID))
+			return nil
+		}
+	}
+
 	earning := &store.Earning{
 		Type:            revType,
 		TotalNano:       totalNano,

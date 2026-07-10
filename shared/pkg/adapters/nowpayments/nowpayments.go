@@ -29,12 +29,12 @@ func (g *Gateway) Name() string { return "nowpayments" }
 
 func (g *Gateway) CreatePayment(ctx context.Context, req ports.PaymentRequest) (*ports.PaymentResponse, error) {
 	body, _ := json.Marshal(map[string]any{
-		"price_amount":    req.Amount,
-		"price_currency":  req.Currency,
-		"pay_currency":    "TON",
-		"order_id":        req.OrderID,
+		"price_amount":      req.Amount,
+		"price_currency":    req.Currency,
+		"pay_currency":      "TON",
+		"order_id":          req.OrderID,
 		"order_description": req.Description,
-		"ipn_callback_url": req.CallbackURL,
+		"ipn_callback_url":  req.CallbackURL,
 	})
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/payment", bytes.NewReader(body))
@@ -51,11 +51,11 @@ func (g *Gateway) CreatePayment(ctx context.Context, req ports.PaymentRequest) (
 	defer resp.Body.Close()
 
 	var result struct {
-		PaymentID      string `json:"payment_id"`
-		PayAddress     string `json:"pay_address"`
-		PayAmount      float64 `json:"pay_amount"`
-		PayCurrency    string `json:"pay_currency"`
-		PaymentStatus  string `json:"payment_status"`
+		PaymentID     string  `json:"payment_id"`
+		PayAddress    string  `json:"pay_address"`
+		PayAmount     float64 `json:"pay_amount"`
+		PayCurrency   string  `json:"pay_currency"`
+		PaymentStatus string  `json:"payment_status"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err

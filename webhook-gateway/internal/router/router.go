@@ -50,18 +50,31 @@ func New(reg *registry.Registry, nc *natsclient.Client, log ports.Logger) *Route
 }
 
 // Register route های gateway را ثبت می‌کند.
-func (r *Router) Register(engine *gin.Engine) {
-	// webhook از تلگرام
-	engine.POST("/webhook/:token", r.handleWebhook)
-	engine.POST("/webhook/:token/", r.handleWebhook)
+//
+// internalKey برای همه‌ی route های "/internal/*" اجباری است. نکته‌ی امنیتی
+// مهم: قبلاً main.go جدا از این‌جا یک `engine.Group("/internal").Use(...)`
+// می‌ساخت که یک RouterGroup موقتِ استفاده‌نشده بود — چون این تابع خودش با
+// `engine.Group("/internal")` یک گروه کاملاً جدید (بدون middleware) می‌ساخت
+// و route ها را روی همان ثبت می‌کرد. نتیجه: هیچ احراز هویتی روی
+// register/unregister/bots/stats اعمال نمی‌شد و هر کسی که به پورت HTTP این
+// سرویس دسترسی داشت می‌توانست webhook هر ربات را hijack یا unregister کند.
+// این تابع حالا خودش middleware.InternalAuth را مستقیم روی همان گروهی که
+// route ها را ثبت می‌کند اعمال می‌کند — تضمین می‌کند این دو جدا نشوند.
+func (r *Router) Register(engine *gin.Engine, internalKey string) {
+	// webhook از تلگرام — WebhookRateLimit تعریف شده بود ولی هیچ‌جا وصل
+	// نشده بود؛ بدونش یک token/بات بدرفتار می‌توانست کل بودجه‌ی
+	// GlobalRateLimit مشترک را مصرف کند و webhook بقیه‌ی ربات‌ها را قحطی
+	// بدهد (noisy-neighbor DoS).
+	engine.POST("/webhook/:token", middleware.WebhookRateLimit(), r.handleWebhook)
+	engine.POST("/webhook/:token/", middleware.WebhookRateLimit(), r.handleWebhook)
 
-	// مدیریت bot ها (internal — با API key)
-	mgmt := engine.Group("/internal")
-	mgmt.POST("/register",   r.registerBot)
+	// مدیریت bot ها (internal — با API key، اجباری روی همین گروه)
+	mgmt := engine.Group("/internal", middleware.InternalAuth(internalKey))
+	mgmt.POST("/register", r.registerBot)
 	mgmt.POST("/unregister", r.unregisterBot)
-	mgmt.GET("/bots",        r.listBots)
-	mgmt.GET("/stats",       r.getStats)
-	mgmt.GET("/health",      r.health)
+	mgmt.GET("/bots", r.listBots)
+	mgmt.GET("/stats", r.getStats)
+	mgmt.GET("/health", r.health)
 }
 
 // ── Webhook handler ────────────────────────────────────────

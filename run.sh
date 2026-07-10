@@ -57,29 +57,37 @@ echo ""
 start_service "botpay"      "$ROOT/botpay"      "./cmd/..."
 sleep 2
 
-# ۲. سرویس‌های پشتیبان (بدون ربات)
+# ۲. image-registry و license-service — agentmanager (چک image، fail-closed)
+#    و botmanager (صدور لایسنس) به این دو وابسته‌اند
+start_service "image-registry"  "$ROOT/image-registry"  "./cmd/..."
+start_service "license-service" "$ROOT/license-service" "./cmd/..."
+sleep 1
+
+# ۳. سرویس‌های پشتیبان (بدون ربات)
 start_service "fraud-engine"    "$ROOT/fraud-engine"      "./cmd/..."
 start_service "revenue-service" "$ROOT/revenue-service"   "./cmd/..."
 start_service "community-service" "$ROOT/community-service" "./cmd/..."
 sleep 1
 
-# ۳. member-bot — زیرساخت چک عضویت (قبل از botmanager)
+# ۴. member-bot — زیرساخت چک عضویت (قبل از botmanager)
 start_service "member-bot"  "$ROOT/member-bot"  "./cmd/bot/..."
 sleep 1
 
-# ۴. ads-bot
+# ۵. ads-bot
 start_service "ads-bot"     "$ROOT/ads-bot"     "./cmd/..."
 sleep 1
 
-# ۵. uploader-bot
-start_service "uploader-bot" "$ROOT/uploader-bot" "./cmd/bot/..."
-sleep 1
-
 # ۶. agentmanager — مدیریت deploy container های کاربران
+#    (uploader-bot دیگر این‌جا اجرا نمی‌شود — به‌صورت container داینامیک
+#    توسط agentmanager ساخته می‌شود؛ برای dev دستی: cd uploader-bot && go run ./cmd/bot)
 start_service "agentmanager" "$ROOT/agentmanager" "./cmd/..."
 sleep 1
 
-# ۷. botmanager — آخرین (به همه وابسته است)
+# ۷. apimanager — دروازه‌ی HTTP (قبل از botmanager؛ به NATS/DB مشترک وصل است)
+start_service "apimanager"  "$ROOT/apimanager"  "./cmd/..."
+sleep 1
+
+# ۸. botmanager — آخرین (به همه وابسته است)
 start_service "botmanager"  "$ROOT/botmanager"  "./cmd/..."
 
 echo ""

@@ -17,6 +17,7 @@ import (
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/state"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
@@ -38,6 +39,7 @@ type Deps struct {
 	EncryptKey  string
 	Ton         *ton.Client
 	Pay         *natspayclient.Client
+	License     *licenseclient.Client
 	Tr          *i18n.Translator
 	NC          *natsadapter.Client
 }
@@ -54,6 +56,7 @@ func New(
 	tonClient *ton.Client,
 	payClient *natspayclient.Client,
 	nc *natsadapter.Client,
+	licenseClient *licenseclient.Client,
 ) *Deps {
 	return &Deps{
 		Bot:         bot,
@@ -66,6 +69,7 @@ func New(
 		EncryptKey:  encryptKey,
 		Ton:         tonClient,
 		Pay:         payClient,
+		License:     licenseClient,
 		Tr:          i18n.New(cache),
 		NC:          nc,
 	}

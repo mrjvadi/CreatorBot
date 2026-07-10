@@ -14,8 +14,8 @@ import (
 
 // KeyPair شامل key فعلی و key قبلی برای دوره grace است.
 type KeyPair struct {
-	Current  string
-	Previous string
+	Current   string
+	Previous  string
 	RotatedAt time.Time
 }
 

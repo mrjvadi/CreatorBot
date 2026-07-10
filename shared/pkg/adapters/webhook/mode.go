@@ -55,7 +55,7 @@ type PollerConfig struct {
 	Mode       Mode
 	BotID      int64
 	Token      string
-	GatewayURL string            // فقط در حالت webhook لازم است
+	GatewayURL string             // فقط در حالت webhook لازم است
 	NATS       *natsclient.Client // فقط در حالت webhook لازم است
 	Log        ports.Logger
 }

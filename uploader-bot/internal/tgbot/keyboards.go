@@ -1,28 +1,34 @@
 package tgbot
 
 import (
-	"fmt"
 	tele "gopkg.in/telebot.v4"
 )
 
 // ── دکمه‌های ثابت ────────────────────────────────────────────
 const (
-	btnNewCode  = "📤 آپلود رسانه"
-	btnCodeList = "📋 لیست رسانه‌ها"
-	btnFolders  = "📁 پوشه‌ها"
-	btnUsers    = "👥 کاربران"
-	btnStats    = "📊 آمار"
-	btnSettings = "⚙️ تنظیمات"
+	btnNewCode   = "📤 آپلود رسانه"
+	btnCodeList  = "📋 لیست رسانه‌ها"
+	btnFolders   = "📁 پوشه‌ها"
+	btnUsers     = "👥 کاربران"
+	btnStats     = "📊 آمار"
+	btnSettings  = "⚙️ تنظیمات"
 	btnBroadcast = "📢 ارسال همگانی"
-	btnBackup   = "💾 بکاپ"
-	btnChannels = "📡 کانال‌ها"
-	btnSubPlans = "💎 اشتراک‌ها"
-	btnAdmins   = "👑 ادمین‌ها"
-	btnCancel   = "❌ لغو"
-	btnBack     = "🔙 بازگشت"
-	btnSearch   = "🔍 جستجو"
-	btnHelp     = "❓ راهنما"
-	btnSupport  = "💬 پشتیبانی"
+	btnBackup    = "💾 بکاپ"
+	btnChannels  = "📡 کانال‌ها"
+	btnSubPlans  = "💎 اشتراک‌ها"
+	btnAdmins    = "👑 ادمین‌ها"
+	btnCancel    = "❌ لغو"
+	btnBack      = btnBackLabel
+	btnSearch    = "🔍 جستجو"
+	btnHelp      = "❓ راهنما"
+	btnSupport   = "💬 پشتیبانی"
+	btnPreview   = "🖼 کانال پیش‌نمایش"
+	btnAds       = "📣 تبلیغات"
+	btnReset     = "♻️ ریست دانلودها"
+	btnPopular   = "🔥 پربازدیدها"
+	btnNewest    = "🆕 جدیدترین‌ها"
+	btnTop       = "⭐️ محبوب‌ترین‌ها"
+	btnUploadU   = "📤 آپلود فایل"
 )
 
 // ── Admin Keyboard ────────────────────────────────────────────
@@ -35,23 +41,17 @@ func kbAdmin() *tele.ReplyMarkup {
 		kb.Row(kb.Text(btnUsers), kb.Text(btnStats)),
 		kb.Row(kb.Text(btnSettings), kb.Text(btnBroadcast)),
 		kb.Row(kb.Text(btnBackup), kb.Text(btnSubPlans)),
-		kb.Row(kb.Text(btnAdmins)),
+		kb.Row(kb.Text(btnPreview), kb.Text(btnAds)),
+		kb.Row(kb.Text(btnReset), kb.Text(btnAdmins)),
 	)
 	return kb
 }
 
 // ── User Keyboard ─────────────────────────────────────────────
-
-func kbUser(showSearch bool) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	rows := []tele.Row{}
-	if showSearch {
-		rows = append(rows, kb.Row(kb.Text(btnSearch)))
-	}
-	rows = append(rows, kb.Row(kb.Text(btnHelp), kb.Text(btnSupport)))
-	kb.Reply(rows...)
-	return kb
-}
+//
+// نکته: منوی واقعیِ کاربر h.kbUserMenu(ctx) در user_menu.go است (دکمه‌ها و
+// برچسب‌ها را از تنظیمات می‌خواند). این تابع ساده‌ی kbUser(bool) قبلاً جایگزین
+// شده بود ولی هیچ‌جا صدا زده نمی‌شد؛ برای جلوگیری از سردرگمی حذف شد.
 
 func kbCancelOnly() *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
@@ -71,48 +71,19 @@ func kbAlbumDone() *tele.ReplyMarkup {
 }
 
 // ── Code Settings Inline ──────────────────────────────────────
-
-func kbCodeSettings(codeID string, forwardLock, autoDelete bool, hasPassword bool, limit int) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{}
-
-	fwdLabel := "🔓 قفل فوروارد: خاموش"
-	if forwardLock {
-		fwdLabel = "🔒 قفل فوروارد: روشن"
-	}
-	adLabel := "⏱ ضدفیلتر: خاموش"
-	if autoDelete {
-		adLabel = "⏱ ضدفیلتر: روشن"
-	}
-	pwLabel := "🔐 رمز عبور: ندارد"
-	if hasPassword {
-		pwLabel = "🔐 رمز عبور: دارد"
-	}
-	limLabel := "📥 محدودیت: نامحدود"
-	if limit > 0 {
-		limLabel = fmt.Sprintf("📥 محدودیت: %d بار", limit)
-	}
-
-	kb.Inline(
-		kb.Row(kb.Data(fwdLabel, "code_toggle_forward:"+codeID)),
-		kb.Row(kb.Data(adLabel, "code_toggle_antidl:"+codeID)),
-		kb.Row(kb.Data(pwLabel, "code_set_password:"+codeID)),
-		kb.Row(kb.Data(limLabel, "code_set_limit:"+codeID)),
-		kb.Row(
-			kb.Data("✏️ ویرایش کپشن", "code_edit_caption:"+codeID),
-			kb.Data("📤 پیش‌نمایش", "code_send_preview:"+codeID),
-		),
-		kb.Row(kb.Data("🗑 حذف", "code_delete:"+codeID)),
-		kb.Row(kb.Data("🔙 بازگشت", "code_list")),
-	)
-	return kb
-}
+//
+// نکته: منوی واقعیِ تنظیمات یک کد kbCodeAdvanced (در media_edit.go) است که
+// کامل‌تر است (قفل کانال، اشتراک اجباری، سین/ری‌اکشن، آمار فیک، کاور، جابه‌جایی
+// فایل‌ها، انتقال پوشه). این نسخه‌ی ساده‌تر قبلاً جایگزین شده بود ولی هیچ
+// دکمه‌ای در کل ربات به آن اشاره نمی‌کرد؛ حذف شد تا برای توسعه‌دهنده‌ی بعدی
+// گمراه‌کننده نباشد.
 
 func kbFolderList(folders []folderItem) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	for _, f := range folders {
 		rows = append(rows, kb.Row(
-			kb.Data("📁 "+f.Name, "folder_open:"+f.ID),
+			kb.Data("📁 "+f.Name, "afolder:"+f.ID),
 			kb.Data("🗑", "folder_delete:"+f.ID),
 		))
 	}
@@ -126,41 +97,9 @@ type folderItem struct {
 	Name string
 }
 
-func kbSettings(settings map[string]string) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{}
-
-	toggle := func(key, label string) tele.Row {
-		val := settings[key]
-		icon := "🔴"
-		if val == "true" || val == "1" {
-			icon = "🟢"
-		}
-		return kb.Row(kb.Data(icon+" "+label, "toggle_setting:"+key))
-	}
-
-	kb.Inline(
-		toggle(models_SettingBotActive, "ربات فعال"),
-		toggle(models_SettingSubRequired, "اشتراک اجباری"),
-		toggle(models_SettingUserUpload, "آپلود کاربر"),
-		toggle(models_SettingShowSearch, "جستجو"),
-		toggle(models_SettingForwardLockDefault, "قفل فوروارد پیش‌فرض"),
-		kb.Row(kb.Data("✏️ تعداد دانلود رایگان", "set_setting:"+models_SettingFreeDownloads)),
-		kb.Row(kb.Data("✏️ زمان ضدفیلتر (ثانیه)", "set_setting:"+models_SettingAutoDeleteDefault)),
-		kb.Row(kb.Data("✏️ امضا", "set_setting:"+models_SettingSignature)),
-		kb.Row(kb.Data("✏️ متن خوش‌آمد", "set_setting:welcome_text")),
-		kb.Row(kb.Data("🔙 بازگشت", "admin_main")),
-	)
-	return kb
-}
-
-// constants برای avoid circular import
-const (
-	models_SettingBotActive         = "bot_active"
-	models_SettingSubRequired       = "sub_required"
-	models_SettingUserUpload        = "user_upload"
-	models_SettingShowSearch        = "show_search"
-	models_SettingForwardLockDefault = "forward_lock_default"
-	models_SettingFreeDownloads     = "free_downloads"
-	models_SettingAutoDeleteDefault = "auto_delete_default"
-	models_SettingSignature         = "signature"
-)
+// نکته: یک منوی تنظیمات مسطح (kbSettings) + adminToggleSetting/adminAskSetting
+// این‌جا وجود داشت که با «toggle_setting:»/«set_setting:»/«admin_main» کار
+// می‌کرد. بررسی کامل نشان داد هیچ دکمه‌ای در کل ربات این callbackها را صادر
+// نمی‌کرد — منوی واقعی تنظیمات همان پنل دسته‌بندی‌شده‌ی kbSettingsHome/
+// kbSettingsPage در admin_menu.go است («ps:»/«pt:»/«pv:»). این خوشه‌ی کد مرده
+// (تابع کیبورد + دو هندلر + سه شاخه‌ی callback) حذف شد.

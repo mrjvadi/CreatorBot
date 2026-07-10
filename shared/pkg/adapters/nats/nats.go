@@ -13,7 +13,7 @@ import (
 
 // Config تنظیمات اتصال به NATS.
 type Config struct {
-	URL      string // nats://localhost:4222
+	URL string // nats://localhost:4222
 	// اختیاری — برای auth
 	Username string
 	Password string

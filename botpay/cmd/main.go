@@ -34,6 +34,12 @@ type Config struct {
 	NatsUser string `mapstructure:"NATS_USERNAME"`
 	NatsPass string `mapstructure:"NATS_PASSWORD"`
 
+	// ServiceHMACSecret کلید مادر برای اعتبارسنجی service_key در PayRequest.
+	// فقط سرویس‌های مرکزی مورد اعتماد (botmanager, ads-bot, ...) این را در env
+	// دارند — هرگز به container ربات‌های مشتری داده نمی‌شود. بدون این مقدار،
+	// botpay هیچ درخواست pay.* را مجاز نمی‌کند (fail closed).
+	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
+
 	// Redis — botpay موجودی را مستقیم در Redis می‌نویسد
 	RedisAddr string `mapstructure:"REDIS_ADDR"`
 	RedisPass string `mapstructure:"REDIS_PASSWORD"`
@@ -81,6 +87,7 @@ func main() {
 		} else {
 			defer nc.Close()
 			log.Info("nats connected")
+			log.AttachNATS(nc, "botpay")
 		}
 	} else {
 		log.Warn("NATS_URL not set — event publishing disabled")
@@ -133,7 +140,10 @@ func main() {
 				payCache = rc
 			}
 		}
-		resp := payresponder.New(nc, walletSvc, payCache, log)
+		if cfg.ServiceHMACSecret == "" {
+			log.Error("SERVICE_HMAC_SECRET not set — all pay.* requests will be rejected until configured")
+		}
+		resp := payresponder.New(nc, walletSvc, payCache, log, cfg.ServiceHMACSecret)
 		if err := resp.Start(); err != nil {
 			log.Error("payresponder start failed", ports.F("err", err))
 		}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/mrjvadi/creatorbot/shared-core/configstore"
 	"github.com/mrjvadi/creatorbot/shared-core/docstore"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/mongodb"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
@@ -50,6 +51,13 @@ type Config struct {
 
 	// Heartbeat interval
 	HeartbeatSec int
+
+	// LicenseToken توکنی که botmanager هنگام deploy این instance از
+	// license-service گرفته و به‌عنوان env var LICENSE_TOKEN تزریق کرده.
+	// خالی‌بودن یعنی این instance با یک نسخه‌ی قدیمی‌تر از قبل از راه‌اندازی
+	// license-service ساخته شده — engine در این حالت فقط هشدار می‌دهد و
+	// کار را متوقف نمی‌کند (fail-open، تا مشتریان موجود قطع نشوند).
+	LicenseToken string
 }
 
 // Engine موتور اصلی هر bot — شامل همه dependency های لازم.
@@ -209,6 +217,8 @@ func (e *Engine) Start(ctx context.Context) {
 	}
 
 	go e.heartbeatLoop(ctx, interval)
+	go licenseclient.RunLicenseLoop(ctx, e.Nats, e.BotID, e.cfg.LicenseToken, e.cfg.ServerID, e.Log)
+
 	e.Log.Info("engine started",
 		ports.F("bot_id", e.BotID),
 		ports.F("heartbeat", interval))

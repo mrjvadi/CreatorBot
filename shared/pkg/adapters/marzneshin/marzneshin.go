@@ -75,11 +75,11 @@ func (p *Panel) CreateUser(ctx context.Context, req ports.CreateVPNUserRequest) 
 	}
 
 	body, _ := json.Marshal(map[string]any{
-		"username":    req.Username,
-		"services":    []string{},   // از service های پنل استفاده می‌شه
-		"data_limit":  req.DataLimit,
-		"expire":      expire,
-		"status":      "active",
+		"username":   req.Username,
+		"services":   []string{}, // از service های پنل استفاده می‌شه
+		"data_limit": req.DataLimit,
+		"expire":     expire,
+		"status":     "active",
 	})
 
 	resp, err := p.do(ctx, http.MethodPost, "/api/users", body)
@@ -199,12 +199,12 @@ func (p *Panel) do(ctx context.Context, method, path string, body []byte) ([]byt
 // ── Response types ───────────────────────────────────────────
 
 type marzneshinUser struct {
-	Username          string  `json:"username"`
-	Status            string  `json:"status"`
-	DataLimit         int64   `json:"data_limit"`
-	UsedTraffic       int64   `json:"used_traffic"`
-	Expire            *int64  `json:"expire"`
-	SubscriptionURL   string  `json:"subscription_url"`
+	Username        string `json:"username"`
+	Status          string `json:"status"`
+	DataLimit       int64  `json:"data_limit"`
+	UsedTraffic     int64  `json:"used_traffic"`
+	Expire          *int64 `json:"expire"`
+	SubscriptionURL string `json:"subscription_url"`
 }
 
 func (u *marzneshinUser) toVPNUser() *ports.VPNUser {

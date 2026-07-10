@@ -1,10 +1,9 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /workspace
-# Copy workspace root for go.work shared module resolution
-COPY go.work ./
-COPY go.work.sum ./
-COPY shared/ shared/
-COPY uploader-bot/ uploader-bot/
+
+# Copy entire workspace so go.work can find all required modules
+COPY . .
+
 WORKDIR /workspace/uploader-bot
 RUN go build -o /out/bot ./cmd/bot
 

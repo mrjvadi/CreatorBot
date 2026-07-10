@@ -115,11 +115,19 @@ type DeploySettings struct {
 // ── Heartbeat ──────────────────────────────────────────────
 
 // HeartbeatMsg وضعیت سرور که agentmanager هر N ثانیه ارسال می‌کند.
+//
+// CPUPercent/MemoryUsedMB/MemoryTotalMB اختیاری‌اند (pointer، nil = گزارش نشده): نسخه‌ی
+// agentmanager موجود در زمان اضافه‌شدن این فیلدها (۲۰۲۶-۰۷-۰۳) این‌ها را پر نمی‌کرد — این‌جا
+// فقط برای سازگاری روبه‌جلو تعریف شده‌اند تا وقتی agentmanager آن‌ها را اضافه کرد، بدون تغییر
+// دوباره‌ی این struct مصرف شوند. تا آن زمان همیشه nil خواهند بود.
 type HeartbeatMsg struct {
-	Type       MsgType           `json:"type"`
-	ServerID   string            `json:"server_id"`
-	Timestamp  int64             `json:"ts"`
-	Containers []ContainerStatus `json:"containers"`
+	Type          MsgType           `json:"type"`
+	ServerID      string            `json:"server_id"`
+	Timestamp     int64             `json:"ts"`
+	Containers    []ContainerStatus `json:"containers"`
+	CPUPercent    *float64          `json:"cpu_percent,omitempty"`
+	MemoryUsedMB  *int64            `json:"memory_used_mb,omitempty"`
+	MemoryTotalMB *int64            `json:"memory_total_mb,omitempty"`
 }
 
 // ContainerStatus وضعیت یک container.
@@ -423,4 +431,102 @@ type ConfirmChannelAdminRequest struct {
 type ConfirmChannelAdminResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
+}
+
+// ══════════════════════════════════════════════════════════════
+// License subjects (NATS request/reply) — license-service به‌عنوان
+// responder. instance_id (=BotID) هر ربات ساخته‌شده را در برابر یک لایسنس
+// معتبر پردازش می‌کند و اجاره‌ی همان instance روی بیش از یک سرور فیزیکی
+// (کپی/کلون) را تشخیص می‌دهد.
+//
+// نکته‌ی طراحی: درست مثل pay.*، هر درخواست یک ServiceID/ServiceKey با خودش
+// حمل می‌کند تا فقط سرویس‌های مرکزی مورد اعتماد (agentmanager, botmanager)
+// بتوانند لایسنس صادر/باطل کنند — نه هر کلاینت NATS. license.verify از
+// خودِ bot instance می‌آید و با instance_id+server_id خودش احراز می‌شود، نه
+// با ServiceKey (چون container مشتری هرگز راز مادر را نمی‌بیند).
+// ══════════════════════════════════════════════════════════════
+
+const (
+	// SubjLicenseIssue — صدور لایسنس برای یک instance تازه‌ساخته‌شده.
+	// فقط سرویس‌های مرکزی (agentmanager/botmanager) مجازند.
+	SubjLicenseIssue = "license.issue"
+	// SubjLicenseVerify — خودِ bot instance دوره‌ای می‌پرسد «لایسنس من هنوز
+	// معتبر و روی همین سرور است؟». اگر همان BotID از ServerID دیگری هم
+	// check-in کند، license-service آن را به‌عنوان کلون/کپی علامت می‌زند.
+	SubjLicenseVerify = "license.verify"
+	// SubjLicenseRevoke — ابطال دستی لایسنس (مثلاً پایان اشتراک، تخلف).
+	SubjLicenseRevoke = "license.revoke"
+	// SubjLicenseQueue — queue group برای load balancing.
+	SubjLicenseQueue = "license-workers"
+)
+
+// LicenseStatus وضعیت یک لایسنس.
+type LicenseStatus string
+
+const (
+	LicenseActive  LicenseStatus = "active"
+	LicenseRevoked LicenseStatus = "revoked"
+	LicenseExpired LicenseStatus = "expired"
+)
+
+// LicenseIssueRequest — درخواست صدور لایسنس برای یک instance تازه.
+type LicenseIssueRequest struct {
+	ServiceID  string `json:"service_id"`  // "agentmanager" یا "botmanager"
+	ServiceKey string `json:"service_key"` // HMAC(SERVICE_HMAC_SECRET, service_id)
+	BotID      int64  `json:"bot_id"`
+	InstanceID string `json:"instance_id"` // "bot_<BotID>"
+	OwnerID    string `json:"owner_id"`    // uuid کاربر مالک
+	ServerID   string `json:"server_id"`   // uuid سروری که اول‌بار روی آن deploy شد
+	PlanID     string `json:"plan_id,omitempty"`
+	ExpiresAt  int64  `json:"expires_at,omitempty"` // unix — ۰ یعنی نامحدود (تا ابطال دستی)
+}
+
+// LicenseIssueResponse — نتیجه‌ی صدور.
+type LicenseIssueResponse struct {
+	Success bool   `json:"success"`
+	Token   string `json:"token,omitempty"` // JWT امضاشده — برای verify آفلاین سریع
+	Error   string `json:"error,omitempty"`
+}
+
+// LicenseVerifyRequest — خودِ bot instance این را دوره‌ای می‌فرستد.
+type LicenseVerifyRequest struct {
+	BotID    int64  `json:"bot_id"`
+	Token    string `json:"token"`     // توکنی که در زمان issue گرفته بود
+	ServerID string `json:"server_id"` // سروری که همین الان از آن اجرا می‌شود
+}
+
+// LicenseVerifyResponse — نتیجه‌ی بررسی.
+type LicenseVerifyResponse struct {
+	Valid        bool   `json:"valid"`
+	Status       string `json:"status"`                  // یکی از LicenseStatus بالا
+	CloneWarning bool   `json:"clone_warning,omitempty"` // true یعنی از سرور دیگری هم check-in شده
+	Error        string `json:"error,omitempty"`
+}
+
+// LicenseRevokeRequest — ابطال دستی (فقط سرویس‌های مرکزی).
+type LicenseRevokeRequest struct {
+	ServiceID  string `json:"service_id"`
+	ServiceKey string `json:"service_key"`
+	BotID      int64  `json:"bot_id"`
+	Reason     string `json:"reason"`
+}
+
+// LicenseRevokeResponse — پاسخ ابطال.
+type LicenseRevokeResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// SubjLicenseCloneDetected — رویداد pub/sub که license-service وقتی یک
+// instance را همزمان از دو ServerID متفاوت می‌بیند منتشر می‌کند، تا
+// botmanager بتواند به ادمین/مالک اطلاع دهد.
+const SubjLicenseCloneDetected = "license.clone_detected"
+
+// LicenseCloneDetectedEvent جزئیات تشخیص کلون.
+type LicenseCloneDetectedEvent struct {
+	BotID            int64  `json:"bot_id"`
+	InstanceID       string `json:"instance_id"`
+	KnownServerID    string `json:"known_server_id"`
+	UnexpectedServer string `json:"unexpected_server_id"`
+	DetectedAt       int64  `json:"detected_at"`
 }

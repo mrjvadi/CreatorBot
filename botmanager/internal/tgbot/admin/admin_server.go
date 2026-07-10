@@ -18,19 +18,48 @@ func (h *Admin) AdminServersList(ctx context.Context, c tele.Context) error {
 	servers, _ := h.Store.ListServers(ctx)
 
 	lines := []string{h.T(ctx, uid, i18n.KeyServersTitle), ""}
+	kb := &tele.ReplyMarkup{}
+	var rows []tele.Row
 	if len(servers) == 0 {
 		lines = append(lines, h.T(ctx, uid, i18n.KeyServersEmpty), "")
 	} else {
+		// قبلاً هیچ دکمه‌ی حذفی اینجا نبود — Store.DeleteServer وجود داشت ولی
+		// از هیچ‌جای UI صدا زده نمی‌شد.
 		for _, s := range servers {
 			lines = append(lines, format.FmtServer(s))
+			rows = append(rows, kb.Row(kb.Data(
+				h.Btn(ctx, uid, i18n.KeyBtnDeleteSW)+" "+s.Name, "admin_srv_del:"+s.ID.String())))
 		}
 		lines = append(lines, "")
 	}
+	rows = append(rows, kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBtnAddServer), "add_server")))
+	kb.Inline(rows...)
+	return c.Send(format.JoinLines(lines), tele.ModeHTML, kb)
+}
+
+// AdminServerDeleteConfirm تأییدِ حذفِ سرور را نشان می‌دهد — سرور حذف‌شده دیگر
+// برای deploy انتخاب نمی‌شود، ولی instanceهای موجودِ رویش دست‌نخورده می‌مانند.
+func (h *Admin) AdminServerDeleteConfirm(ctx context.Context, c tele.Context, id string) error {
+	uid := c.Sender().ID
 	kb := &tele.ReplyMarkup{}
 	kb.Inline(
-		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBtnAddServer), "add_server")),
+		kb.Row(
+			kb.Data(h.Btn(ctx, uid, i18n.KeyBtnConfirmDelete), "admin_srv_del_do:"+id),
+			kb.Data(h.Btn(ctx, uid, i18n.KeyBtnCancel), "cancel"),
+		),
 	)
-	return c.Send(format.JoinLines(lines), tele.ModeHTML, kb)
+	_ = c.Respond()
+	return c.Send(h.T(ctx, uid, i18n.KeyServerDeleteConfirm), tele.ModeHTML, kb)
+}
+
+// AdminServerDelete سرور را حذف می‌کند.
+func (h *Admin) AdminServerDelete(ctx context.Context, c tele.Context, id string) error {
+	uid := c.Sender().ID
+	if err := h.Store.DeleteServer(ctx, id); err != nil {
+		h.Log.Error("adminServerDelete", h.F("err", err), h.F("server", id))
+		return c.Edit(h.T(ctx, uid, i18n.KeyError))
+	}
+	return c.Edit(h.T(ctx, uid, i18n.KeyServerDeletedMsg))
 }
 
 func (h *Admin) AdminServerStart(ctx context.Context, c tele.Context) error {

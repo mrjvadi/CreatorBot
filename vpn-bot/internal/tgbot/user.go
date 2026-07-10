@@ -242,6 +242,11 @@ func (h *Handler) sendSubscriptionLink(ctx context.Context, c tele.Context, subI
 		return c.Edit("❌ اشتراک یافت نشد.")
 	}
 
+	u, err := h.getOrCreate(ctx, c)
+	if err != nil || u == nil || sub.UserID != u.ID {
+		return c.Edit("❌ اشتراک یافت نشد.")
+	}
+
 	vpnUser, err := h.panel.GetUser(ctx, sub.Username)
 	if err != nil || vpnUser == nil {
 		return c.Edit("❌ خطا در دریافت اشتراک.")
@@ -266,6 +271,11 @@ func (h *Handler) sendSubscriptionQR(ctx context.Context, c tele.Context, subIDS
 	subID, _ := uuid.Parse(subIDStr)
 	sub, err := h.store.FindSubscriptionByID(ctx, subID)
 	if err != nil || sub == nil {
+		return c.Edit("❌ اشتراک یافت نشد.")
+	}
+
+	u, err := h.getOrCreate(ctx, c)
+	if err != nil || u == nil || sub.UserID != u.ID {
 		return c.Edit("❌ اشتراک یافت نشد.")
 	}
 

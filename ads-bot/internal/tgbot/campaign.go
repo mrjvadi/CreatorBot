@@ -225,7 +225,15 @@ func (h *Handler) onMyCampaigns(c tele.Context) error {
 func (h *Handler) pauseCampaign(ctx context.Context, c tele.Context, campIDStr string) error {
 	campID, _ := uuid.Parse(campIDStr)
 	camp, _ := h.store.FindCampaign(ctx, campID)
-	if camp == nil { return c.Edit("❌ یافت نشد.") }
+	if camp == nil {
+		return c.Edit("❌ یافت نشد.")
+	}
+
+	pub, _ := h.store.FindPublisher(ctx, c.Sender().ID)
+	if pub == nil || camp.PublisherID != pub.ID {
+		return c.Edit("⛔️ شما مالک این کمپین نیستید.")
+	}
+
 	if camp.Status == store.CampaignActive {
 		camp.Status = store.CampaignPaused
 	} else {
@@ -238,13 +246,17 @@ func (h *Handler) pauseCampaign(ctx context.Context, c tele.Context, campIDStr s
 func (h *Handler) deleteCampaign(ctx context.Context, c tele.Context, campIDStr string) error {
 	campID, _ := uuid.Parse(campIDStr)
 	camp, _ := h.store.FindCampaign(ctx, campID)
-	if camp == nil { return c.Edit("❌ یافت نشد.") }
-
-	// بازگشت بودجه باقی‌مانده
-	pub, _ := h.store.FindPublisher(ctx, c.Sender().ID)
-	if pub != nil {
-		h.store.UpdateBalance(ctx, pub.ID, camp.RemainingBudget())
+	if camp == nil {
+		return c.Edit("❌ یافت نشد.")
 	}
+
+	pub, _ := h.store.FindPublisher(ctx, c.Sender().ID)
+	if pub == nil || camp.PublisherID != pub.ID {
+		return c.Edit("⛔️ شما مالک این کمپین نیستید.")
+	}
+
+	// بازگشت بودجه باقی‌مانده — همیشه به مالک واقعی کمپین (camp.PublisherID)
+	h.store.UpdateBalance(ctx, camp.PublisherID, camp.RemainingBudget())
 
 	camp.Status = store.CampaignDone
 	h.store.UpdateCampaign(ctx, camp)
@@ -253,12 +265,16 @@ func (h *Handler) deleteCampaign(ctx context.Context, c tele.Context, campIDStr 
 
 func (h *Handler) t(key string) string {
 	m := map[string]string{"error": "❌ خطا. دوباره امتحان کنید."}
-	if v, ok := m[key]; ok { return v }
+	if v, ok := m[key]; ok {
+		return v
+	}
 	return key
 }
 
 func (h *Handler) notifyAdmin(ctx context.Context, camp *store.Campaign) {
-	if h.ownerID == 0 { return }
+	if h.ownerID == 0 {
+		return
+	}
 	admin := &tele.Chat{ID: h.ownerID}
 	text := fmt.Sprintf(
 		"📣 <b>کمپین جدید</b>\n\n📌 %s\n💰 %.2f TON | CPJ: %.3f\n🆔 <code>%s</code>",

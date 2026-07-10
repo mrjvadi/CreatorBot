@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/models"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Store struct{ db ports.DB }
@@ -21,14 +21,18 @@ func New(db ports.DB) *Store { return &Store{db: db} }
 func (s *Store) FindOwnerByID(ctx context.Context, id uuid.UUID) (*models.Owner, error) {
 	var o models.Owner
 	err := s.db.Conn().WithContext(ctx).Where("id = ?", id).First(&o).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &o, err
 }
 
 func (s *Store) FindOwnerByTelegramID(ctx context.Context, id int64) (*models.Owner, error) {
 	var o models.Owner
 	err := s.db.Conn().WithContext(ctx).Where("telegram_id = ?", id).First(&o).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &o, err
 }
 
@@ -40,12 +44,23 @@ func (s *Store) FindLockByChannelID(ctx context.Context, channelID int64) (*mode
 	var l models.Lock
 	err := s.db.Conn().WithContext(ctx).
 		Where("channel_id = ? AND status = ?", channelID, models.LockActive).First(&l).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &l, err
 }
 
 func (s *Store) CreateLock(ctx context.Context, l *models.Lock) error {
 	return s.db.Conn().WithContext(ctx).Create(l).Error
+}
+
+func (s *Store) FindLockByID(ctx context.Context, lockID uuid.UUID) (*models.Lock, error) {
+	var l models.Lock
+	err := s.db.Conn().WithContext(ctx).Where("id = ?", lockID).First(&l).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &l, err
 }
 
 func (s *Store) ExpireLock(ctx context.Context, lockID any) error {
@@ -112,7 +127,6 @@ func (s *Store) ApprovePayment(ctx context.Context, payID uuid.UUID) error {
 func (s *Store) CreatePayment(ctx context.Context, p *models.Payment) error {
 	return s.db.Conn().WithContext(ctx).Create(p).Error
 }
-
 
 func (s *Store) FindPendingPayments(ctx context.Context) ([]models.Payment, error) {
 	var list []models.Payment

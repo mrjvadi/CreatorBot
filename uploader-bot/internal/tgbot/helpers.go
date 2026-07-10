@@ -3,26 +3,43 @@ package tgbot
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
 
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
+	"github.com/mrjvadi/creatorbot/uploader-bot/internal/util"
 )
 
 // ── Force Join ────────────────────────────────────────────────
 
-// checkForceJoin بررسی می‌کند کاربر در کانال‌های اجباری عضو است.
-// لیست کانال‌هایی که عضو نیست را برمی‌گرداند.
+// checkForceJoin قفل‌های اجباریِ کانال/گروه را بررسی می‌کند و آن‌هایی که کاربر
+// عضو نیست را برمی‌گرداند. قفل‌های اختیاری و ربات/لینک اینجا اجبار نمی‌شوند.
 func (h *Handler) checkForceJoin(ctx context.Context, c tele.Context) []models.ForceJoinChannel {
-	channels, _ := h.store.ListForceJoinChannels(ctx)
+	channels, err := h.Store.ListForceJoinChannels(ctx)
+	h.LogErr("checkForceJoin", err)
 	var notJoined []models.ForceJoinChannel
 
 	for _, ch := range channels {
-		member, err := c.Bot().ChatMemberOf(
-			&tele.Chat{ID: ch.ChatID},
-			c.Sender(),
-		)
+		if !ch.IsMandatory() {
+			continue
+		}
+		// عضویت فقط برای کانال/گروه قابل بررسی است (نه ربات/لینک).
+		if ch.Kind == models.LockBot || ch.Kind == models.LockLink {
+			continue
+		}
+		var chat *tele.Chat
+		if ch.ChatID != 0 {
+			chat = &tele.Chat{ID: ch.ChatID}
+		} else if ch.Username != "" {
+			chat = &tele.Chat{Username: ch.Username}
+		} else {
+			continue
+		}
+		member, err := c.Bot().ChatMemberOf(chat, c.Sender())
 		if err != nil || member == nil ||
 			member.Role == tele.Kicked || member.Role == tele.Left {
 			notJoined = append(notJoined, ch)
@@ -31,20 +48,33 @@ func (h *Handler) checkForceJoin(ctx context.Context, c tele.Context) []models.F
 	return notJoined
 }
 
-func (h *Handler) sendJoinRequest(c tele.Context, channels []models.ForceJoinChannel) error {
-	notMemberText := h.store.GetSetting(context.Background(), models.SettingNotMemberText)
+// sendJoinRequest پیام درخواست عضویت را با قفل‌های اجباری (نشده) + اختیاری می‌سازد.
+func (h *Handler) sendJoinRequest(c tele.Context, mandatory []models.ForceJoinChannel) error {
+	ctx := context.Background()
+	notMemberText := h.Store.GetSetting(ctx, models.SettingNotMemberText)
 	if notMemberText == "" {
-		notMemberText = "⚠️ <b>برای دریافت فایل باید در کانال‌های زیر عضو شوید:</b>"
+		notMemberText = "📢 <b>یه قدم مونده!</b>\nبرای دریافت فایل، اول عضو این‌ها شو 👇"
 	}
 
 	kb := &tele.ReplyMarkup{}
 	var rows []tele.Row
-	for _, ch := range channels {
-		url := ch.InviteURL
-		if ch.Username != "" {
-			url = "https://t.me/" + ch.Username
+	for i := range mandatory {
+		l := mandatory[i]
+		if u := l.LinkURL(); u != "" {
+			rows = append(rows, kb.Row(kb.URL("🔒 "+lockTitle(&l), u)))
 		}
-		rows = append(rows, kb.Row(kb.URL("📢 "+ch.Title, url)))
+	}
+	// قفل‌های اختیاری (پیشنهادی) هم نمایش داده می‌شوند.
+	all, err := h.Store.ListForceJoinChannels(ctx)
+	h.LogErr("sendJoinRequest", err)
+	for i := range all {
+		l := all[i]
+		if l.IsMandatory() {
+			continue
+		}
+		if u := l.LinkURL(); u != "" {
+			rows = append(rows, kb.Row(kb.URL("🔓 "+lockTitle(&l), u)))
+		}
 	}
 	rows = append(rows, kb.Row(kb.Data("✅ عضو شدم", "check_join")))
 	kb.Inline(rows...)
@@ -74,10 +104,42 @@ func extractFileInfo(c tele.Context) *fileInfo {
 		return &fileInfo{msg.Animation.FileID, "animation"}
 	case msg.Voice != nil:
 		return &fileInfo{msg.Voice.FileID, "voice"}
+	case msg.VideoNote != nil:
+		return &fileInfo{msg.VideoNote.FileID, "video_note"}
 	case msg.Sticker != nil:
 		return &fileInfo{msg.Sticker.FileID, "sticker"}
 	}
 	return nil
+}
+
+// albumCompatible مشخص می‌کند آیا همه‌ی فایل‌ها می‌توانند در یک آلبوم تلگرام
+// ارسال شوند. ویس/استیکر/ویدیو‌نوت در آلبوم پشتیبانی نمی‌شوند.
+func albumCompatible(files []models.File) bool {
+	for _, f := range files {
+		switch f.FileType {
+		case "photo", "video", "audio", "document", "animation":
+			// ok
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// setInputCaption کپشن یک آیتم آلبوم را تنظیم می‌کند.
+func setInputCaption(inp tele.Inputtable, caption string) {
+	switch m := inp.(type) {
+	case *tele.Photo:
+		m.Caption = caption
+	case *tele.Video:
+		m.Caption = caption
+	case *tele.Audio:
+		m.Caption = caption
+	case *tele.Document:
+		m.Caption = caption
+	case *tele.Animation:
+		m.Caption = caption
+	}
 }
 
 func fileToInput(f models.File) tele.Inputtable {
@@ -101,59 +163,130 @@ func fileToInput(f models.File) tele.Inputtable {
 	return nil
 }
 
-func sendSingleFile(c tele.Context, f models.File, caption string, opts ...any) (*tele.Message, error) {
-	file := tele.File{FileID: f.FileID}
-	if caption == "" {
-		caption = f.Caption
+// archiveToStorage پیام آپلودشده را به کانال ذخیره‌سازی (در صورت تنظیم) کپی می‌کند
+// و مرجع (chatID, msgID) را برمی‌گرداند. این مرجع در برابر تغییر توکن پایدار است.
+func (h *Handler) archiveToStorage(ctx context.Context, c tele.Context) (int64, int, bool) {
+	raw := h.Store.GetSetting(ctx, models.SettingStorageChannel)
+	if raw == "" {
+		return 0, 0, false
 	}
+	chatID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || chatID == 0 {
+		return 0, 0, false
+	}
+	m, err := c.Bot().Copy(&tele.Chat{ID: chatID}, c.Message())
+	if err != nil || m == nil {
+		h.Log.Error("archiveToStorage", ports.F("err", err))
+		return 0, 0, false
+	}
+	return chatID, m.ID, true
+}
 
-	sendOpts := append([]any{tele.ModeHTML}, opts...)
+// sendFromStorage فایل را از کانال ذخیره‌سازی به گیرنده کپی می‌کند (fallback).
+func (h *Handler) sendFromStorage(c tele.Context, f models.File, so *tele.SendOptions) (*tele.Message, error) {
+	src := &tele.Message{ID: f.StorageMsgID, Chat: &tele.Chat{ID: f.StorageChatID}}
+	if so != nil {
+		return c.Bot().Copy(c.Recipient(), src, so)
+	}
+	return c.Bot().Copy(c.Recipient(), src)
+}
 
+// sendMedia یک فایل را با کپشن و قالب‌بندی (entities) و گزینه‌های ارسال می‌فرستد.
+// اگر به‌خاطر قالب‌بندیِ نامعتبر خطا بدهد، یک‌بار به‌صورت متن ساده دوباره تلاش می‌کند
+// تا کپشن/رسانه هرگز به‌خاطر فرمت از بین نرود.
+func sendMedia(c tele.Context, f models.File, caption string, entities []models.Entity, so *tele.SendOptions) (*tele.Message, error) {
+	if so == nil {
+		so = &tele.SendOptions{}
+	}
+	// telebot برای کپشن رسانه، Entities را درست به caption_entities نگاشت نمی‌کند؛
+	// پس entities را به HTML تبدیل و با ParseMode=HTML می‌فرستیم.
+	if len(entities) > 0 {
+		so.ParseMode = tele.ModeHTML
+		so.Entities = nil
+		if m, err := sendMediaWith(c, f, util.EntitiesToHTML(caption, entities), so); err == nil {
+			return m, nil
+		}
+		// fallback: متن ساده (اگر HTML خطا داد)
+	}
+	plain := &tele.SendOptions{ReplyMarkup: so.ReplyMarkup, Protected: so.Protected}
+	return sendMediaWith(c, f, caption, plain)
+}
+
+func sendMediaWith(c tele.Context, f models.File, caption string, so *tele.SendOptions) (*tele.Message, error) {
+	file := tele.File{FileID: f.FileID}
 	switch f.FileType {
 	case "photo":
-		return c.Bot().Send(c.Recipient(), &tele.Photo{File: file, Caption: caption}, sendOpts...)
+		return c.Bot().Send(c.Recipient(), &tele.Photo{File: file, Caption: caption}, so)
 	case "video":
 		v := &tele.Video{File: file, Caption: caption}
 		if f.Thumbnail != "" {
 			v.Thumbnail = &tele.Photo{File: tele.File{FileID: f.Thumbnail}}
 		}
-		return c.Bot().Send(c.Recipient(), v, sendOpts...)
+		return c.Bot().Send(c.Recipient(), v, so)
 	case "audio":
-		return c.Bot().Send(c.Recipient(), &tele.Audio{File: file, Caption: caption}, sendOpts...)
+		return c.Bot().Send(c.Recipient(), &tele.Audio{File: file, Caption: caption}, so)
 	case "animation":
-		return c.Bot().Send(c.Recipient(), &tele.Animation{File: file, Caption: caption}, sendOpts...)
+		return c.Bot().Send(c.Recipient(), &tele.Animation{File: file, Caption: caption}, so)
 	case "voice":
-		return c.Bot().Send(c.Recipient(), &tele.Voice{File: file, Caption: caption}, sendOpts...)
+		return c.Bot().Send(c.Recipient(), &tele.Voice{File: file, Caption: caption}, so)
+	case "video_note":
+		return c.Bot().Send(c.Recipient(), &tele.VideoNote{File: file}, so)
 	case "sticker":
-		return c.Bot().Send(c.Recipient(), &tele.Sticker{File: file})
+		return c.Bot().Send(c.Recipient(), &tele.Sticker{File: file}, so)
 	default:
-		return c.Bot().Send(c.Recipient(), &tele.Document{File: file, Caption: caption}, sendOpts...)
+		return c.Bot().Send(c.Recipient(), &tele.Document{File: file, Caption: caption}, so)
 	}
 }
 
-// kbMediaButtons دکمه‌های زیر رسانه را می‌سازد: لایک/دیسلایک (با شمارنده fake)،
-// گزارش، ارسال مجدد. بر اساس تنظیمات نمایش داده می‌شوند.
-func kbMediaButtons(code *models.Code, showLikes, showReport bool) *tele.ReplyMarkup {
+// reactReportRows ردیف‌های «رای‌ها (لایک/دیسلایک)» و «گزارش» را می‌سازد.
+// این‌ها همیشه زیر خودِ فایل قرار می‌گیرند.
+func reactReportRows(code *models.Code, showLikes, showReport bool, realLikes, realDislikes int64) []tele.Row {
 	kb := &tele.ReplyMarkup{}
 	var rows []tele.Row
-
 	if showLikes {
-		likes := code.FakeLikes
+		likes := int64(code.FakeLikes) + realLikes
 		rows = append(rows, kb.Row(
 			kb.Data(fmt.Sprintf("👍 %d", likes), "react_like:"+code.Code),
-			kb.Data("👎", "react_dislike:"+code.Code),
+			kb.Data(fmt.Sprintf("👎 %d", realDislikes), "react_dislike:"+code.Code),
 		))
 	}
-
-	var bottomRow []tele.Btn
-	bottomRow = append(bottomRow, kb.Data("🔄 ارسال مجدد", "code_resend:"+code.Code))
 	if showReport {
-		bottomRow = append(bottomRow, kb.Data("⚠️ گزارش", "report:"+code.Code))
+		rows = append(rows, kb.Row(kb.Data("⚠️ گزارش", "report:"+code.Code)))
 	}
-	rows = append(rows, kb.Row(bottomRow...))
+	return rows
+}
 
-	kb.Inline(rows...)
-	return kb
+// resendRow ردیف دکمه‌ی «ارسال مجدد».
+func resendRow(code *models.Code) tele.Row {
+	kb := &tele.ReplyMarkup{}
+	return kb.Row(kb.Data("🔄 ارسال مجدد", "code_resend:"+code.Code))
+}
+
+// sendToChat یک فایل را به یک چت دلخواه (مثلاً کانال پیش‌نمایش) ارسال می‌کند.
+func sendToChat(bot *tele.Bot, chatID int64, f models.File, caption string) (*tele.Message, error) {
+	to := &tele.Chat{ID: chatID}
+	file := tele.File{FileID: f.FileID}
+	if caption == "" {
+		caption = f.Caption
+	}
+	switch f.FileType {
+	case "photo":
+		return bot.Send(to, &tele.Photo{File: file, Caption: caption}, tele.ModeHTML)
+	case "video":
+		return bot.Send(to, &tele.Video{File: file, Caption: caption}, tele.ModeHTML)
+	case "audio":
+		return bot.Send(to, &tele.Audio{File: file, Caption: caption}, tele.ModeHTML)
+	case "animation":
+		return bot.Send(to, &tele.Animation{File: file, Caption: caption}, tele.ModeHTML)
+	case "voice":
+		return bot.Send(to, &tele.Voice{File: file, Caption: caption}, tele.ModeHTML)
+	case "video_note":
+		return bot.Send(to, &tele.VideoNote{File: file})
+	case "sticker":
+		return bot.Send(to, &tele.Sticker{File: file})
+	default:
+		return bot.Send(to, &tele.Document{File: file, Caption: caption}, tele.ModeHTML)
+	}
 }
 
 func fileTypeIcon(t string) string {

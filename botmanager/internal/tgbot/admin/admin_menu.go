@@ -74,14 +74,16 @@ func (h *Admin) BroadcastStartText(ctx context.Context, c tele.Context) error {
 
 func (h *Admin) BroadcastExecute(ctx context.Context, c tele.Context, text string) error {
 	uid := c.Sender().ID
+	st := h.GetState(ctx, uid)
+	filter := st.Data["bc_filter"] // خالی مانده اگر از مسیرِ ارسالِ ساده (بدون فیلتر) آمده باشیم
 	h.ClearState(ctx, uid)
 
-	users, err := h.Store.ListUsers(ctx)
+	users, err := h.resolveBroadcastAudience(ctx, filter)
 	if err != nil || len(users) == 0 {
-		return c.Send(h.T(ctx, uid, i18n.KeyError), h.KbAdmin(ctx, uid))
+		return c.Send(h.T(ctx, uid, i18n.KeyBroadcastEmptyAudience), h.KbAdmin(ctx, uid))
 	}
 
-	h.SetStep(ctx, uid, state.StepBroadcastText, "msg", text)
+	h.SetStep(ctx, uid, state.StepBroadcastText, "msg", text, "bc_filter", filter)
 	kb := &tele.ReplyMarkup{}
 	kb.Inline(
 		kb.Row(kb.Data(h.T(ctx, uid, i18n.KeyBroadcastConfirm), "bc_confirm")),
@@ -98,13 +100,17 @@ func (h *Admin) BroadcastConfirm(ctx context.Context, c tele.Context) error {
 	_ = c.Respond()
 	st := h.GetState(ctx, uid)
 	msg := st.Data["msg"]
+	filter := st.Data["bc_filter"]
 	h.ClearState(ctx, uid)
 
 	if msg == "" {
 		return c.Edit(h.T(ctx, uid, i18n.KeyError))
 	}
 
-	users, _ := h.Store.ListUsers(ctx)
+	users, err := h.resolveBroadcastAudience(ctx, filter)
+	if err != nil || len(users) == 0 {
+		return c.Edit(h.T(ctx, uid, i18n.KeyBroadcastEmptyAudience))
+	}
 	go h.RunBroadcast(uid, msg, users)
 	return c.Edit(h.T(ctx, uid, i18n.KeyBroadcastStarted), tele.ModeHTML)
 }
@@ -165,6 +171,8 @@ func (h *Admin) adminSysView(ctx context.Context, c tele.Context, edit bool) err
 	kb.Inline(
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuPlans), "admin_sys_plans"), kb.Data(h.Btn(ctx, uid, i18n.KeyMenuServers), "admin_sys_servers")),
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuTemplates), "admin_sys_templates")),
+		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuSourceWorkers), "admin_sys_sourceworkers")),
+		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuPromoCodes), "admin_sys_promo")),
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBack), "back_main")),
 	)
 	msg := fmt.Sprintf(h.T(ctx, uid, i18n.KeyAdminSysInfo),

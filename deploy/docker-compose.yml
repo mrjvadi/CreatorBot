@@ -1,8 +1,19 @@
 version: "3.9"
 
 # ============================================================
-# CreatorBot — Full Stack (NATS Architecture)
+# CreatorBot — Full Stack (NATS Architecture) — با Traefik/دامنه
 # Run: docker compose --env-file .env up -d
+#
+# (۲۰۲۶-۰۷-۰۶) این فایل کامل شد: قبلاً همه‌ی سرویس‌های واقعی (بجز ۷ زیرساخت)
+# کامنت بودند و ۱۰ سرویس جدیدتر (botpay, community-service, revenue-service,
+# license-service, log-collector, image-registry, webhook-gateway,
+# fraud-engine, docker-socket-proxy) اصلاً این‌جا نبودند. حالا با
+# docker-compose.yml ریشه‌ی پروژه هم‌سطح است — تفاوت اصلی همین‌جا: این فایل
+# Traefik/دامنه/TLS دارد، آن یکی برای dev محلی ساده‌تر است.
+#
+# ads-bot عمداً این‌جا نیست — هنوز هیچ Dockerfile ای ندارد (نه در ریشه، نه در
+# deploy/)؛ طبق CLAUDE.md فعلاً با «go run cmd/*.go» دستی تست می‌شود، نه
+# container. وقتی Dockerfile آن ساخته شد، این‌جا هم اضافه کنید.
 # ============================================================
 
 #x-build: &build
@@ -34,6 +45,8 @@ volumes:
   grafana_data:
   traefik_certs:
   sessions_data:
+  botpay_data:
+  image_registry_data:
 
 services:
 
@@ -43,12 +56,22 @@ services:
     image: postgres:16-alpine
     <<: [*restart, *log]
     environment:
+      # (۲۰۲۶-۰۷-۰۶) botmanager+apimanager عمداً همین یک DB مشترک را دارند
+      # (رجوع کامنت بالای migrations/000_create_databases.sql). بقیه‌ی
+      # سرویس‌ها هرکدام دیتابیس مخصوص خودشان را از همان پوشه‌ی migrations
+      # می‌گیرند — این‌جا فقط دیتابیسِ پیش‌فرضِ اولِ کانتینر است.
       POSTGRES_DB: botmanager
       POSTGRES_USER: botuser
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # قبلاً فقط ./init-db.sql (تک‌فایل، فقط ۵ ربات محصول) mount می‌شد. حالا
+      # کل پوشه‌ی migrations (همان پوشه‌ای که docker-compose.yml ریشه‌ی پروژه
+      # هم استفاده می‌کند) mount می‌شود — یعنی هم دیتابیس‌های سرویس‌های مرکزی
+      # (000_create_databases.sql) هم دیتابیس‌های نوع‌های ربات محصول
+      # (000_create_product_databases.sql) از یک منبع واحد ساخته می‌شوند.
+      # deploy/init-db.sql دیگر استفاده نمی‌شود (رجوع کامنت بالای خودش).
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     ports:
       - "${POSTGRES_PORT:-5434}:5432"
     networks: [backend]
@@ -158,6 +181,28 @@ services:
     depends_on:
       - prometheus
 
+  # docker-socket-proxy: agentmanager فقط از طریق این پروکسی به docker.sock
+  # دسترسی دارد — فقط endpointهای لازم (CONTAINERS, IMAGES) باز هستند؛
+  # endpointهای حساس (EXEC, SWARM, PLUGINS, ...) بسته می‌مانند تا compromise
+  # شدن agentmanager به root-equivalent روی host تبدیل نشود. رجوع
+  # docker-compose.yml ریشه‌ی پروژه — همان تنظیمات، عیناً.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.2
+    <<: [*restart, *log]
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      POST: 1
+      EXEC: 0
+      SWARM: 0
+      PLUGINS: 0
+      SYSTEM: 0
+      NETWORKS: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [backend]
+
 #  # ── Managers ───────────────────────────────────────────────
 #
 #  botmanager:
@@ -165,8 +210,18 @@ services:
 #      <<: *build
 #      dockerfile: botmanager/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../botmanager/.env
 #    networks: [backend]
+#    environment:
+#      # botmanager+apimanager عمداً همین یک DB مشترک را دارند (رجوع کامنت
+#      # سرویس postgres بالا).
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/botmanager?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#      BOTPAY_URL: http://botpay:8087
 #    depends_on:
 #      postgres: {condition: service_healthy}
 #      redis:    {condition: service_healthy}
@@ -177,8 +232,18 @@ services:
 #      <<: *build
 #      dockerfile: apimanager/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../apimanager/.env
 #    networks: [backend, web]
+#    environment:
+#      # همان DB مشترک با botmanager (عمدی — رجوع بالا).
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/botmanager?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#      IMAGE_REGISTRY_URL: http://image-registry:8100
+#      BOTPAY_URL: http://botpay:8087
 #    labels:
 #      - "traefik.enable=true"
 #      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN:-localhost}`)"
@@ -186,6 +251,7 @@ services:
 #      - "traefik.http.services.api.loadbalancer.server.port=${API_PORT:-8086}"
 #    depends_on:
 #      postgres: {condition: service_healthy}
+#      redis:    {condition: service_healthy}
 #      nats:     {condition: service_healthy}
 #
 #  agentmanager:
@@ -193,22 +259,206 @@ services:
 #      <<: *build
 #      dockerfile: agentmanager/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock
+#    env_file: ../agentmanager/.env
+#    environment:
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#      DOCKER_HOST: tcp://docker-socket-proxy:2375
+#      IMAGE_REGISTRY_URL: http://image-registry:8100
 #    networks: [backend]
 #    depends_on:
 #      nats: {condition: service_healthy}
+#      docker-socket-proxy: {condition: service_started}
+#      image-registry: {condition: service_started}
 #
-#  # ── Bots ───────────────────────────────────────────────────
+#  # botpay: کیف‌پول مرکزی TON — تنها نویسنده‌ی موجودی در کل پلتفرم.
+#  botpay:
+#    build:
+#      <<: *build
+#      dockerfile: botpay/Dockerfile
+#    <<: [*restart, *log]
+#    ports:
+#      - "8087:8087"
+#    networks: [backend]
+#    env_file: ../botpay/.env
+#    environment:
+#      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصی — دیگر با botmanager/apimanager مشترک نیست.
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/botpay?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    volumes:
+#      - botpay_data:/app/data
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#
+#  # license-service: صدور/بررسی/ابطال لایسنس هر instance_id — ضدکپی/ضدکلون.
+#  license-service:
+#    build:
+#      <<: *build
+#      dockerfile: license-service/Dockerfile
+#    <<: [*restart, *log]
+#    networks: [backend]
+#    env_file: ../license-service/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/license?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#
+#  # log-collector: لاگ‌های Warn/Error/Fatal همه‌ی سرویس‌ها را از NATS
+#  # (logs.events) در Mongo ذخیره می‌کند + هشدار تلگرام per-service (اختیاری).
+#  log-collector:
+#    build:
+#      <<: *build
+#      dockerfile: log-collector/Dockerfile
+#    <<: [*restart, *log]
+#    ports:
+#      - "127.0.0.1:8099:8099"
+#    networks: [backend]
+#    env_file: ../log-collector/.env
+#    environment:
+#      MONGO_URI: mongodb://${MONGO_USER:-mongouser}:${MONGO_PASSWORD}@mongodb:27017/creatorbot?authSource=admin
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    depends_on:
+#      mongodb: {condition: service_healthy}
+#      nats:    {condition: service_healthy}
+#
+#  # image-registry: استخر ثبت‌شده‌ی image:tag های مجاز + whitelist بر اساس
+#  # IP/CIDR واقعیِ فراخوان. تنها سرویس این پلتفرم که با HTTP کار می‌کند نه
+#  # NATS (رجوع image-registry/README.md برای دلیل).
+#  image-registry:
+#    build:
+#      <<: *build
+#      dockerfile: image-registry/Dockerfile
+#    <<: [*restart, *log]
+#    ports:
+#      - "127.0.0.1:8100:8100"
+#    networks: [backend]
+#    env_file: ../image-registry/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/imageregistry?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    volumes:
+#      # بدون این، فایل‌های image (خروجی docker save) با هر recreate این
+#      # container گم می‌شوند — رجوع image-registry/NEEDS.md.
+#      - image_registry_data:/data/images
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#
+#  webhook-gateway:
+#    build:
+#      <<: *build
+#      dockerfile: webhook-gateway/Dockerfile
+#    <<: [*restart, *log]
+#    env_file: ../webhook-gateway/.env
+#    networks: [backend, web]
+#    environment:
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    labels:
+#      # فقط اگر پلتفرم در حالت webhook (نه polling) باشد لازم است — رجوع
+#      # webhook-gateway/NEEDS.md.
+#      - "traefik.enable=true"
+#      - "traefik.http.routers.webhook.rule=Host(`webhook.${DOMAIN:-localhost}`)"
+#      - "traefik.http.routers.webhook.tls.certresolver=le"
+#      - "traefik.http.services.webhook.loadbalancer.server.port=8090"
+#    depends_on:
+#      nats: {condition: service_healthy}
+#
+#  # ── Analytics & Monetization ───────────────────────────────
+#
+#  revenue-service:
+#    build:
+#      <<: *build
+#      dockerfile: revenue-service/Dockerfile
+#    <<: [*restart, *log]
+#    ports:
+#      - "127.0.0.1:8088:8088"
+#    networks: [backend]
+#    env_file: ../revenue-service/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/revenue?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#
+#  community-service:
+#    build:
+#      <<: *build
+#      dockerfile: community-service/Dockerfile
+#    <<: [*restart, *log]
+#    ports:
+#      - "127.0.0.1:8093:8093"
+#    networks: [backend]
+#    env_file: ../community-service/.env
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/community?sslmode=disable
+#      MONGO_URI: mongodb://${MONGO_USER:-mongouser}:${MONGO_PASSWORD}@mongodb:27017/creatorbot?authSource=admin
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    depends_on:
+#      postgres: {condition: service_healthy}
+#      mongodb:  {condition: service_healthy}
+#      nats:     {condition: service_healthy}
+#
+#  # fraud-engine: فقط Mongo استفاده می‌کند، هیچ Postgres ای ندارد (کد آن هیچ
+#  # فیلد PostgresDSN ای ندارد) — عمداً depends_on روی postgres نیست.
+#  fraud-engine:
+#    build:
+#      <<: *build
+#      dockerfile: fraud-engine/Dockerfile
+#    <<: [*restart, *log]
+#    ports:
+#      - "127.0.0.1:8092:8092"
+#    networks: [backend]
+#    env_file: ../fraud-engine/.env
+#    environment:
+#      MONGO_URI: mongodb://${MONGO_USER:-mongouser}:${MONGO_PASSWORD}@mongodb:27017/creatorbot?authSource=admin
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
+#    depends_on:
+#      mongodb: {condition: service_healthy}
+#      redis:   {condition: service_healthy}
+#      nats:    {condition: service_healthy}
+#
+#  # ── Bots (نوع‌های ربات محصول — instance واقعیِ مشتری‌ها معمولاً توسط
+#  # agentmanager روی سرورهای دیگر داینامیک ساخته می‌شود؛ این بلاک‌ها برای
+#  # اجرای/تست محلیِ کامل کل استک با همین یک docker-compose هستند) ─────────
 #
 #  uploader-bot:
 #    build:
 #      <<: *build
 #      dockerfile: uploader-bot/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../uploader-bot/.env
 #    networks: [backend]
+#    environment:
+#      # (۲۰۲۶-۰۷-۰۶) دیتابیس اختصاصیِ نوع سرویس — رجوع migrations/000_create_product_databases.sql.
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/uploader_bot?sslmode=disable
+#      MONGO_URI: mongodb://${MONGO_USER:-mongouser}:${MONGO_PASSWORD}@mongodb:27017/creatorbot?authSource=admin
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
 #    depends_on:
 #      postgres: {condition: service_healthy}
 #      redis:    {condition: service_healthy}
@@ -220,12 +470,19 @@ services:
 #      <<: *build
 #      dockerfile: vpn-bot/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../vpn-bot/.env
 #    networks: [backend]
+#    environment:
+#      # نکته: کد واقعی این سرویس نام env را MASTER_DSN می‌خواند، نه POSTGRES_DSN.
+#      MASTER_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/vpn_bot?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
 #    depends_on:
 #      postgres: {condition: service_healthy}
 #      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
 #      nats:     {condition: service_healthy}
 #
 #  archive-bot:
@@ -233,12 +490,18 @@ services:
 #      <<: *build
 #      dockerfile: archive-bot/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../archive-bot/.env
 #    networks: [backend]
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/archive_bot?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
 #    depends_on:
 #      postgres: {condition: service_healthy}
 #      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
 #      nats:     {condition: service_healthy}
 #
 #  member-bot:
@@ -246,14 +509,21 @@ services:
 #      <<: *build
 #      dockerfile: member-bot/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../member-bot/.env
 #    ports:
 #      - "127.0.0.1:${LOCK_API_PORT:-8082}:8082"
 #    networks: [backend]
+#    environment:
+#      # نکته: کد واقعی این سرویس نام env را MASTER_DSN می‌خواند، نه POSTGRES_DSN.
+#      MASTER_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/member_bot?sslmode=disable
+#      REDIS_ADDR: redis:6379
+#      REDIS_PASSWORD: ${REDIS_PASSWORD}
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
 #    depends_on:
 #      postgres: {condition: service_healthy}
 #      redis:    {condition: service_healthy}
-#      mongodb:  {condition: service_healthy}
 #      nats:     {condition: service_healthy}
 #
 #  source-service:
@@ -261,10 +531,15 @@ services:
 #      <<: *build
 #      dockerfile: source-service/deploy/Dockerfile
 #    <<: [*restart, *log]
-#    env_file: .env
+#    env_file: ../source-service/.env
 #    volumes:
 #      - sessions_data:/app/sessions
 #    networks: [backend]
+#    environment:
+#      POSTGRES_DSN: postgres://botuser:${POSTGRES_PASSWORD}@postgres:5432/source_svc?sslmode=disable
+#      NATS_URL: nats://nats:4222
+#      NATS_USERNAME: ${NATS_USERNAME}
+#      NATS_PASSWORD: ${NATS_PASSWORD}
 #    depends_on:
 #      postgres: {condition: service_healthy}
-#      redis:    {condition: service_healthy}
+#      nats:     {condition: service_healthy}

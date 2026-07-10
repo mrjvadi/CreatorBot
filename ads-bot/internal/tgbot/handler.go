@@ -9,8 +9,8 @@ import (
 
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/engine"
 	"github.com/mrjvadi/creatorbot/ads-bot/internal/store"
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Handler struct {
@@ -36,22 +36,22 @@ func NewHandler(
 }
 
 func Register(b *tele.Bot, h *Handler) {
-	b.Handle("/start",       h.onStart)
-	b.Handle("/help",        h.onHelp)
+	b.Handle("/start", h.onStart)
+	b.Handle("/help", h.onHelp)
 	b.Handle("/newcampaign", h.onNewCampaign)
-	b.Handle("/campaigns",   h.onMyCampaigns)
-	b.Handle("/channels",    h.onMyChannels)
-	b.Handle("/addchannel",  h.onAddChannel)
-	b.Handle("/balance",     h.onBalance)
-	b.Handle("/rentlock",    h.onRentLock)
-	b.Handle("/admin",       h.onAdmin)
-	b.Handle("/cancel",      h.onCancel)
+	b.Handle("/campaigns", h.onMyCampaigns)
+	b.Handle("/channels", h.onMyChannels)
+	b.Handle("/addchannel", h.onAddChannel)
+	b.Handle("/balance", h.onBalance)
+	b.Handle("/rentlock", h.onRentLock)
+	b.Handle("/admin", h.onAdmin)
+	b.Handle("/cancel", h.onCancel)
 
-	b.Handle(tele.OnText,            h.onText)
-	b.Handle(tele.OnPhoto,           h.onMedia)
-	b.Handle(tele.OnVideo,           h.onMedia)
-	b.Handle(tele.OnChannelPost,     h.onChannelPost)
-	b.Handle(tele.OnCallback,        h.onCallback)
+	b.Handle(tele.OnText, h.onText)
+	b.Handle(tele.OnPhoto, h.onMedia)
+	b.Handle(tele.OnVideo, h.onMedia)
+	b.Handle(tele.OnChannelPost, h.onChannelPost)
+	b.Handle(tele.OnCallback, h.onCallback)
 }
 
 func (h *Handler) isAdmin(c tele.Context) bool { return c.Sender().ID == h.ownerID }
@@ -101,12 +101,18 @@ func (h *Handler) onText(c tele.Context) error {
 	}
 
 	switch text {
-	case btnNewCampaign: return h.onNewCampaign(c)
-	case btnMyCampaigns: return h.onMyCampaigns(c)
-	case btnMyChannels:  return h.onMyChannels(c)
-	case btnAddChannel:  return h.onAddChannel(c)
-	case btnBalance:     return h.onBalance(c)
-	case btnHelp:        return h.onHelp(c)
+	case btnNewCampaign:
+		return h.onNewCampaign(c)
+	case btnMyCampaigns:
+		return h.onMyCampaigns(c)
+	case btnMyChannels:
+		return h.onMyChannels(c)
+	case btnAddChannel:
+		return h.onAddChannel(c)
+	case btnBalance:
+		return h.onBalance(c)
+	case btnHelp:
+		return h.onHelp(c)
 	case btnCancel, btnBack:
 		h.clearState(ctx, uid)
 		return c.Send("لغو شد.", kbMain())
@@ -141,7 +147,9 @@ func (h *Handler) onChannelPost(c tele.Context) error {
 func (h *Handler) onCallback(c tele.Context) error {
 	ctx := context.Background()
 	data := c.Callback().Data
-	if len(data) > 0 && data[0] == '\f' { data = data[1:] }
+	if len(data) > 0 && data[0] == '\f' {
+		data = data[1:]
+	}
 	defer c.Respond()
 
 	parts := strings.SplitN(data, ":", 2)
@@ -161,13 +169,27 @@ func (h *Handler) onCallback(c tele.Context) error {
 			return h.startReject(ctx, c, parts[1])
 		}
 	case "camp_pause":
-		if len(parts) == 2 { return h.pauseCampaign(ctx, c, parts[1]) }
+		if len(parts) == 2 {
+			return h.pauseCampaign(ctx, c, parts[1])
+		}
 	case "camp_del":
-		if len(parts) == 2 { return h.deleteCampaign(ctx, c, parts[1]) }
+		if len(parts) == 2 {
+			return h.deleteCampaign(ctx, c, parts[1])
+		}
 	case "verify_ch":
-		if len(parts) == 2 { return h.verifyChannel(ctx, c, parts[1]) }
+		if len(parts) == 2 {
+			if !h.isAdmin(c) {
+				return c.Edit("⛔️ این عملیات فقط برای ادمین اصلی است.")
+			}
+			return h.verifyChannel(ctx, c, parts[1])
+		}
 	case "reject_ch":
-		if len(parts) == 2 { return h.rejectChannel(ctx, c, parts[1]) }
+		if len(parts) == 2 {
+			if !h.isAdmin(c) {
+				return c.Edit("⛔️ این عملیات فقط برای ادمین اصلی است.")
+			}
+			return h.rejectChannel(ctx, c, parts[1])
+		}
 	case "rent_approve":
 		if len(parts) == 2 {
 			if !h.isAdmin(c) {
@@ -196,18 +218,30 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st wizardState
 		return c.Send("لغو شد.", kbMain())
 	}
 	switch st.Step {
-	case stepCampName:    return h.handleCampName(ctx, c, st, text)
-	case stepCampCaption: return h.handleCampCaption(ctx, c, st, text)
-	case stepCampButton:  return h.handleCampButton(ctx, c, st, text)
-	case stepCampURL:     return h.handleCampURL(ctx, c, st, text)
-	case stepCampBudget:  return h.handleCampBudget(ctx, c, st, text)
-	case stepCampCPJ:     return h.handleCampCPJ(ctx, c, st, text)
-	case stepChannelCPJ:  return h.handleChannelCPJ(ctx, c, st, text)
-	case stepAdminBroadcast: return h.doBroadcast(ctx, c, text)
-	case stepRejectNote:  return h.doReject(ctx, c, st, text)
-	case stepRentChannel: return h.handleRentChannel(ctx, c, st, text)
-	case stepRentBudget:  return h.handleRentBudget(ctx, c, st, text)
-	case stepRentReward:  return h.handleRentReward(ctx, c, st, text)
+	case stepCampName:
+		return h.handleCampName(ctx, c, st, text)
+	case stepCampCaption:
+		return h.handleCampCaption(ctx, c, st, text)
+	case stepCampButton:
+		return h.handleCampButton(ctx, c, st, text)
+	case stepCampURL:
+		return h.handleCampURL(ctx, c, st, text)
+	case stepCampBudget:
+		return h.handleCampBudget(ctx, c, st, text)
+	case stepCampCPJ:
+		return h.handleCampCPJ(ctx, c, st, text)
+	case stepChannelCPJ:
+		return h.handleChannelCPJ(ctx, c, st, text)
+	case stepAdminBroadcast:
+		return h.doBroadcast(ctx, c, text)
+	case stepRejectNote:
+		return h.doReject(ctx, c, st, text)
+	case stepRentChannel:
+		return h.handleRentChannel(ctx, c, st, text)
+	case stepRentBudget:
+		return h.handleRentBudget(ctx, c, st, text)
+	case stepRentReward:
+		return h.handleRentReward(ctx, c, st, text)
 	}
 	return nil
 }
@@ -216,7 +250,9 @@ func (h *Handler) onBalance(c tele.Context) error {
 	ctx := context.Background()
 	pub, _ := h.store.FindPublisher(ctx, c.Sender().ID)
 	bal := 0.0
-	if pub != nil { bal = pub.Balance }
+	if pub != nil {
+		bal = pub.Balance
+	}
 	return c.Send(
 		"<b>💰 موجودی</b>\n\n<b>"+fmtFloat(bal)+" TON</b>",
 		tele.ModeHTML, kbMain(),

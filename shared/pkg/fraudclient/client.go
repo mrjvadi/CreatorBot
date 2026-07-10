@@ -3,13 +3,14 @@
 // ارتباط فقط از طریق NATS — بدون HTTP.
 //
 // Subjects:
-//   fraud.user.score.request   → درخواست امتیاز کاربر
-//   fraud.user.score.response  → پاسخ امتیاز کاربر
-//   fraud.community.score.request  → درخواست امتیاز community
-//   fraud.community.score.response → پاسخ امتیاز community
-//   fraud.event.join           → اطلاع join به fraud-engine
-//   fraud.event.leave          → اطلاع leave به fraud-engine
-//   fraud.event.activity       → اطلاع فعالیت
+//
+//	fraud.user.score.request   → درخواست امتیاز کاربر
+//	fraud.user.score.response  → پاسخ امتیاز کاربر
+//	fraud.community.score.request  → درخواست امتیاز community
+//	fraud.community.score.response → پاسخ امتیاز community
+//	fraud.event.join           → اطلاع join به fraud-engine
+//	fraud.event.leave          → اطلاع leave به fraud-engine
+//	fraud.event.activity       → اطلاع فعالیت
 package fraudclient
 
 import (
@@ -18,17 +19,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nats-io/nats.go"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/nats-io/nats.go"
 )
 
 // ── Types ────────────────────────────────────────────────
 
 type UserScore struct {
-	TelegramID int64   `json:"telegram_id"`
-	Score      int     `json:"score"`
-	Label      string  `json:"label"` // high_risk | suspicious | normal | trusted
-	Known      bool    `json:"known"`
+	TelegramID int64  `json:"telegram_id"`
+	Score      int    `json:"score"`
+	Label      string `json:"label"` // high_risk | suspicious | normal | trusted
+	Known      bool   `json:"known"`
 }
 
 type CommunityScore struct {
@@ -39,21 +40,21 @@ type CommunityScore struct {
 	Known             bool    `json:"known"`
 }
 
-func (u *UserScore) IsFake() bool          { return u.Score < 30 }
-func (u *UserScore) IsSuspicious() bool    { return u.Score < 60 }
+func (u *UserScore) IsFake() bool             { return u.Score < 30 }
+func (u *UserScore) IsSuspicious() bool       { return u.Score < 60 }
 func (u *UserScore) TrustMultiplier() float64 { return float64(u.Score) / 100.0 }
 
 // ── NATS Subjects ─────────────────────────────────────────
 
 const (
-	SubUserScoreReq      = "fraud.user.score.request"
-	SubUserScoreResp     = "fraud.user.score.response"
-	SubCommunityScoreReq = "fraud.community.score.request"
-	SubCommunityScoreResp= "fraud.community.score.response"
-	SubEventJoin         = "fraud.event.join"
-	SubEventLeave        = "fraud.event.leave"
-	SubEventActivity     = "fraud.event.activity"
-	SubEventProfile      = "fraud.event.profile"
+	SubUserScoreReq       = "fraud.user.score.request"
+	SubUserScoreResp      = "fraud.user.score.response"
+	SubCommunityScoreReq  = "fraud.community.score.request"
+	SubCommunityScoreResp = "fraud.community.score.response"
+	SubEventJoin          = "fraud.event.join"
+	SubEventLeave         = "fraud.event.leave"
+	SubEventActivity      = "fraud.event.activity"
+	SubEventProfile       = "fraud.event.profile"
 
 	requestTimeout = 3 * time.Second
 )
@@ -152,9 +153,9 @@ func (n *NoopClient) GetUserScore(_ context.Context, id int64) (*UserScore, erro
 func (n *NoopClient) GetCommunityScore(_ context.Context, id int64) (*CommunityScore, error) {
 	return &CommunityScore{CommunityID: id, Score: 70, RevenueMultiplier: 1.0}, nil
 }
-func (n *NoopClient) ReportJoin(_, _ int64, _, _ string) {}
-func (n *NoopClient) ReportLeave(_, _ int64)             {}
-func (n *NoopClient) ReportActivity(_, _ int64, _, _, _ int) {}
+func (n *NoopClient) ReportJoin(_, _ int64, _, _ string)               {}
+func (n *NoopClient) ReportLeave(_, _ int64)                           {}
+func (n *NoopClient) ReportActivity(_, _ int64, _, _, _ int)           {}
 func (n *NoopClient) ReportProfileUpdate(_ int64, _, _ string, _ bool) {}
 
 // suppress unused

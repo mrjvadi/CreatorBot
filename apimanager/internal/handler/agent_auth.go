@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,8 +12,8 @@ import (
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
+	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 )
 
 // AgentAuthRequest درخواست احراز هویت agentmanager.
@@ -109,20 +110,26 @@ func (h *Handler) BotAuth(c *gin.Context) {
 
 	h.log.Info("bot authenticated", ports.F("bot_id", botID))
 	ok(c, gin.H{
-		"bot_id":    botID,
-		"api_key":   apiKey,
+		"bot_id":     botID,
+		"api_key":    apiKey,
 		"expires_at": expiresAt.Unix(),
 	})
 }
 
-// AgentHeartbeat heartbeat از agent را پردازش می‌کند.
+// AgentHeartbeat heartbeat از agent را پردازش می‌کند — is_online/last_seen/online_since را
+// به‌روز می‌کند و آمار CPU/RAM (اگر agentmanager بفرستد) + لیست containers را ذخیره می‌کند
+// (قبلاً این‌جا فقط آنلاین‌بودن ثبت می‌شد و بقیه‌ی heartbeat دور ریخته می‌شد).
 func (h *Handler) AgentHeartbeat(c *gin.Context) {
 	var hb protocol.HeartbeatMsg
 	if err := c.ShouldBindJSON(&hb); err != nil {
 		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	h.store.MarkServerOnlineByServerID(c.Request.Context(), hb.ServerID)
+	containersJSON, _ := json.Marshal(hb.Containers)
+	if err := h.store.RecordHeartbeat(c.Request.Context(), hb.ServerID, hb.CPUPercent, hb.MemoryUsedMB, hb.MemoryTotalMB, string(containersJSON)); err != nil {
+		fail(c, http.StatusInternalServerError, "db error")
+		return
+	}
 	ok(c, nil)
 }
 

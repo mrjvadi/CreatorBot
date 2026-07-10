@@ -11,7 +11,16 @@ CREATE TABLE IF NOT EXISTS users (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at  TIMESTAMPTZ,
-    telegram_id BIGINT UNIQUE NOT NULL,
+    -- (۲۰۲۶-۰۷-۰۶) نام constraint عمداً صریح شده: GORM's AutoMigrate برای فیلدهایی که
+    -- `gorm:"uniqueIndex"` دارند (بدون اسم صریح ایندکس) در کنارِ خودِ index، یک UNIQUE
+    -- CONSTRAINT با قرارداد نام‌گذاری خودش (uni_<table>_<column>) هم مدیریت می‌کند. اگر این
+    -- جدول را (مثل قبل) با یک UNIQUE بی‌نام بسازیم، Postgres خودش نامی متفاوت
+    -- (users_telegram_id_key) می‌گذارد؛ بعد اولین اجرای AutoMigrate روی این جدولِ
+    -- از‌قبل‌موجود سعی می‌کند "uni_users_telegram_id" را DROP کند تا دوباره بسازد و چون آن
+    -- نام اصلاً وجود ندارد، با خطای واقعی زیر از کار می‌افتد (که در تولید هم رخ داد):
+    --   ERROR: constraint "uni_users_telegram_id" of relation "users" does not exist (SQLSTATE 42704)
+    -- با نام‌گذاری صریح از همین ابتدا، این ناسازگاری هرگز پیش نمی‌آید.
+    telegram_id BIGINT NOT NULL CONSTRAINT uni_users_telegram_id UNIQUE,
     username    TEXT,
     first_name  TEXT,
     last_name   TEXT,
@@ -29,7 +38,8 @@ CREATE TABLE IF NOT EXISTS servers (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at  TIMESTAMPTZ,
     name        TEXT UNIQUE NOT NULL,
-    ip          TEXT UNIQUE NOT NULL,
+    -- نام صریح — همان دلیل telegram_id بالا (Server.IP هم `gorm:"uniqueIndex"` بی‌نام است).
+    ip          TEXT NOT NULL CONSTRAINT uni_servers_ip UNIQUE,
     is_online   BOOLEAN NOT NULL DEFAULT FALSE,
     last_seen   TIMESTAMPTZ
 );
@@ -105,7 +115,8 @@ CREATE TABLE IF NOT EXISTS invite_links (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at  TIMESTAMPTZ,
-    token       TEXT UNIQUE NOT NULL,
+    -- نام صریح — همان دلیل telegram_id بالا (InviteLink.Token هم `gorm:"uniqueIndex"` بی‌نام است).
+    token       TEXT NOT NULL CONSTRAINT uni_invite_links_token UNIQUE,
     bot_type    TEXT NOT NULL,
     label       TEXT,
     use_limit   INT NOT NULL DEFAULT 1,

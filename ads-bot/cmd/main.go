@@ -19,6 +19,7 @@ import (
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
@@ -34,6 +35,10 @@ type Config struct {
 	NatsURL     string `mapstructure:"NATS_URL"`
 	NatsUser    string `mapstructure:"NATS_USERNAME"`
 	NatsPass    string `mapstructure:"NATS_PASSWORD"`
+
+	// ServiceHMACSecret راز مادر مشترک با botpay — کلید pay.* این سرویس از
+	// آن مشتق می‌شود (auth.ComputeServiceKey).
+	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
 }
 
 func main() {
@@ -73,6 +78,7 @@ func main() {
 		log.Fatal("nats", ports.F("err", err))
 	}
 	defer nc.Close()
+	log.AttachNATS(nc, "ads-bot")
 
 	// ── Telegram Bot ───────────────────────────────────────
 	b, err := tele.NewBot(tele.Settings{
@@ -91,9 +97,17 @@ func main() {
 	eng := engine.New(st, nc, broadcaster, fc, log)
 
 	// ── Handler ───────────────────────────────────────────
+	// ServiceKey باید واقعاً اعتبارسنجی شود — نسخه‌ی قبلی این را خالی
+	// می‌فرستاد چون botpay اصلاً چک نمی‌کرد (رجوع کنید به گزارش امنیتی:
+	// ValidateServiceID تنها چیزی بود که چک می‌شد). حالا botpay هم
+	// service_key را با HMAC(SERVICE_HMAC_SECRET, service_id) مقایسه
+	// می‌کند، پس این سرویس هم باید کلید واقعی بفرستد.
+	if cfg.ServiceHMACSecret == "" {
+		log.Error("SERVICE_HMAC_SECRET not set — botpay will reject all pay.* requests from ads-bot")
+	}
 	payClient := natspayclient.New(nc, cache, natspayclient.Config{
 		ServiceID:  "ads-bot",
-		ServiceKey: "", // احراز پویا بر اساس service_id (نگاه کنید به botpay/payresponder)
+		ServiceKey: auth.ComputeServiceKey(cfg.ServiceHMACSecret, "ads-bot"),
 	})
 
 	h := tgbot.NewHandler(b, st, eng, cache, log, cfg.OwnerID, payClient)

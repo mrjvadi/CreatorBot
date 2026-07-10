@@ -151,23 +151,27 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 		return fmt.Errorf("deposit to wallet: %w", err)
 	}
 
-	// تأیید invoice + publish رویداد برای سرویس درخواست‌دهنده
+	// ثبتِ مبلغِ دریافتی روی فاکتور (پشتیبانی از واریزِ جزئی). سرویس درخواست‌دهنده
+	// فقط زمانی مطلع می‌شود که فاکتور به‌طور کامل پرداخت شده باشد.
 	if inv != nil {
-		if err := s.store.ConfirmInvoice(ctx, inv.ID, event.TxHash); err != nil {
-			s.log.Error("confirm invoice failed", ports.F("code", inv.Code), ports.F("err", err))
+		paid, err := s.store.AddInvoiceReceipt(ctx, inv.ID, event.AmountNano, event.TxHash)
+		if err != nil {
+			s.log.Error("add invoice receipt failed", ports.F("code", inv.Code), ports.F("err", err))
 		}
-		s.publish(
-			fmt.Sprintf(SubjectInvoice, inv.Code),
-			map[string]any{
-				"invoice_id":  inv.ID.String(),
-				"code":        inv.Code,
-				"ref":         inv.Ref,
-				"service_id":  inv.ServiceID,
-				"amount_nano": event.AmountNano,
-				"wallet_id":   w.ID.String(),
-				"tx_hash":     event.TxHash,
-			},
-		)
+		if paid {
+			s.publish(
+				fmt.Sprintf(SubjectInvoice, inv.Code),
+				map[string]any{
+					"invoice_id":  inv.ID.String(),
+					"code":        inv.Code,
+					"ref":         inv.Ref,
+					"service_id":  inv.ServiceID,
+					"amount_nano": event.AmountNano,
+					"wallet_id":   w.ID.String(),
+					"tx_hash":     event.TxHash,
+				},
+			)
+		}
 	}
 
 	// publish رویداد عمومی واریز

@@ -30,10 +30,10 @@ type Config struct {
 	NatsPass string `mapstructure:"NATS_PASSWORD"`
 
 	// bot هایی که در startup ثبت می‌شوند
-	BotmanagerToken  string `mapstructure:"BOTMANAGER_TOKEN"`
-	BotmanagerBotID  int64  `mapstructure:"BOTMANAGER_BOT_ID"`
-	BotpayToken      string `mapstructure:"BOTPAY_TOKEN"`
-	BotpayBotID      int64  `mapstructure:"BOTPAY_BOT_ID"`
+	BotmanagerToken string `mapstructure:"BOTMANAGER_TOKEN"`
+	BotmanagerBotID int64  `mapstructure:"BOTMANAGER_BOT_ID"`
+	BotpayToken     string `mapstructure:"BOTPAY_TOKEN"`
+	BotpayBotID     int64  `mapstructure:"BOTPAY_BOT_ID"`
 }
 
 func main() {
@@ -58,6 +58,7 @@ func main() {
 		log.Fatal("nats", ports.F("err", err))
 	}
 	defer nc.Close()
+	log.AttachNATS(nc, "webhook-gateway")
 
 	// ── Registry ─────────────────────────────────────────
 	reg := registry.New()
@@ -107,7 +108,9 @@ func main() {
 	})
 
 	nc.Subscribe("gateway.unregister", func(data []byte) {
-		var req struct{ Token string `json:"token"` }
+		var req struct {
+			Token string `json:"token"`
+		}
 		if err := unmarshalJSON(data, &req); err == nil && req.Token != "" {
 			reg.Unregister(req.Token)
 		}
@@ -121,10 +124,10 @@ func main() {
 	engine.Use(gin.Recovery())
 	engine.Use(middleware.GlobalRateLimit())
 
-	// management با InternalKey
-	engine.Group("/internal").Use(middleware.InternalAuth(cfg.InternalKey))
-
-	r.Register(engine)
+	// InternalAuth روی /internal/* داخل r.Register اعمال می‌شود (همان جایی
+	// که route ها ثبت می‌شوند) — قبلاً این‌جا جدا و روی یک گروه استفاده‌نشده
+	// تنظیم می‌شد که هیچ‌وقت واقعاً اجرا نمی‌شد.
+	r.Register(engine, cfg.InternalKey)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	srv := &http.Server{Addr: addr, Handler: engine}

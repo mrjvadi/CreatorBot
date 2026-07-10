@@ -3,12 +3,13 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strconv"
 
+	"github.com/google/uuid"
+	"github.com/mrjvadi/creatorbot/community-service/internal/store"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
-	"github.com/mrjvadi/creatorbot/community-service/internal/store"
-	"github.com/google/uuid"
 )
 
 // RegisterNATSListeners همه NATS subscriptions را ثبت می‌کند.
@@ -43,7 +44,9 @@ func (e *Engine) RegisterNATSListeners(nc *natsclient.Client) {
 		}
 		// campID رو به string تبدیل کن
 		campStr := ""
-		if campID != uuid.Nil { campStr = campID.String() }
+		if campID != uuid.Nil {
+			campStr = campID.String()
+		}
 		e.HandleJoin(ctx, event.TelegramID, comm.ID, campStr)
 	})
 
@@ -98,6 +101,11 @@ func (e *Engine) RegisterNATSListeners(nc *natsclient.Client) {
 		}
 		ctx := context.Background()
 
+		if event.RevenueTON <= 0 || math.IsNaN(event.RevenueTON) || math.IsInf(event.RevenueTON, 0) || event.ValidJoins < 0 {
+			e.log.Error("campaign.revenue.generated: invalid amount, ignoring", ports.F("revenue_ton", event.RevenueTON))
+			return
+		}
+
 		// community_id ممکنه UUID یا chat_id عددی باشه
 		var comm *store.Community
 		if commID, err := uuid.Parse(event.CommunityID); err == nil {
@@ -109,9 +117,22 @@ func (e *Engine) RegisterNATSListeners(nc *natsclient.Client) {
 			return
 		}
 
-		// ساخت CommunityRevenue و توزیع
 		// CampaignID parse کن
-		campUUID, _ := uuid.Parse(event.CampaignID)
+		campUUID, err := uuid.Parse(event.CampaignID)
+		if err != nil {
+			return
+		}
+
+		// idempotency: اگر این جفت (campaign, community) قبلاً پردازش شده،
+		// دوباره توزیع نکن — این subject هیچ service-auth ندارد (رجوع به
+		// گزارش امنیتی) و هرکس با دسترسی NATS می‌تواند آن را replay کند.
+		if existing, ferr := e.store.FindRevenueByCampaignCommunity(ctx, campUUID, comm.ID); ferr == nil && existing != nil {
+			e.log.Info("duplicate campaign.revenue.generated skipped",
+				ports.F("campaign_id", campUUID), ports.F("community_id", comm.ID))
+			return
+		}
+
+		// ساخت CommunityRevenue و توزیع
 		rev := &store.CommunityRevenue{
 			CommunityID: comm.ID,
 			CampaignID:  campUUID,

@@ -122,9 +122,31 @@ func (s *Store) Deposit(ctx context.Context, walletID uuid.UUID, amountNano int6
 }
 
 // Deduct کسر از موجودی — ابتدا از اعتبار، سپس TON.
+// amountNano باید مثبت باشد (chi چک هم در payresponder انجام می‌شود، ولی این
+// یک لایه‌ی دوم دفاعی است تا فراخوانی مستقیم آینده هم اشتباهاً مبلغ منفی را
+// نپذیرد — منفی یعنی "کسر" در واقع اعتبار اضافه می‌کند، دقیقاً برعکسِ مقصود).
+// serviceID+ref با هم idempotency key هستند: اگر تراکنشی از قبل با همین جفت
+// ثبت شده باشد (مثلاً به‌خاطر retry سمت کلاینت روی timeout)، دوباره کسر
+// نمی‌شود — همان تراکنش قبلی برگردانده می‌شود.
 func (s *Store) Deduct(ctx context.Context, walletID uuid.UUID, amountNano int64, serviceID, ref, desc string) (*Transaction, error) {
+	if amountNano <= 0 {
+		return nil, fmt.Errorf("invalid amount: must be positive")
+	}
 	var tx *Transaction
 	err := s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		if ref != "" {
+			var existing Transaction
+			err := db.Where("wallet_id = ? AND service_id = ? AND ref = ? AND type = ?",
+				walletID, serviceID, ref, TxPayment).First(&existing).Error
+			if err == nil {
+				tx = &existing // تکراری — idempotent no-op، دوباره کسر نمی‌شود
+				return nil
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+
 		var w Wallet
 		if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", walletID).First(&w).Error; err != nil {
@@ -176,6 +198,9 @@ func (s *Store) Deduct(ctx context.Context, walletID uuid.UUID, amountNano int64
 
 // AddCredit افزایش اعتبار داخلی توسط ادمین.
 func (s *Store) AddCredit(ctx context.Context, walletID uuid.UUID, amountNano int64, desc string) error {
+	if amountNano <= 0 {
+		return fmt.Errorf("invalid amount: must be positive")
+	}
 	return s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
 		if err := db.Model(&Wallet{}).Where("id = ?", walletID).
 			UpdateColumn("credit", gorm.Expr("credit + ?", amountNano)).Error; err != nil {

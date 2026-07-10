@@ -18,10 +18,12 @@ import (
 func (h *User) UserAccount(ctx context.Context, c tele.Context) error {
 	uid := c.Sender().ID
 
-	status := "Standard"
+	// این دو رشته قبلاً مستقیم در کد hardcode بودند ("Standard"/"VIP")،
+	// برخلاف قاعده‌ی خودِ پروژه («بدون hardcode متن؛ همه از i18n»).
+	status := h.T(ctx, uid, i18n.KeyAccountStatusStandard)
 	if user, _ := h.Store.FindUserByTelegramID(ctx, uid); user != nil {
 		if sub, _ := h.Store.GetActiveSubscription(ctx, user.ID); sub != nil {
-			status = "VIP"
+			status = h.T(ctx, uid, i18n.KeyAccountStatusVIP)
 		}
 	}
 
@@ -42,7 +44,7 @@ func (h *User) UserAccount(ctx context.Context, c tele.Context) error {
 	kb.Inline(
 		kb.Row(
 			kb.Data(h.Btn(ctx, uid, i18n.KeyMenuWallet), "wallet_topup"),
-			kb.Data("🎁", "redeem_promo"),
+			kb.Data(h.Btn(ctx, uid, i18n.KeyBtnRedeemPromo), "redeem_promo"),
 		),
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBack), "back_main")),
 	)

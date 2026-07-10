@@ -67,7 +67,10 @@ func (h *Admin) AdminTestDeploy(ctx context.Context, c tele.Context, tmplID, tok
 		return h.SendMain(c, h.T(ctx, uid, i18n.KeyError))
 	}
 
-	server, err := h.Store.SelectLeastLoadedServer(ctx)
+	// تست دیپلوی ادمین به هیچ تگ خاصی محدود نیست (برخلاف Provision در wizard.go
+	// که پلن رایگان را به سرورهای تگ "free" محدود می‌کند) — ادمین باید بتواند
+	// روی هر سرور آنلاینی تست بزند.
+	server, err := h.Store.SelectLeastLoadedServer(ctx, "")
 	if err != nil || server == nil {
 		return c.Send(h.T(ctx, uid, i18n.KeyWizardNoServer), tele.ModeHTML)
 	}
@@ -94,6 +97,16 @@ func (h *Admin) AdminTestDeploy(ctx context.Context, c tele.Context, tmplID, tok
 		auth.JWTConfig{AccessSecret: h.EncryptKey},
 	)
 
+	licenseToken := ""
+	if h.License != nil {
+		lt, lerr := h.License.Issue(ctx, botID, "bot_"+fmt.Sprint(botID), u.ID.String(), server.ID.String(), "")
+		if lerr != nil {
+			h.Log.Error("license issue failed — deploying without LICENSE_TOKEN", ports.F("err", lerr), ports.F("bot_id", botID))
+		} else {
+			licenseToken = lt
+		}
+	}
+
 	cmd := protocol.DeployCommand{
 		Type:          protocol.MsgDeploy,
 		ContainerName: containerName,
@@ -103,8 +116,12 @@ func (h *Admin) AdminTestDeploy(ctx context.Context, c tele.Context, tmplID, tok
 			"BOT_TOKEN":      token,
 			"INSTANCE_ID":    "bot_" + fmt.Sprint(botID),
 			"OWNER_TELEGRAM": fmt.Sprint(u.TelegramID),
-			"PLAN_ID":        "",
-			"JWT_TOKEN":      jwtToken,
+			// مثل wizard.go: ربات‌های محصول مالک را از OWNER_ID می‌خوانند.
+			"OWNER_ID":      fmt.Sprint(u.TelegramID),
+			"PLAN_ID":       "",
+			"JWT_TOKEN":     jwtToken,
+			"LICENSE_TOKEN": licenseToken,
+			"SERVER_ID":     server.ID.String(),
 		},
 	}
 

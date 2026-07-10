@@ -23,13 +23,13 @@ import (
 )
 
 type Config struct {
-	MongoURI  string `mapstructure:"MONGO_URI"`
-	MongoDB   string `mapstructure:"MONGO_DB"`
-	NatsURL   string `mapstructure:"NATS_URL"`
-	NatsUser  string `mapstructure:"NATS_USERNAME"`
-	NatsPass  string `mapstructure:"NATS_PASSWORD"`
-	Port      int    `mapstructure:"PORT"`
-	AdminKey  string `mapstructure:"ADMIN_KEY"`
+	MongoURI string `mapstructure:"MONGO_URI"`
+	MongoDB  string `mapstructure:"MONGO_DB"`
+	NatsURL  string `mapstructure:"NATS_URL"`
+	NatsUser string `mapstructure:"NATS_USERNAME"`
+	NatsPass string `mapstructure:"NATS_PASSWORD"`
+	Port     int    `mapstructure:"PORT"`
+	AdminKey string `mapstructure:"ADMIN_KEY"`
 }
 
 func main() {
@@ -37,8 +37,12 @@ func main() {
 	config.MustLoad(&cfg)
 	log := logger.MustNew(false)
 
-	if cfg.Port == 0 { cfg.Port = 8092 }
-	if cfg.MongoDB == "" { cfg.MongoDB = "creatorbot" }
+	if cfg.Port == 0 {
+		cfg.Port = 8092
+	}
+	if cfg.MongoDB == "" {
+		cfg.MongoDB = "creatorbot"
+	}
 
 	// ── MongoDB ───────────────────────────────────────────
 	ctx := context.Background()
@@ -68,6 +72,7 @@ func main() {
 		log.Fatal("nats", ports.F("err", err))
 	}
 	defer nc.Close()
+	log.AttachNATS(nc, "fraud-engine")
 
 	// ── Scorers ───────────────────────────────────────────
 	userScorer := scorer.NewUserScorer(st, log)

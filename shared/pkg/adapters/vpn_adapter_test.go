@@ -38,12 +38,12 @@ func mockMarzbanServer(t *testing.T) *httptest.Server {
 			json.NewDecoder(r.Body).Decode(&req)
 			username, _ := req["username"].(string)
 			json.NewEncoder(w).Encode(map[string]any{
-				"username":          username,
-				"status":            "active",
-				"data_limit":        int64(10 * 1024 * 1024 * 1024),
-				"used_traffic":      int64(0),
-				"expire":            nil,
-				"subscription_url":  "https://panel.test/sub/token123",
+				"username":         username,
+				"status":           "active",
+				"data_limit":       int64(10 * 1024 * 1024 * 1024),
+				"used_traffic":     int64(0),
+				"expire":           nil,
+				"subscription_url": "https://panel.test/sub/token123",
 				"proxies": map[string]any{
 					"vless": map[string]string{"id": "uuid-xxx"},
 				},

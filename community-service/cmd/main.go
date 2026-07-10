@@ -61,6 +61,7 @@ func main() {
 		log.Fatal("nats", ports.F("err", err))
 	}
 	defer nc.Close()
+	log.AttachNATS(nc, "community-service")
 
 	// ── Engine ────────────────────────────────────────────
 	// engine.New(st, nc, log) — بدون payClient و fraudclient در این نسخه

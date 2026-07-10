@@ -114,3 +114,51 @@ func FmtUser(u models.User) string {
 func JoinLines(lines []string) string {
 	return strings.Join(lines, "\n")
 }
+
+// FmtSourceWorker یک ردیفِ لیستِ source-service workerها. LicenseKey کامل
+// نمایش داده نمی‌شود (فقط ۸ کاراکتر اول) — کلید کامل فقط یک‌بار، در لحظه‌ی
+// ساخت، نشان داده می‌شود.
+func FmtSourceWorker(c models.SourceWorkerConfig) string {
+	active := "✅"
+	if !c.IsActive {
+		active = "❌"
+	}
+	online := "🔴 هرگز"
+	if c.IsOnline(10 * time.Minute) {
+		online = "🟢 آنلاین"
+	} else if c.LastHeartbeatAt != nil {
+		online = fmt.Sprintf("🟡 %s پیش", time.Since(*c.LastHeartbeatAt).Round(time.Minute))
+	}
+	label := c.Label
+	if label == "" {
+		label = "(بدون برچسب)"
+	}
+	licPrefix := c.LicenseKey
+	if len(licPrefix) > 8 {
+		licPrefix = licPrefix[:8]
+	}
+	return fmt.Sprintf("• %s <b>%s</b> [%s]\n  🆔 <code>%s</code>\n  🔑 <code>%s…</code>\n  %s",
+		active, label, online, c.WorkerID, licPrefix, "ID: "+c.ID.String())
+}
+
+// FmtPromoCode یک ردیفِ لیستِ کدهای پروموشن.
+func FmtPromoCode(p models.PromoCode) string {
+	active := "✅"
+	if !p.IsActive {
+		active = "❌"
+	} else if p.IsExpired() {
+		active = "⌛️"
+	} else if p.IsExhausted() {
+		active = "🔒"
+	}
+	usage := fmt.Sprintf("%d/∞", p.UsedCount)
+	if p.MaxUses > 0 {
+		usage = fmt.Sprintf("%d/%d", p.UsedCount, p.MaxUses)
+	}
+	exp := "بدون انقضا"
+	if p.ExpiresAt != nil {
+		exp = p.ExpiresAt.Format("2006-01-02")
+	}
+	return fmt.Sprintf("• %s <code>%s</code> — 🎁 %.2f TON\n  📊 مصرف: %s  |  ⏳ انقضا: %s",
+		active, p.Code, p.AmountTON, usage, exp)
+}
