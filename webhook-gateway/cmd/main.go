@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -23,7 +24,8 @@ import (
 
 type Config struct {
 	Port        int    `mapstructure:"PORT"`
-	InternalKey string `mapstructure:"INTERNAL_KEY"`
+	InternalKey       string `mapstructure:"INTERNAL_KEY"`
+	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
 
 	NatsURL  string `mapstructure:"NATS_URL"`
 	NatsUser string `mapstructure:"NATS_USERNAME"`
@@ -92,9 +94,19 @@ func main() {
 			BotID       int64  `json:"bot_id"`
 			NATSSubject string `json:"nats_subject"`
 			Type        string `json:"type"`
+			ServiceID   string `json:"service_id"`
+			ServiceKey  string `json:"service_key"`
 		}
 		if err := unmarshalJSON(data, &req); err != nil || req.Token == "" {
 			return
+		}
+		// اگر HMAC تنظیم شده، ارسال‌کننده باید اثبات کند که secret را می‌داند
+		if cfg.ServiceHMACSecret != "" {
+			if !auth.ValidateServiceKey(cfg.ServiceHMACSecret, req.ServiceID, req.ServiceKey) {
+				log.Warn("gateway.register: invalid service key — ignoring",
+					ports.F("service_id", req.ServiceID))
+				return
+			}
 		}
 		reg.Register(&registry.BotEntry{
 			Token:       req.Token,

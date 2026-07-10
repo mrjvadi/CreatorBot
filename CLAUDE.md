@@ -304,6 +304,11 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
 - `agentmanager` قبلاً مستقیم به `docker.sock` دسترسی کامل داشت (یعنی
   هر آسیب‌پذیری در آن معادل دسترسی root به host بود) — این محدود شد
   با یک `docker-socket-proxy` که فقط endpointهای لازم را باز می‌گذارد.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۰) **webhook-gateway `gateway.register` بدون auth**: هر کسی با
+  دسترسی NATS می‌توانست webhook هر ربات دلخواهی را hijack کند. رفع: `SERVICE_HMAC_SECRET`
+  به Config اضافه شد؛ اگر تنظیم شده باشد، ارسال‌کننده باید `service_id`+`service_key`
+  معتبر داشته باشد (همان الگوی HMAC بقیه‌ی سرویس‌ها). اگر secret خالی باشد، backward
+  compatible (بدون چک).
 - (رفع‌شده ۲۰۲۶-۰۷-۱۰) **privilege escalation در uploader-bot**: هر ادمین با هر دسترسی
   می‌توانست با ارسال مستقیم callback `aperm_t:<id>:admins` به خودش دسترسی `PermAdmins` بدهد —
   چون `adminTogglePerm`/`adminPermsMenu`/`adminAskAdmin`/`adminRemoveAdmin` فقط `isAdmin` عمومی
