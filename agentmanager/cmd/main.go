@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/mrjvadi/creatorbot/agentmanager/internal/docker"
 	"github.com/mrjvadi/creatorbot/agentmanager/internal/heartbeat"
 	"github.com/mrjvadi/creatorbot/agentmanager/internal/queue"
+	"github.com/mrjvadi/creatorbot/agentmanager/internal/registryclient"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
@@ -28,13 +28,30 @@ type Config struct {
 	HeartbeatSec int    `mapstructure:"HEARTBEAT_INTERVAL_SEC"`
 
 	// ── تنظیمات امنیتی/منابع پیش‌فرض container ها ──
-	// AllowedImages لیست prefix های مجاز، جداشده با کاما (whitelist اجباری).
-	AllowedImages    string  `mapstructure:"ALLOWED_IMAGES"`
-	DefaultMemoryMB  int64   `mapstructure:"DEFAULT_MEMORY_MB"`
-	DefaultCPUs      float64 `mapstructure:"DEFAULT_CPUS"`
-	DefaultPidsLimit int64   `mapstructure:"DEFAULT_PIDS_LIMIT"`
-	ReadonlyRootfs   bool    `mapstructure:"READONLY_ROOTFS"`
-	DefaultTmpfsMB   int64   `mapstructure:"DEFAULT_TMPFS_MB"`
+	// ImageRegistryURL آدرس سرویس مرکزی image-registry — جایگزین whitelist
+	// محلیِ قدیمی (ALLOWED_IMAGES) که این‌جا بود. خالی‌بودنش یعنی هیچ image
+	// ای مجاز نیست (fail-closed)، دقیقاً مثل رفتار قدیمیِ whitelist خالی.
+	ImageRegistryURL     string  `mapstructure:"IMAGE_REGISTRY_URL"`
+	ImageRegistryTimeout int     `mapstructure:"IMAGE_REGISTRY_TIMEOUT_SEC"`
+	DefaultMemoryMB      int64   `mapstructure:"DEFAULT_MEMORY_MB"`
+	DefaultCPUs          float64 `mapstructure:"DEFAULT_CPUS"`
+	DefaultPidsLimit     int64   `mapstructure:"DEFAULT_PIDS_LIMIT"`
+	ReadonlyRootfs       bool    `mapstructure:"READONLY_ROOTFS"`
+	DefaultTmpfsMB       int64   `mapstructure:"DEFAULT_TMPFS_MB"`
+
+	// ── env پایه‌ی containerهای deploy شده (دانش لوکال این سرور) ──
+	// BotBaseEnvFile یک فایل KEY=VALUE با آدرس‌های زیرساخت (Mongo/NATS/
+	// Redis/Postgres) و secret های اتصال است که به env هر container تزریق
+	// می‌شود — botmanager این‌ها را نمی‌فرستد (نباید از NATS عبور کنند؛
+	// رجوع docker.DeployDefaults). خالی = هیچ base env ای.
+	BotBaseEnvFile string `mapstructure:"BOT_BASE_ENV_FILE"`
+	// BotEnvDir دایرکتوری با فایل‌های per-service-type (uploader.env, vpn-bot.env,
+	// archive-bot.env). روی BaseEnv اعمال می‌شوند؛ cmd.EnvVars همیشه برنده است.
+	BotEnvDir string `mapstructure:"BOT_ENV_DIR"`
+	// DefaultNetwork شبکه‌ی داکری که container وقتی DeployCommand.NetworkName
+	// خالی است به آن وصل می‌شود (مثلاً "deploy_backend" تا اسم‌هایی مثل
+	// nats/mongodb resolve شوند). خالی = شبکه‌ی bridge پیش‌فرض داکر.
+	DefaultNetwork string `mapstructure:"DEFAULT_NETWORK"`
 }
 
 func main() {
@@ -57,20 +74,18 @@ func main() {
 	}
 
 	// ── ساخت SecurityPolicy از config ──
-	var allowed []string
-	for _, p := range strings.Split(cfg.AllowedImages, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			allowed = append(allowed, p)
-		}
-	}
 	policy := docker.SecurityPolicy{
-		AllowedImages:    allowed,
 		DefaultMemoryMB:  cfg.DefaultMemoryMB,
 		DefaultCPUs:      cfg.DefaultCPUs,
 		DefaultPidsLimit: cfg.DefaultPidsLimit,
 		ReadonlyRootfs:   cfg.ReadonlyRootfs,
 		DefaultTmpfsMB:   cfg.DefaultTmpfsMB,
 	}
+
+	if cfg.ImageRegistryURL == "" {
+		log.Warn("IMAGE_REGISTRY_URL not set — no image will be allowed to deploy until configured")
+	}
+	registry := registryclient.New(cfg.ImageRegistryURL, time.Duration(cfg.ImageRegistryTimeout)*time.Second)
 
 	// ── NATS ─────────────────────────────────────────────────────
 	nc, err := natsclient.New(natsclient.Config{
@@ -83,10 +98,29 @@ func main() {
 		log.Fatal("nats connect failed", ports.F("err", err))
 	}
 	defer nc.Close()
+	log.AttachNATS(nc, "agentmanager")
+
+	// ── env پایه‌ی containerها ───────────────────────────────────
+	// misconfig باید بلند باشد: اگر فایل ست شده ولی خواندنی/معتبر نیست،
+	// deploy های بعدی containerهای ناقص می‌ساختند — پس fatal.
+	defaults := docker.DeployDefaults{DefaultNetwork: cfg.DefaultNetwork, TypeEnvDir: cfg.BotEnvDir}
+	if cfg.BotBaseEnvFile != "" {
+		baseEnv, err := docker.ParseEnvFile(cfg.BotBaseEnvFile)
+		if err != nil {
+			log.Fatal("BOT_BASE_ENV_FILE unreadable", ports.F("path", cfg.BotBaseEnvFile), ports.F("err", err))
+		}
+		defaults.BaseEnv = baseEnv
+		log.Info("bot base env loaded",
+			ports.F("path", cfg.BotBaseEnvFile),
+			ports.F("keys", len(baseEnv)),
+			ports.F("default_network", cfg.DefaultNetwork))
+	} else {
+		log.Warn("BOT_BASE_ENV_FILE not set — deployed bots get only the env vars sent in DeployCommand")
+	}
 
 	// ── Docker SDK client ─────────────────────────────────────────
 	// هیچ exec.Command وجود ندارد — مستقیم با Docker daemon از طریق socket
-	dockerClient, err := docker.NewClient(log, policy)
+	dockerClient, err := docker.NewClient(log, policy, defaults, registry)
 	if err != nil {
 		log.Fatal("docker sdk init failed", ports.F("err", err))
 	}

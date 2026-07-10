@@ -20,11 +20,15 @@ import (
 
 // SecurityPolicy پیش‌فرض‌های امنیتی و محدودیت منابع این سرور را نگه می‌دارد.
 // این مقادیر از .env خوانده می‌شوند و می‌توانند per-deploy توسط
-// protocol.DeploySettings بازنویسی شوند (به‌جز whitelist که همیشه اجباری است).
+// protocol.DeploySettings بازنویسی شوند.
+//
+// نکته‌ی مهم (۲۰۲۶-۰۷-۰۴): whitelist محلیِ image (قبلاً این‌جا، به‌صورت
+// AllowedImages []string با prefix matching) حذف شد و جایش را یک سرویس
+// مرکزی جدید گرفت: image-registry. حالا هر agentmanager قبل از هر deploy
+// از آن سرویس می‌پرسد «آیا این image:tag مجاز است؟» — به‌جای یک لیست محلی
+// که هر سرور جدا نگه می‌داشت. رجوع به ImageChecker پایین و
+// image-registry/README.md.
 type SecurityPolicy struct {
-	// AllowedImages لیست prefix های مجاز برای image. خالی = هیچ image ای مجاز نیست.
-	// مثال: ["registry.local/creatorbot/", "creatorbot/"].
-	AllowedImages []string
 	// DefaultMemoryMB سقف حافظه‌ی پیش‌فرض هر container به مگابایت (۰ = نامحدود).
 	DefaultMemoryMB int64
 	// DefaultCPUs تعداد هسته‌ی پیش‌فرض (۰ = نامحدود).
@@ -37,17 +41,47 @@ type SecurityPolicy struct {
 	DefaultTmpfsMB int64
 }
 
+// ImageChecker تنها چیزی است که Client از سرویس image-registry نیاز دارد —
+// یک interface کوچک، تا تست‌نویسی راحت باشد و docker package مستقیم به
+// جزئیات HTTP وابسته نشود. پیاده‌سازی واقعی: agentmanager/internal/registryclient.Client.
+type ImageChecker interface {
+	IsAllowed(ctx context.Context, name, tag string) (bool, error)
+}
+
+// DeployDefaults دانش لوکالِ این سرور برای هر container ای که deploy می‌شود.
+//
+// چرا این‌جا و نه در DeployCommand؟ آدرس‌های زیرساخت (Mongo/NATS/Redis/...)
+// و secret های اتصال، مالِ همین سرورند — botmanager روی سرور دیگری است و
+// نه باید آن‌ها را بداند و نه باید از NATS عبورشان بدهد. botmanager فقط
+// env مخصوص app را می‌فرستد (BOT_TOKEN, INSTANCE_ID, ...)؛ بقیه از این‌جا
+// تزریق می‌شود.
+type DeployDefaults struct {
+	// BaseEnv در env هر container گذاشته می‌شود؛ اشتراک همه‌ی service type ها
+	// (NATS/Redis/Mongo آدرس، ENCRYPTION_KEY و مانند آن).
+	BaseEnv map[string]string
+	// TypeEnvDir دایرکتوری با فایل‌های per-service-type (مثلاً uploader.env,
+	// vpn-bot.env, archive-bot.env). اگر فایل <TypeEnvDir>/<cmd.ImageName>.env
+	// وجود داشت، روی BaseEnv اعمال می‌شود — برای DSN های متفاوت هر نوع ربات.
+	TypeEnvDir string
+	// DefaultNetwork وقتی DeployCommand.NetworkName خالی باشد استفاده می‌شود —
+	// بدون آن container به شبکه‌ی bridge پیش‌فرض می‌رود و اسم‌هایی مثل
+	// "nats"/"mongodb" را resolve نمی‌کند.
+	DefaultNetwork string
+}
+
 // Client یک wrapper امن روی Docker SDK است.
 type Client struct {
-	cli    *dockerclient.Client
-	log    ports.Logger
-	policy SecurityPolicy
+	cli      *dockerclient.Client
+	log      ports.Logger
+	policy   SecurityPolicy
+	defaults DeployDefaults
+	registry ImageChecker
 }
 
 // NewClient یک Client جدید با اتصال به Docker daemon محلی می‌سازد.
 // آدرس socket از متغیر محیطی DOCKER_HOST خوانده می‌شود (پیش‌فرض: unix:///var/run/docker.sock).
-// policy پیش‌فرض‌های امنیتی/منابع و whitelist مجاز image را تعیین می‌کند.
-func NewClient(log ports.Logger, policy SecurityPolicy) (*Client, error) {
+// registry سرویس image-registry است — تنها منبع تصمیم «این image مجاز است؟».
+func NewClient(log ports.Logger, policy SecurityPolicy, defaults DeployDefaults, registry ImageChecker) (*Client, error) {
 	cli, err := dockerclient.NewClientWithOpts(
 		dockerclient.FromEnv,
 		dockerclient.WithAPIVersionNegotiation(),
@@ -55,21 +89,36 @@ func NewClient(log ports.Logger, policy SecurityPolicy) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker sdk: %w", err)
 	}
-	if len(policy.AllowedImages) == 0 {
-		log.Warn("image whitelist خالی است — هیچ deploy ای مجاز نخواهد بود؛ ALLOWED_IMAGES را تنظیم کنید")
-	}
-	return &Client{cli: cli, log: log, policy: policy}, nil
+	return &Client{cli: cli, log: log, policy: policy, defaults: defaults, registry: registry}, nil
 }
 
-// isImageAllowed بررسی می‌کند که آیا image در whitelist است.
-// اگر whitelist خالی باشد، هیچ image ای مجاز نیست (fail-safe).
-func (c *Client) isImageAllowed(ref string) bool {
-	for _, p := range c.policy.AllowedImages {
-		if p != "" && strings.HasPrefix(ref, p) {
-			return true
-		}
+// isImageAllowed از image-registry می‌پرسد آیا ref ("name:tag") مجاز است.
+// Fail-closed در هر خطا (سرویس در دسترس نیست، IP این سرور مجاز نیست، ...)
+// — دقیقاً همان فلسفه‌ی قدیمیِ «whitelist خالی/نامعتبر = رد همه‌چیز»، فقط
+// حالا منبع تصمیم مرکزی است نه یک فایل .env محلی روی هر سرور.
+func (c *Client) isImageAllowed(ctx context.Context, ref string) bool {
+	name, tag, ok := splitImageRef(ref)
+	if !ok {
+		c.log.Warn("image ref has no tag — rejecting", ports.F("ref", ref))
+		return false
 	}
-	return false
+	allowed, err := c.registry.IsAllowed(ctx, name, tag)
+	if err != nil {
+		c.log.Error("image-registry check failed — rejecting (fail-closed)",
+			ports.F("ref", ref), ports.F("err", err))
+		return false
+	}
+	return allowed
+}
+
+// splitImageRef "name:tag" را به دو بخش تقسیم می‌کند — از آخرین ":" تا
+// آدرس‌های registry با پورت (مثل "host:5000/name:tag") درست پارس شوند.
+func splitImageRef(ref string) (name, tag string, ok bool) {
+	i := strings.LastIndex(ref, ":")
+	if i < 0 || i == len(ref)-1 {
+		return "", "", false
+	}
+	return ref[:i], ref[i+1:], true
 }
 
 // Deploy یک container را از روی image می‌سازد و اجرا می‌کند.
@@ -77,10 +126,10 @@ func (c *Client) isImageAllowed(ref string) bool {
 func (c *Client) Deploy(ctx context.Context, cmd protocol.DeployCommand) (string, error) {
 	ref := cmd.ImageName + ":" + cmd.ImageTag
 
-	// ── ۱. کنترل whitelist ──────────────────────────────────────
-	// فقط image هایی که در لیست مجاز سرور هستند اجازه‌ی اجرا دارند.
-	if !c.isImageAllowed(ref) {
-		return "", fmt.Errorf("image %q در whitelist مجاز نیست", ref)
+	// ── ۱. کنترل whitelist (از سرویس مرکزی image-registry) ──────
+	// فقط image هایی که در استخر ثبت‌شده و فعال هستند اجازه‌ی اجرا دارند.
+	if !c.isImageAllowed(ctx, ref) {
+		return "", fmt.Errorf("image %q در image-registry مجاز نیست", ref)
 	}
 
 	// ── ۲. فقط image محلی (بدون pull از اینترنت) ─────────────────
@@ -97,18 +146,28 @@ func (c *Client) Deploy(ctx context.Context, cmd protocol.DeployCommand) (string
 	_, _ = c.Remove(ctx, cmd.ContainerName)
 
 	// ── ۴. ساخت env slice (strongly typed — بدون injection) ───
-	env := make([]string, 0, len(cmd.EnvVars))
-	for k, v := range cmd.EnvVars {
-		// فقط k=v — هیچ shell expansion نیست
-		env = append(env, k+"="+v)
+	// ترتیب merge (هر لایه بر قبلی برنده است):
+	// ۱. BaseEnv (زیرساخت مشترک: NATS/Redis/Mongo)
+	// ۲. TypeEnv (per-service-type: DSN اختصاصی هر نوع ربات)
+	// ۳. cmd.EnvVars (مقادیر app-specific از botmanager: BOT_TOKEN, INSTANCE_ID, ...)
+	typeEnv, typeErr := parseEnvFileIfExists(c.defaults.TypeEnvDir + "/" + cmd.ImageName + ".env")
+	if typeErr != nil {
+		c.log.Warn("type env file unreadable — using base only",
+			ports.F("image", cmd.ImageName), ports.F("err", typeErr))
+		typeEnv = map[string]string{}
 	}
+	env := mergeEnv(mergeEnvMaps(c.defaults.BaseEnv, typeEnv), cmd.EnvVars)
 
 	// ── ۵. NetworkConfig ────────────────────────────────────────
+	netName := cmd.NetworkName
+	if netName == "" {
+		netName = c.defaults.DefaultNetwork
+	}
 	var netCfg *network.NetworkingConfig
-	if cmd.NetworkName != "" {
+	if netName != "" {
 		netCfg = &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
-				cmd.NetworkName: {},
+				netName: {},
 			},
 		}
 	}
@@ -117,11 +176,20 @@ func (c *Client) Deploy(ctx context.Context, cmd protocol.DeployCommand) (string
 	hostCfg := c.buildHostConfig(cmd.Settings)
 
 	// ── ۷. Create container (سخت‌گیری امنیتی اعمال‌شده) ──────────
+	// Label managedLabel روی هر container ای که خود agentmanager می‌سازد
+	// گذاشته می‌شود؛ Stop/Remove/Restart قبل از اجرا این label را چک
+	// می‌کنند تا یک دستور NATS دلخواه نتواند container های زیرساختی پلتفرم
+	// (postgres, nats, agentmanager, botpay, ...) را که با این مسیر ساخته
+	// نشده‌اند حذف/متوقف کند.
 	resp, err := c.cli.ContainerCreate(
 		ctx,
 		&container.Config{
 			Image: ref,
 			Env:   env,
+			Labels: map[string]string{
+				managedLabel:    "true",
+				managedNameAttr: cmd.ContainerName,
+			},
 		},
 		hostCfg,
 		netCfg,
@@ -221,8 +289,46 @@ func (c *Client) buildHostConfig(s *protocol.DeploySettings) *container.HostConf
 	return hc
 }
 
-// Stop یک container را متوقف می‌کند.
+// managedLabel/managedNameAttr علامت‌گذاری container هایی که خود
+// agentmanager ساخته است — تنها این‌ها اجازه‌ی stop/remove/restart از طریق
+// یک دستور NATS را دارند.
+const (
+	managedLabel    = "creatorbot.managed"
+	managedNameAttr = "creatorbot.container_name"
+)
+
+// verifyManaged بررسی می‌کند این container توسط خود agentmanager ساخته شده
+// (label creatorbot.managed=true را دارد). قبل از هر عملیات مخرب‌پذیر
+// (stop/remove/restart) صدا زده می‌شود.
+//
+// چرا این لازم بود: قبلاً هر ContainerID/Name که در یک protocol.DeployCommand
+// (که از NATS می‌آید) قید می‌شد بدون هیچ اعتبارسنجی به Docker پاس داده
+// می‌شد. چون NATS بین همه‌ی سرویس‌ها یک username/password مشترک دارد (بدون
+// per-subject ACL)، هر کلاینتی که به NATS دسترسی داشت می‌توانست
+// {"type":"remove","container_id":"postgres"} بفرستد و کل پلتفرم را force-remove
+// کند. این تابع آن مسیر را می‌بندد: فقط container هایی که خودمان با
+// label مشخص ساخته‌ایم قابل‌حذف/توقف هستند.
+func (c *Client) verifyManaged(ctx context.Context, containerID string) (bool, error) {
+	info, err := c.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		if dockerclient.IsErrNotFound(err) {
+			return false, nil // not found — جدا از "not managed" مدیریت می‌شود
+		}
+		return false, err
+	}
+	return info.Config != nil && info.Config.Labels[managedLabel] == "true", nil
+}
+
+// Stop یک container را متوقف می‌کند — فقط اگر توسط خود agentmanager ساخته شده باشد.
 func (c *Client) Stop(ctx context.Context, containerID string) (string, error) {
+	managed, err := c.verifyManaged(ctx, containerID)
+	if err != nil {
+		return "", fmt.Errorf("inspect %q: %w", containerID, err)
+	}
+	if !managed {
+		c.log.Warn("refused to stop unmanaged/unknown container", ports.F("container_id", containerID))
+		return "", fmt.Errorf("container %q is not managed by this agentmanager — refusing to stop", containerID)
+	}
 	timeout := 10
 	if err := c.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
 		return "", fmt.Errorf("stop %q: %w", containerID, err)
@@ -230,10 +336,19 @@ func (c *Client) Stop(ctx context.Context, containerID string) (string, error) {
 	return "stopped", nil
 }
 
-// Remove یک container را حذف می‌کند (force — حتی اگه در حال اجرا باشد).
+// Remove یک container را حذف می‌کند (force — حتی اگه در حال اجرا باشد) —
+// فقط اگر توسط خود agentmanager ساخته شده باشد.
 func (c *Client) Remove(ctx context.Context, containerID string) (string, error) {
+	managed, err := c.verifyManaged(ctx, containerID)
+	if err != nil {
+		return "", fmt.Errorf("inspect %q: %w", containerID, err)
+	}
+	if !managed {
+		// اگه container اصلاً وجود نداشت، idempotent (رفتار قبلی حفظ می‌شود).
+		c.log.Warn("refused to remove unmanaged/unknown container", ports.F("container_id", containerID))
+		return "not found or not managed", nil
+	}
 	if err := c.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
-		// اگه container وجود نداشت خطا نمی‌دهیم — idempotent
 		if dockerclient.IsErrNotFound(err) {
 			return "not found", nil
 		}
@@ -242,8 +357,16 @@ func (c *Client) Remove(ctx context.Context, containerID string) (string, error)
 	return "removed", nil
 }
 
-// Restart یک container را ری‌استارت می‌کند.
+// Restart یک container را ری‌استارت می‌کند — فقط اگر توسط خود agentmanager ساخته شده باشد.
 func (c *Client) Restart(ctx context.Context, containerID string) (string, error) {
+	managed, err := c.verifyManaged(ctx, containerID)
+	if err != nil {
+		return "", fmt.Errorf("inspect %q: %w", containerID, err)
+	}
+	if !managed {
+		c.log.Warn("refused to restart unmanaged/unknown container", ports.F("container_id", containerID))
+		return "", fmt.Errorf("container %q is not managed by this agentmanager — refusing to restart", containerID)
+	}
 	timeout := 10
 	if err := c.cli.ContainerRestart(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
 		return "", fmt.Errorf("restart %q: %w", containerID, err)

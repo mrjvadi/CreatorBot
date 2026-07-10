@@ -1,6 +1,25 @@
 # Changelog — CreatorBot V3
 
 ---
+## [2026-07-10] — Sprint: fail-closed license برای همه ربات‌ها + per-service-type base env
+
+### vpn-bot/cmd/bot/main.go
+- اضافه شد `EncryptKey string` به Config (فیلد گمشده‌ای که NewHandler نیاز داشت)
+- اضافه شد `licenseclient.RequireValid` در startup — fail-closed
+
+### archive-bot/cmd/bot/main.go
+- اضافه شد `licenseclient.RequireValid` در startup — fail-closed
+
+### agentmanager — per-service-type base env
+- `DeployDefaults`: فیلد جدید `TypeEnvDir` — دایرکتوری با فایل‌های per-type
+- `Deploy()`: merge ۳ لایه: BaseEnv → TypeEnv (`<dir>/<image>.env`) → cmd.EnvVars
+- `envfile.go`: اضافه شد `mergeEnvMaps()` و `parseEnvFileIfExists()`
+- `cmd/main.go`: Config جدید `BOT_ENV_DIR`
+- `.env`: `BOT_ENV_DIR=./botenv` اضافه شد
+- `botenv/uploader.env`, `botenv/vpn-bot.env`, `botenv/archive-bot.env` ساخته شدند
+- `botenv/` در `.gitignore` (روی سرور جدید دستی ساخته شود)
+
+---
 ## [2026-07-10] — Sprint: botpay allowlist + revenue-service NATS migration
 
 ### botpay/internal/store/store.go
