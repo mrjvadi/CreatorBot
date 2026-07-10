@@ -15,7 +15,7 @@ func (c *Client) resolveUsername(ctx context.Context, username string) (*tg.Cont
 	if username == "" {
 		return nil, fmt.Errorf("username is required")
 	}
-	return c.api.ContactsResolveUsername(ctx, username)
+	return c.api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
 }
 
 // resolveChannel resolves a channel/supergroup username to an *tg.InputChannel.

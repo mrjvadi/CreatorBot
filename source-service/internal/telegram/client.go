@@ -140,7 +140,7 @@ func (c *Client) authorize(ctx context.Context) error {
 	if status.Authorized {
 		return nil
 	}
-	flow := auth.NewFlow(auth.CodeOnly(c.cfg.Phone, c.code.Code), auth.SendCodeOptions{})
+	flow := auth.NewFlow(auth.CodeOnly(c.cfg.Phone, c.code), auth.SendCodeOptions{})
 	if err := c.client.Auth().IfNecessary(ctx, flow); err != nil {
 		return fmt.Errorf("auth flow: %w", err)
 	}

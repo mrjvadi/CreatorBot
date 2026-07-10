@@ -121,11 +121,11 @@ webhook-gateway, revenue-service, community-service, fraud-engine، +
 | **fraud-engine** | امتیاز کیفیت کاربر/گروه؛ تشخیص الگوهای تقلب |
 | **revenue-service** | قوانین کلی کمیسیون و واریز نهایی |
 
-### ناتمام
+### سرویس‌های پیاده‌شده اما هنوز تست‌نشده در Production
 
 | سرویس | وضعیت |
 |---|---|
-| **source-service** | Stub — قرار است MTProto (gotd/td) برای فوروارد از کانال دیگر پیاده شود؛ منطق واقعی ندارد |
+| **source-service** | پیاده‌شده با gotd/td v0.159 — MTProto client کامل، rules engine، watch/forward، NATS task dispatch، worker registration. هنوز تست E2E با اکانت تلگرام واقعی نشده. |
 
 ---
 
@@ -306,8 +306,9 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
 - `apimanager` (دروازه‌ی HTTP بیرونی برای وب/اپ) ساخته شده ولی هنوز
   در عمل استفاده‌ی کاملی ندارد — برای زمانی است که پلتفرم بخواهد رابط
   وب/اپ بدهد.
-- `source-service` کاملاً stub است؛ فوروارد خودکار از کانال منبع
-  (MTProto) پیاده‌سازی نشده.
+- `source-service` (رفع‌شده ۲۰۲۶-۰۷-۱۰) پیاده شده — MTProto client (gotd/td v0.159),
+  rules engine, channel watch/forward, NATS task dispatch. هنوز E2E با اکانت
+  واقعی تلگرام تأیید نشده.
 - (رفع جزئی ۲۰۲۶-۰۷-۰۶) دیتابیس‌های منطقی سرویس‌های مرکزی از هم جدا شدند
   (هرکدام دیتابیس خودش، رجوع بخش ۲) — ولی جداسازی فیزیکیِ کامل (سرور/instance
   جدا برای هرکدام، نه فقط دیتابیس جدا روی همان سرور Postgres) هنوز انجام نشده.
