@@ -1,6 +1,77 @@
 # Changelog — CreatorBot V3
 
 ---
+## [2026-07-10] — Sprint: یکپارچه‌سازی botmanager+apimanager + Env Schema wizard
+
+### فاز ۱: اصلاح تداخل heartbeat/result بین botmanager و apimanager
+
+#### shared-core/agentlistener/ — پکیج جدید
+- `HandleHeartbeat`: RecordHeartbeat (CPU/RAM/containers JSON) + loop container status
+- `HandleResult`: Deploy→Running / Failure→Error / Stop→Stopped / Remove→DeleteInstance
+- **هر دو** botmanager و apimanager از این پکیج استفاده می‌کنند (منطق مشترک)
+
+#### botmanager/cmd/main.go
+- QueueSubscribe queue group از `"botmanager"` به `"managers"` تغییر کرد
+- heartbeat/result inline handlers حذف شدند → `agentlistener.Handle*` جایگزین
+- `MarkStaleServersOffline` ticker اضافه شد (هر ۲۰ ثانیه، آستانه ۶۰ ثانیه)
+- import: `encoding/json` و `protocol` و `models` حذف شدند، `agentlistener` اضافه شد
+
+#### apimanager/cmd/main.go
+- `nc.Subscribe("agent.*.heartbeat", ...)` و `nc.Subscribe("agent.*.result", ...)` حذف شدند
+- توابع `handleHeartbeat`/`handleResult` → delegate به `agentlistener.Handle*`
+- HTTP fallback endpoints (`/agent/heartbeat`, `/agent/result`) دست‌نخورده ماندند
+
+**باگ رفع‌شده:** Remove موفق → botmanager آن را `StatusRunning` می‌کرد (اشتباه). حالا `DeleteInstance` صدا می‌شود.
+
+---
+### فاز ۲: Env Schema — تعریف فیلد برای image + ویرایش توسط کاربر
+
+#### shared-core/models/models.go
+- `ConfigField struct` اضافه شد (`Key/Label/Default/Required`)
+- `BotTemplate.ParseConfigSchema() []ConfigField`
+- `BotInstance.ParseEnvOverrides() map[string]string`
+- `BotInstance.SetEnvOverrides(map[string]string)`
+- import: `encoding/json` اضافه شد
+
+#### shared-core/store/store.go
+- `UpdateTemplateSchema(ctx, id, schema string) error` — فقط config_schema را آپدیت می‌کند
+
+#### botmanager/internal/tgbot/state/state.go
+- `StepWizardConfig = "wiz:config"` — کاربر فیلدهای ConfigSchema را پر می‌کند
+- `StepTmplSchemaJSON = "tmpl:schema:json"` — ادمین JSON schema می‌فرستد
+
+#### botmanager/internal/tgbot/i18n/
+- `keys.go`: `KeyWizardConfigField`, `KeyWizardConfigDone`, `KeyTmplAskSchema`, `KeyTmplSchemaSet`, `KeyTmplSchemaInvalid`, `KeyBtnEditSchema` اضافه شدند
+- `fa.go` و `en.go`: ترجمه‌های متناظر
+
+#### botmanager/internal/tgbot/admin/admin_tmpl.go
+- `AdminTemplatesList`: دکمه `KeyBtnEditSchema` برای هر template اضافه شد
+- `AdminTemplateSchemaEdit(ctx, c, tmplID)` — شروع ویرایش schema
+- `AdminTemplateSchemaSet(ctx, c, tmplID, jsonText)` — تأیید + ذخیره schema
+
+#### botmanager/internal/tgbot/user/wizard.go
+- constant: `wkCfgIdx`, `wkCfgValues` اضافه شدند
+- `WizardFinish`: اگر template دارای ConfigSchema باشد → `WizardConfigStart` به‌جای confirm
+- `wizardShowConfigField(ctx, c, uid, fields, idx)` — نمایش فیلد با label + default
+- `wizardShowConfirm(ctx, c, uid, data, plan)` — تأیید نهایی (extracted از WizardFinish)
+- `WizardConfigValue(ctx, c, st, text)` — handler state `wiz:config`: ذخیره مقدار + پیشروی
+- `parseCfgValues(jsonStr)` — parse helper
+- `Provision(...)`: اضافه شد `extraEnv map[string]string` — مقادیر ConfigSchema به EnvVars merge می‌شوند
+- `WizardPay`/`WizardCreateFree`: `parseCfgValues(data[wkCfgValues])` → `Provision`
+
+#### botmanager/internal/tgbot/router.go
+- callback `tmpl_schema` → `AdminTemplateSchemaEdit` اضافه شد (admin-only)
+
+#### botmanager/internal/tgbot/router_text.go
+- `case stepWizardConfig:` → `WizardConfigValue`
+- `case stepTmplSchemaJSON:` → `AdminTemplateSchemaSet`
+
+#### botmanager/internal/tgbot/state.go (alias file)
+- `stepWizardConfig` و `stepTmplSchemaJSON` alias اضافه شدند
+
+
+
+---
 ## [2026-07-10] — Sprint: fail-closed license برای همه ربات‌ها + per-service-type base env
 
 ### vpn-bot/cmd/bot/main.go

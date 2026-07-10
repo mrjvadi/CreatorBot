@@ -2,12 +2,14 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/format"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
+	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/state"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 )
 
@@ -23,10 +25,10 @@ func (h *Admin) AdminTemplatesList(ctx context.Context, c tele.Context) error {
 	} else {
 		for _, t := range templates {
 			lines = append(lines, format.FmtTemplate(t))
-			// دکمه‌ی دپلوی تستی برای هر تمپلیت (سرویس+تگ)
-			rows = append(rows, kb.Row(kb.Data(
-				h.Btn(ctx, uid, i18n.KeyBtnTest)+" "+t.Type+":"+t.ImageTag,
-				"tmpl_test:"+t.ID.String())))
+			rows = append(rows, kb.Row(
+				kb.Data(h.Btn(ctx, uid, i18n.KeyBtnTest)+" "+t.Type+":"+t.ImageTag, "tmpl_test:"+t.ID.String()),
+				kb.Data(h.Btn(ctx, uid, i18n.KeyBtnEditSchema), "tmpl_schema:"+t.ID.String()),
+			))
 		}
 	}
 	lines = append(lines, "")
@@ -73,6 +75,38 @@ func (h *Admin) AdminTemplateAdd(ctx context.Context, c tele.Context, botType, i
 			t.ImageName, t.ImageTag, t.ID),
 		tele.ModeHTML, h.KbAdmin(ctx, uid),
 	)
+}
+
+// AdminTemplateSchemaEdit شروع ویرایش ConfigSchema یک قالب.
+func (h *Admin) AdminTemplateSchemaEdit(ctx context.Context, c tele.Context, tmplID string) error {
+	uid := c.Sender().ID
+	defer func() { _ = c.Respond() }()
+	st := h.GetState(ctx, uid)
+	if st.Data == nil {
+		st.Data = map[string]string{}
+	}
+	st.Step = state.StepTmplSchemaJSON
+	st.Data["tmpl_id"] = tmplID
+	h.SetState(ctx, uid, st)
+	return c.Send(h.T(ctx, uid, i18n.KeyTmplAskSchema), tele.ModeHTML)
+}
+
+// AdminTemplateSchemaSet JSON ارسال‌شده را تأیید و ذخیره می‌کند.
+func (h *Admin) AdminTemplateSchemaSet(ctx context.Context, c tele.Context, tmplID, jsonText string) error {
+	uid := c.Sender().ID
+	h.ClearState(ctx, uid)
+
+	var fields []models.ConfigField
+	if err := json.Unmarshal([]byte(jsonText), &fields); err != nil {
+		return c.Send(h.T(ctx, uid, i18n.KeyTmplSchemaInvalid), tele.ModeHTML)
+	}
+
+	normalized, _ := json.Marshal(fields)
+	if err := h.Store.UpdateTemplateSchema(ctx, tmplID, string(normalized)); err != nil {
+		h.Log.Error("updateTemplateSchema", h.F("err", err))
+		return c.Send(h.T(ctx, uid, i18n.KeyError))
+	}
+	return c.Send(h.T(ctx, uid, i18n.KeyTmplSchemaSet), tele.ModeHTML, h.KbAdmin(ctx, uid))
 }
 
 // adminAddFreeTemplate تمپلیت رایگان می‌سازد.

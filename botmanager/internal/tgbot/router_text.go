@@ -173,6 +173,8 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st userState, 
 	// ══ کاربر ═════════════════════════════════════════════
 	case stepUserAction:
 		return h.AdminUserHandleAction(ctx, c, st.Data["user_id"], text)
+	case stepAdminUserSearch:
+		return h.AdminUserSearchSubmit(ctx, c, text)
 
 	// ══ افزودن اعتبار ═════════════════════════════════════
 	case stepAdminCreditAmount:
@@ -185,14 +187,60 @@ func (h *Handler) handleStep(ctx context.Context, c tele.Context, st userState, 
 	// ══ ارسال همگانی ══════════════════════════════════════
 	case stepBroadcastText:
 		return h.BroadcastExecute(ctx, c, text)
+	case stepBroadcastForwardWait:
+		// پیامِ متنیِ فرستاده/فوروارد‌شده هم از همین مسیر می‌رسد (OnText).
+		return h.BroadcastForwardCapture(ctx, c)
 
 	// ══ دپلوی تستی ادمین ══════════════════════════════════
 	case stepAdminTestToken:
 		return h.AdminTestDeploy(ctx, c, st.Data["tmpl_id"], text)
 
+	// ══ source-service worker ═════════════════════════════
+	case stepSWAppID:
+		if _, err := strconv.Atoi(strings.TrimSpace(text)); err != nil {
+			return c.Send(h.T(ctx, uid, i18n.KeySWInvalidAppID), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+		}
+		h.SetStep(ctx, uid, stepSWAppHash, "app_id", text)
+		return c.Send(h.T(ctx, uid, i18n.KeySWAskAppHash), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case stepSWAppHash:
+		h.SetStep(ctx, uid, stepSWPhone, "app_hash", text)
+		return c.Send(h.T(ctx, uid, i18n.KeySWAskPhone), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case stepSWPhone:
+		h.SetStep(ctx, uid, stepSWLabel, "phone", text)
+		return c.Send(h.T(ctx, uid, i18n.KeySWAskLabel), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case stepSWLabel:
+		return h.AdminSourceWorkerAdd(ctx, c, st.Data["app_id"], st.Data["app_hash"], st.Data["phone"], text)
+
+	// ══ کاربر — redeem کدِ پروموشن ═════════════════════════
+	case stepPromoRedeem:
+		return h.PromoRedeemSubmit(ctx, c, text)
+
+	// ══ ادمین — ساختِ کدِ پروموشن ═══════════════════════════
+	case stepPromoAdminCode:
+		code := strings.ToUpper(strings.TrimSpace(text))
+		if code == "" {
+			return c.Send(h.T(ctx, uid, i18n.KeyPromoAskCode), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+		}
+		h.SetStep(ctx, uid, stepPromoAdminAmount, "code", code)
+		return c.Send(h.T(ctx, uid, i18n.KeyPromoAskAmount), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case stepPromoAdminAmount:
+		h.SetStep(ctx, uid, stepPromoAdminMaxUses, "amount", text)
+		return c.Send(h.T(ctx, uid, i18n.KeyPromoAskMaxUses), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case stepPromoAdminMaxUses:
+		h.SetStep(ctx, uid, stepPromoAdminDays, "max_uses", text)
+		return c.Send(h.T(ctx, uid, i18n.KeyPromoAskDays), tele.ModeHTML, h.KbBackCancel(ctx, uid))
+	case stepPromoAdminDays:
+		return h.AdminPromoAdd(ctx, c, st.Data["code"], st.Data["amount"], st.Data["max_uses"], text)
+
 	// ══ wizard ════════════════════════════════════════════
 	case stepWizardToken:
 		return h.WizardFinish(ctx, c, "", text)
+	case stepWizardConfig:
+		return h.WizardConfigValue(ctx, c, st, text)
+
+	// ══ ادمین — ConfigSchema قالب ═════════════════════════
+	case stepTmplSchemaJSON:
+		return h.AdminTemplateSchemaSet(ctx, c, st.Data["tmpl_id"], text)
 
 	// ══ زبان ══════════════════════════════════════════════
 	case stepLangSelect:

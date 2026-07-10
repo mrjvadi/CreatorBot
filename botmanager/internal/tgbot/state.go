@@ -25,7 +25,8 @@ const (
 	stepPlanPrice  = state.StepPlanPrice
 	stepPlanLimits = state.StepPlanLimits
 
-	stepUserAction = state.StepUserAction
+	stepUserAction      = state.StepUserAction
+	stepAdminUserSearch = state.StepAdminUserSearch
 
 	stepWizardToken = state.StepWizardToken
 	stepLangSelect  = state.StepLangSelect
@@ -34,4 +35,20 @@ const (
 	stepWalletTopupAmount = state.StepWalletTopupAmount
 	stepBroadcastText     = state.StepBroadcastText
 	stepAdminTestToken    = state.StepAdminTestToken
+
+	stepBroadcastForwardWait = state.StepBroadcastForwardWait
+
+	stepSWAppID   = state.StepSWAppID
+	stepSWAppHash = state.StepSWAppHash
+	stepSWPhone   = state.StepSWPhone
+	stepSWLabel   = state.StepSWLabel
+
+	stepPromoRedeem       = state.StepPromoRedeem
+	stepPromoAdminCode    = state.StepPromoAdminCode
+	stepPromoAdminAmount  = state.StepPromoAdminAmount
+	stepPromoAdminMaxUses = state.StepPromoAdminMaxUses
+	stepPromoAdminDays    = state.StepPromoAdminDays
+
+	stepWizardConfig   = state.StepWizardConfig
+	stepTmplSchemaJSON = state.StepTmplSchemaJSON
 )

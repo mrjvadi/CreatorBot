@@ -4,7 +4,9 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -25,6 +27,8 @@ const (
 	wkTag         = "service_tag"
 	wkPlanID      = "plan_id"
 	wkBotToken    = "bot_token"
+	wkCfgIdx      = "cfg_idx"    // ایندکس فیلد جاری ConfigSchema
+	wkCfgValues   = "cfg_values" // JSON map مقادیر پرشده توسط کاربر
 )
 
 // testTag تگِ مخصوص تست؛ از کاربران عادی مخفی است و فقط ادمین می‌تواند
@@ -231,12 +235,36 @@ func (h *User) WizardFinish(ctx context.Context, c tele.Context, _ string, token
 	}
 
 	// ذخیره توکن
-	st.Step = "wizard_confirm"
 	st.Data[wkBotToken] = token
+
+	// اگر قالب دارای فیلدهای قابل‌تنظیم است، کاربر را به مرحله‌ی پر کردن config ببر
+	tmpl, _ := h.Store.FindTemplateByTypeAndTag(ctx, serviceType, data[wkTag])
+	if tmpl != nil && len(tmpl.ParseConfigSchema()) > 0 {
+		st.Step = state.StepWizardConfig
+		st.Data[wkCfgIdx] = "0"
+		st.Data[wkCfgValues] = "{}"
+		h.SetState(ctx, uid, st)
+		return h.wizardShowConfigField(ctx, c, uid, tmpl.ParseConfigSchema(), 0)
+	}
+
+	// بدون ConfigSchema → مستقیم به تأیید
+	h.SetState(ctx, uid, st)
+	return h.wizardShowConfirm(ctx, c, uid, data, plan)
+}
+
+// wizardShowConfigField فیلد شماره idx از schema را با label + مقدار پیش‌فرض نمایش می‌دهد.
+func (h *User) wizardShowConfigField(ctx context.Context, c tele.Context, uid int64, fields []models.ConfigField, idx int) error {
+	f := fields[idx]
+	return c.Send(h.T(ctx, uid, i18n.KeyWizardConfigField, idx+1, len(fields), f.Label, f.Default), tele.ModeHTML)
+}
+
+// wizardShowConfirm صفحه‌ی تأیید نهایی wizard را نمایش می‌دهد.
+func (h *User) wizardShowConfirm(ctx context.Context, c tele.Context, uid int64, data map[string]string, plan *models.Plan) error {
+	st := h.GetState(ctx, uid)
+	st.Step = "wizard_confirm"
 	h.SetState(ctx, uid, st)
 
-	msg := h.T(ctx, uid, i18n.KeyServiceConfirm, serviceType, st.Data[wkTag], plan.Name, plan.Price)
-
+	msg := h.T(ctx, uid, i18n.KeyServiceConfirm, data[wkServiceType], data[wkTag], plan.Name, plan.Price)
 	kb := &tele.ReplyMarkup{}
 	if plan.IsFree || plan.Price == 0 {
 		kb.Inline(
@@ -249,8 +277,65 @@ func (h *User) WizardFinish(ctx context.Context, c tele.Context, _ string, token
 				kb.Data(h.Btn(ctx, uid, i18n.KeyBtnCancel), "cancel")),
 		)
 	}
-
 	return c.Send(msg, tele.ModeHTML, kb)
+}
+
+// WizardConfigValue مقدار ارسال‌شده توسط کاربر برای یک فیلد ConfigSchema را پردازش می‌کند.
+func (h *User) WizardConfigValue(ctx context.Context, c tele.Context, st state.UserState, text string) error {
+	uid := c.Sender().ID
+	data := st.Data
+	if data == nil {
+		return c.Send(h.T(ctx, uid, i18n.KeyWizardRestart))
+	}
+
+	serviceType := data[wkServiceType]
+	tag := data[wkTag]
+	tmpl, _ := h.Store.FindTemplateByTypeAndTag(ctx, serviceType, tag)
+	if tmpl == nil {
+		h.ClearState(ctx, uid)
+		return c.Send(h.T(ctx, uid, i18n.KeyError))
+	}
+	fields := tmpl.ParseConfigSchema()
+
+	idx, _ := strconv.Atoi(data[wkCfgIdx])
+	if idx >= len(fields) {
+		// نباید اینجا برسیم — ولی اگر رسیدیم confirm نشان بده
+		plan, _ := h.Store.FindPlan(ctx, data[wkPlanID])
+		if plan == nil {
+			return c.Send(h.T(ctx, uid, i18n.KeyError))
+		}
+		return h.wizardShowConfirm(ctx, c, uid, data, plan)
+	}
+
+	// مقادیر موجود را بخوان
+	values := map[string]string{}
+	_ = json.Unmarshal([]byte(data[wkCfgValues]), &values)
+
+	field := fields[idx]
+	if text == "/skip" || text == "" {
+		values[field.Key] = field.Default
+	} else {
+		values[field.Key] = text
+	}
+
+	// آپدیت state
+	valJSON, _ := json.Marshal(values)
+	st.Data[wkCfgValues] = string(valJSON)
+	nextIdx := idx + 1
+	st.Data[wkCfgIdx] = strconv.Itoa(nextIdx)
+
+	if nextIdx >= len(fields) {
+		// آخرین فیلد — به confirm برو
+		plan, _ := h.Store.FindPlan(ctx, data[wkPlanID])
+		if plan == nil {
+			return c.Send(h.T(ctx, uid, i18n.KeyError))
+		}
+		h.SetState(ctx, uid, st)
+		return h.wizardShowConfirm(ctx, c, uid, st.Data, plan)
+	}
+
+	h.SetState(ctx, uid, st)
+	return h.wizardShowConfigField(ctx, c, uid, fields, nextIdx)
 }
 
 // ── Step 5: پرداخت ──────────────────────────────────────
@@ -279,7 +364,8 @@ func (h *User) WizardPay(ctx context.Context, c tele.Context) error {
 		return c.Edit(h.T(ctx, uid, i18n.KeyWizardLowBalance), tele.ModeHTML)
 	}
 
-	return h.Provision(ctx, c, u, plan, token, serviceType, data[wkTag], invoiceCode)
+	extraEnv := parseCfgValues(data[wkCfgValues])
+	return h.Provision(ctx, c, u, plan, token, serviceType, data[wkTag], invoiceCode, extraEnv)
 }
 
 func (h *User) WizardCreateFree(ctx context.Context, c tele.Context) error {
@@ -297,22 +383,39 @@ func (h *User) WizardCreateFree(ctx context.Context, c tele.Context) error {
 		return c.Edit(h.T(ctx, uid, i18n.KeyError))
 	}
 
-	return h.Provision(ctx, c, u, plan, data[wkBotToken], data[wkServiceType], data[wkTag], "")
+	extraEnv := parseCfgValues(data[wkCfgValues])
+	return h.Provision(ctx, c, u, plan, data[wkBotToken], data[wkServiceType], data[wkTag], "", extraEnv)
 }
 
 // ── Core Provisioning ────────────────────────────────────
+
+// parseCfgValues مقادیر ذخیره‌شده در wkCfgValues را به map برمی‌گرداند.
+func parseCfgValues(jsonStr string) map[string]string {
+	m := map[string]string{}
+	if jsonStr != "" {
+		_ = json.Unmarshal([]byte(jsonStr), &m)
+	}
+	return m
+}
 
 func (h *User) Provision(
 	ctx context.Context, c tele.Context,
 	u *models.User, plan *models.Plan,
 	token, serviceType, tag, invoiceCode string,
+	extraEnv map[string]string,
 ) error {
 	uid := c.Sender().ID
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	_ = c.Edit(h.T(ctx, uid, i18n.KeyServiceCreating))
 
-	server, err := h.Store.SelectLeastLoadedServer(ctx)
+	// بازخورد کاربر ۲۰۲۶-۰۷-۰۵: «فقط پنل‌های فری به سرور با تگ فری بیاد» —
+	// پلن رایگان فقط روی سروری با تگ "free" جا می‌گیرد، پلن پولی محدودیتی ندارد.
+	requiredTag := ""
+	if plan.IsFree {
+		requiredTag = "free"
+	}
+	server, err := h.Store.SelectLeastLoadedServer(ctx, requiredTag)
 	if err != nil || server == nil {
 		h.RefundOnFailure(ctx, u, plan, invoiceCode)
 		return c.Send(h.T(ctx, uid, i18n.KeyWizardNoServer))
@@ -386,18 +489,44 @@ func (h *User) Provision(
 		auth.JWTConfig{AccessSecret: h.EncryptKey},
 	)
 
+	// ── صدور لایسنس ضدکپی/ضدکلون ──────────────────────────────
+	// license-service این instance_id را به همین server.ID «می‌چسباند».
+	// اگر بعداً همین BotID از سرور دیگری check-in کند (مثلاً کسی image
+	// container را کپی و جای دیگری اجرا کرده)، license-service آن را
+	// clone-warning می‌زند. عمداً fail-open: اگر license-service در دسترس
+	// نباشد، deploy را متوقف نمی‌کنیم — فقط لاگ می‌شود و LICENSE_TOKEN خالی
+	// می‌ماند (engine داخل bot هم همین رفتار fail-open را دارد).
+	licenseToken := ""
+	if h.License != nil {
+		lt, lerr := h.License.Issue(ctx, botID, "bot_"+fmt.Sprint(botID), u.ID.String(), server.ID.String(), planIDStr)
+		if lerr != nil {
+			h.Log.Error("license issue failed — deploying without LICENSE_TOKEN", h.F("err", lerr), h.F("bot_id", botID))
+		} else {
+			licenseToken = lt
+		}
+	}
+
+	envVars := map[string]string{
+		"BOT_TOKEN":      token,
+		"INSTANCE_ID":    "bot_" + fmt.Sprint(botID),
+		"OWNER_TELEGRAM": fmt.Sprint(u.TelegramID),
+		// ربات‌های محصول (uploader-bot و ...) مالک را از OWNER_ID می‌خوانند.
+		"OWNER_ID":      fmt.Sprint(u.TelegramID),
+		"PLAN_ID":       planIDStr,
+		"JWT_TOKEN":     jwtToken,
+		"LICENSE_TOKEN": licenseToken,
+		"SERVER_ID":     server.ID.String(),
+	}
+	// مقادیر ConfigSchema که کاربر شخصی‌سازی کرده — با overlay (برنده‌ی تعارض)
+	for k, v := range extraEnv {
+		envVars[k] = v
+	}
 	cmd := protocol.DeployCommand{
 		Type:          protocol.MsgDeploy,
 		ContainerName: containerName,
 		ImageName:     tmpl.ImageName,
 		ImageTag:      tmpl.ImageTag,
-		EnvVars: map[string]string{
-			"BOT_TOKEN":      token,
-			"INSTANCE_ID":    "bot_" + fmt.Sprint(botID),
-			"OWNER_TELEGRAM": fmt.Sprint(u.TelegramID),
-			"PLAN_ID":        planIDStr,
-			"JWT_TOKEN":      jwtToken,
-		},
+		EnvVars:       envVars,
 	}
 
 	if h.NC == nil {

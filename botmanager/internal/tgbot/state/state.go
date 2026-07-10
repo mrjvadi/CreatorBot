@@ -28,6 +28,9 @@ const (
 	// مدیریت کاربر
 	StepUserAction Step = "user:action"
 	StepPlanSelect Step = "plan:select"
+	// جستجوی کاربر با TelegramID از لیستِ ادمین — قبلاً بعد از لیست هیچ
+	// state‌ای فعال نمی‌شد، پس تایپِ TelegramID هیچ اتفاقی نمی‌افتاد.
+	StepAdminUserSearch Step = "admin:user:search"
 
 	// wizard ساخت ربات
 	StepWizardToken Step = "wiz:token"
@@ -45,9 +48,34 @@ const (
 
 	// ادمین — ارسال همگانی
 	StepBroadcastText Step = "broadcast:text"
+	// ادمین — فوروارد همگانی: منتظرِ پیامی که ادمین می‌فرستد/فوروارد می‌کند،
+	// سپس منتظرِ تأییدِ ارسال به همه.
+	StepBroadcastForwardWait    Step = "broadcast:fwd:wait"
+	StepBroadcastForwardConfirm Step = "broadcast:fwd:confirm"
 
 	// ادمین — دپلوی تستی سرویس
 	StepAdminTestToken Step = "admin:test:token"
+
+	// ادمین — source-service worker (license/تلگرام)
+	StepSWAppID   Step = "sw:appid"
+	StepSWAppHash Step = "sw:apphash"
+	StepSWPhone   Step = "sw:phone"
+	StepSWLabel   Step = "sw:label"
+
+	// کاربر — وارد کردن کدِ پروموشن
+	StepPromoRedeem Step = "promo:redeem"
+
+	// ادمین — ساختِ کدِ پروموشن
+	StepPromoAdminCode    Step = "promo:admin:code"
+	StepPromoAdminAmount  Step = "promo:admin:amount"
+	StepPromoAdminMaxUses Step = "promo:admin:maxuses"
+	StepPromoAdminDays    Step = "promo:admin:days"
+
+	// wizard — تنظیمات اختصاصی: کاربر فیلدهای ConfigSchema را پر می‌کند
+	StepWizardConfig Step = "wiz:config"
+
+	// ادمین — ویرایش ConfigSchema یک قالب
+	StepTmplSchemaJSON Step = "tmpl:schema:json"
 )
 
 // UserState وضعیتِ ذخیره‌شده‌ی کاربر در Redis.

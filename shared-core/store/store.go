@@ -15,9 +15,17 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
+)
+
+// خطاهای شناخته‌شده‌ی redeem — کالر (botmanager) از errors.Is برای تشخیص
+// دقیقِ دلیلِ رد شدن استفاده می‌کند (به‌جای string matching روی پیام).
+var (
+	ErrPromoNotRedeemable   = errors.New("promo code not redeemable")
+	ErrPromoAlreadyRedeemed = errors.New("promo code already redeemed by this user")
 )
 
 // Store aggregates all botmanager repositories.
@@ -58,22 +66,37 @@ func (s *Store) DeleteServer(ctx context.Context, id any) error {
 	return s.db.Conn().WithContext(ctx).Delete(&models.Server{}, "id = ?", id).Error
 }
 
-// MarkServerOnline updates IsOnline=true and LastSeen=now.
+// MarkServerOnline updates IsOnline=true and LastSeen=now. OnlineSince only moves forward
+// if the server was previously offline (or never had one) — a server that's continuously
+// online keeps its original OnlineSince across repeated heartbeats.
 // Called by apimanager when it receives a heartbeat from agentmanager.
 func (s *Store) MarkServerOnline(ctx context.Context, serverID any) error {
 	return s.db.Conn().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?", serverID).
-		Updates(map[string]any{"is_online": true, "last_seen": gorm.Expr("NOW()")}).Error
+		Updates(map[string]any{
+			"is_online": true,
+			"last_seen": gorm.Expr("NOW()"),
+			"online_since": gorm.Expr(
+				"CASE WHEN is_online = false OR online_since IS NULL THEN NOW() ELSE online_since END"),
+		}).Error
 }
 
 // MarkServerOffline sets IsOnline=false for servers whose last heartbeat
 // is older than the given threshold. Called by a background job in apimanager.
+//
+// باگ واقعی که این‌جا بود (۲۰۲۶-۰۷-۰۵، از لاگ واقعی پیدا شد): placeholder ی «?» داخل رشته‌ی
+// تک‌کوتیشن `INTERVAL '? seconds'` قرار داشت — یعنی از نظر GORM/driver داخل یک literal رشته‌ای
+// بود، نه یک جای‌گزینِ واقعی، و باعث خطای «mismatched param and argument count» می‌شد. این کد
+// از قبل در فایل بود ولی تا این‌که MarkStaleServersOffline واقعاً صدا زده شود (تازه در همین
+// جلسه، با goroutine دوره‌ای در main.go) هیچ‌وقت اجرا نشده بود که این باگ خودش را نشان بدهد.
+// راه‌حل: عدد را با ضرب در INTERVAL '1 second' بیرون از هر quote قرار می‌دهیم — یک الگوی
+// استاندارد و امنِ پارامتردارکردنِ interval در PostgreSQL.
 func (s *Store) MarkStaleServersOffline(ctx context.Context, thresholdSeconds int) error {
 	return s.db.Conn().WithContext(ctx).
 		Model(&models.Server{}).
-		Where("is_online = true AND last_seen < NOW() - INTERVAL '? seconds'", thresholdSeconds).
-		Update("is_online", false).Error
+		Where("is_online = true AND last_seen < NOW() - (? * INTERVAL '1 second')", thresholdSeconds).
+		Updates(map[string]any{"is_online": false, "online_since": nil}).Error
 }
 
 // ---- Template ----
@@ -90,6 +113,24 @@ func (s *Store) FindTemplate(ctx context.Context, id any) (*models.BotTemplate, 
 		return nil, nil
 	}
 	return &t, err
+}
+
+// UpdateTemplate فیلدهای یک تمپلیت موجود را ذخیره می‌کند (t.ID باید ست شده باشد).
+func (s *Store) UpdateTemplate(ctx context.Context, t *models.BotTemplate) error {
+	return s.db.Conn().WithContext(ctx).Save(t).Error
+}
+
+// UpdateTemplateSchema فقط فیلد config_schema یک قالب را به‌روز می‌کند.
+func (s *Store) UpdateTemplateSchema(ctx context.Context, id any, schema string) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.BotTemplate{}).
+		Where("id = ?", id).
+		Update("config_schema", schema).Error
+}
+
+// DeleteTemplate یک تمپلیت را حذف می‌کند (soft delete).
+func (s *Store) DeleteTemplate(ctx context.Context, id any) error {
+	return s.db.Conn().WithContext(ctx).Delete(&models.BotTemplate{}, "id = ?", id).Error
 }
 
 func (s *Store) CreateTemplate(ctx context.Context, t *models.BotTemplate) error {
@@ -123,8 +164,33 @@ func (s *Store) UpdateInstanceStatus(ctx context.Context, id any, status models.
 		Update("status", status).Error
 }
 
+// UpdateInstance رکورد کاملِ instance را ذخیره می‌کند — برای ویرایش دستیِ ادمین (انقضا/پلن/
+// lock mode) از پنل «همه‌ی ربات‌ها» که قبلاً هیچ راه ویرایشی نداشت (بازخورد کاربر ۲۰۲۶-۰۷-۰۵).
+func (s *Store) UpdateInstance(ctx context.Context, inst *models.BotInstance) error {
+	return s.db.Conn().WithContext(ctx).Save(inst).Error
+}
+
+// UpdateInstanceServer یک instance را به سرور دیگری منتقل می‌کند (فقط رکورد DB — خودِ
+// stop/deploy روی سرورهای مبدا/مقصد جداگانه توسط handler انجام می‌شود). بازخورد کاربر
+// ۲۰۲۶-۰۷-۰۵: «بتونم کانتینر رو از یه سرور به سرور دیگه منتقل کنم».
+func (s *Store) UpdateInstanceServer(ctx context.Context, id any, serverID any) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.BotInstance{}).
+		Where("id = ?", id).
+		Update("server_id", serverID).Error
+}
+
 func (s *Store) DeleteInstance(ctx context.Context, id any) error {
 	return s.db.Conn().WithContext(ctx).Delete(&models.BotInstance{}, "id = ?", id).Error
+}
+
+// UpdateInstanceEnvOverrides مقادیرِ تنظیماتِ کاربرمحورِ instance را ذخیره می‌کند (رشته‌ی
+// JSON، طبق فیلد EnvOverrides). این مقادیر تا restart بعدی روی کانتینر واقعی اعمال نمی‌شوند.
+func (s *Store) UpdateInstanceEnvOverrides(ctx context.Context, id any, envJSON string) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.BotInstance{}).
+		Where("id = ?", id).
+		Update("env_overrides", envJSON).Error
 }
 
 // UpdateInstanceExpiry تاریخ انقضای یک instance را به‌روزرسانی می‌کند.
@@ -158,6 +224,23 @@ func (s *Store) ListPlans(ctx context.Context) ([]models.Plan, error) {
 
 func (s *Store) CreatePlan(ctx context.Context, p *models.Plan) error {
 	return s.db.Conn().WithContext(ctx).Create(p).Error
+}
+
+// ListAllPlans همه‌ی پلن‌ها را برمی‌گرداند (فعال و غیرفعال) — برای پنل مدیریت،
+// برخلاف ListPlans/ListActivePlans که فقط فعال‌ها را برای ویترین خرید نشان می‌دهند.
+func (s *Store) ListAllPlans(ctx context.Context) ([]models.Plan, error) {
+	var list []models.Plan
+	return list, s.db.Conn().WithContext(ctx).Preload("Limits").Order("price ASC").Find(&list).Error
+}
+
+// UpdatePlan فیلدهای یک پلن موجود را ذخیره می‌کند (p.ID باید ست شده باشد).
+func (s *Store) UpdatePlan(ctx context.Context, p *models.Plan) error {
+	return s.db.Conn().WithContext(ctx).Save(p).Error
+}
+
+// DeletePlan یک پلن را حذف می‌کند (soft delete، چون Plan از Base ارث می‌برد).
+func (s *Store) DeletePlan(ctx context.Context, id any) error {
+	return s.db.Conn().WithContext(ctx).Delete(&models.Plan{}, "id = ?", id).Error
 }
 
 // ---- Instance (list all) ----
@@ -286,7 +369,38 @@ func (s *Store) MarkServerOnlineByServerID(ctx context.Context, serverID string)
 	return s.db.Conn().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?::uuid", serverID).
-		Updates(map[string]any{"is_online": true, "last_seen": gorm.Expr("NOW()")}).Error
+		Updates(map[string]any{
+			"is_online": true,
+			"last_seen": gorm.Expr("NOW()"),
+			"online_since": gorm.Expr(
+				"CASE WHEN is_online = false OR online_since IS NULL THEN NOW() ELSE online_since END"),
+		}).Error
+}
+
+// RecordHeartbeat مثل MarkServerOnlineByServerID عمل می‌کند (is_online/last_seen/online_since)
+// و علاوه بر آن آمار اختیاریِ CPU/RAM (فعلاً همیشه nil — رجوع به کامنت HeartbeatMsg در
+// shared-core/protocol) و آخرین اسنپ‌شات containers را هم ذخیره می‌کند. این دومی از قبل در
+// هر heartbeat می‌آمد ولی هیچ‌جا ذخیره نمی‌شد (بازخورد کاربر ۲۰۲۶-۰۷-۰۳: نمایش کامل سرورها).
+func (s *Store) RecordHeartbeat(
+	ctx context.Context,
+	serverID string,
+	cpuPercent *float64,
+	memUsedMB, memTotalMB *int64,
+	containersJSON string,
+) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.Server{}).
+		Where("id = ?::uuid", serverID).
+		Updates(map[string]any{
+			"is_online": true,
+			"last_seen": gorm.Expr("NOW()"),
+			"online_since": gorm.Expr(
+				"CASE WHEN is_online = false OR online_since IS NULL THEN NOW() ELSE online_since END"),
+			"cpu_percent":     cpuPercent,
+			"memory_used_mb":  memUsedMB,
+			"memory_total_mb": memTotalMB,
+			"last_containers": containersJSON,
+		}).Error
 }
 
 // FindBestOnlineServer اولین سرور آنلاین را با کمترین بار برمی‌گرداند.
@@ -400,6 +514,19 @@ func (s *Store) FindPayment(ctx context.Context, id string) (*models.Payment, er
 
 func (s *Store) UpdatePayment(ctx context.Context, p *models.Payment) error {
 	return s.db.Conn().WithContext(ctx).Save(p).Error
+}
+
+func (s *Store) ListPaymentsByUser(ctx context.Context, userID any) ([]models.Payment, error) {
+	var list []models.Payment
+	return list, s.db.Conn().WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&list).Error
+}
+
+func (s *Store) ListAllPayments(ctx context.Context) ([]models.Payment, error) {
+	var list []models.Payment
+	return list, s.db.Conn().WithContext(ctx).Order("created_at DESC").Find(&list).Error
 }
 
 // ---- Subscription ----
@@ -562,6 +689,17 @@ func (s *Store) CanCreateInstance(ctx context.Context, userID uuid.UUID, botType
 
 func timeNow() time.Time { return time.Now() }
 
+// FindUsersByIDs چند کاربر را یک‌جا می‌گیرد — برای جاهایی که قبلاً در یک
+// حلقه FindUserByID صدا زده می‌شد (N+1)، مثل RunExpiryScan.
+func (s *Store) FindUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]models.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var users []models.User
+	err := s.db.Conn().WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
+	return users, err
+}
+
 func (s *Store) FindUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	var u models.User
 	err := s.db.Conn().WithContext(ctx).Where("id = ?", id).First(&u).Error
@@ -608,7 +746,15 @@ func (s *Store) ListPlansByType(ctx context.Context, serviceType string) ([]mode
 	return plans, err
 }
 
-func (s *Store) SelectLeastLoadedServer(ctx context.Context) (*models.Server, error) {
+// SelectLeastLoadedServer سرورِ آنلاینِ با کمترین تعداد instance فعال را برمی‌گرداند —
+// برخلاف FindBestOnlineServer (که فقط بر اساس تازگی heartbeat انتخاب می‌کند و قبلاً این‌جا
+// این متد اصلاً صدا زده نمی‌شد)، این یکی واقعاً بار را بین سرورها پخش می‌کند.
+//
+// requiredTag اگر خالی نباشد، فقط سرورهایی که این تگ را در Tags شان دارند در نظر گرفته
+// می‌شوند (بازخورد کاربر ۲۰۲۶-۰۷-۰۵: «فقط پنل‌های فری به سرور با تگ فری بیاد» — caller باید
+// روی fallback به "" تصمیم بگیرد اگر سروری با آن تگ پیدا نشد).
+// سرورهایی که به MaxContainers شان رسیده‌اند (۰ = نامحدود) از انتخاب کنار گذاشته می‌شوند.
+func (s *Store) SelectLeastLoadedServer(ctx context.Context, requiredTag string) (*models.Server, error) {
 	var server models.Server
 	err := s.db.Conn().WithContext(ctx).
 		Raw(`
@@ -616,6 +762,13 @@ func (s *Store) SelectLeastLoadedServer(ctx context.Context) (*models.Server, er
 		FROM servers s
 		WHERE s.is_online = true
 		  AND s.deleted_at IS NULL
+		  AND (s.max_containers = 0 OR s.max_containers > (
+			SELECT COUNT(*) FROM bot_instances bi
+			WHERE bi.server_id::text = s.id::text
+			  AND bi.status != 'deleted'
+			  AND bi.deleted_at IS NULL
+		  ))
+		  AND (? = '' OR (',' || COALESCE(s.tags, '') || ',') LIKE '%,' || ? || ',%')
 		ORDER BY (
 			SELECT COUNT(*) FROM bot_instances bi
 			WHERE bi.server_id::text = s.id::text
@@ -623,11 +776,16 @@ func (s *Store) SelectLeastLoadedServer(ctx context.Context) (*models.Server, er
 			  AND bi.deleted_at IS NULL
 		) ASC
 		LIMIT 1
-	`).First(&server).Error
+	`, requiredTag, requiredTag).First(&server).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	return &server, err
+}
+
+// UpdateServer اطلاعات یک سرور را کامل ذخیره می‌کند (نام/آی‌پی/تگ‌ها/سقف container).
+func (s *Store) UpdateServer(ctx context.Context, srv *models.Server) error {
+	return s.db.Conn().WithContext(ctx).Save(srv).Error
 }
 
 // ── Audit Log ─────────────────────────────────────────────
@@ -659,4 +817,168 @@ func (s *Store) ListAdminAuditLogs(ctx context.Context, action, targetType strin
 		q = q.Where("target_type = ?", targetType)
 	}
 	return logs, q.Find(&logs).Error
+}
+
+// ---- SourceWorkerConfig ----
+// پیاده‌سازی سمتِ ذخیره‌سازی برای قرارداد source.worker.* (شرح کامل در
+// shared-core/protocol/source_worker.go و مدل در shared-core/models).
+
+func (s *Store) CreateSourceWorkerConfig(ctx context.Context, cfg *models.SourceWorkerConfig) error {
+	return s.db.Conn().WithContext(ctx).Create(cfg).Error
+}
+
+func (s *Store) ListSourceWorkerConfigs(ctx context.Context) ([]models.SourceWorkerConfig, error) {
+	var list []models.SourceWorkerConfig
+	err := s.db.Conn().WithContext(ctx).Order("created_at DESC").Find(&list).Error
+	return list, err
+}
+
+func (s *Store) FindSourceWorkerConfigByLicenseKey(ctx context.Context, licenseKey string) (*models.SourceWorkerConfig, error) {
+	if licenseKey == "" {
+		return nil, nil
+	}
+	var cfg models.SourceWorkerConfig
+	err := s.db.Conn().WithContext(ctx).Where("license_key = ?", licenseKey).First(&cfg).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &cfg, err
+}
+
+func (s *Store) FindSourceWorkerConfig(ctx context.Context, id any) (*models.SourceWorkerConfig, error) {
+	var cfg models.SourceWorkerConfig
+	err := s.db.Conn().WithContext(ctx).First(&cfg, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &cfg, err
+}
+
+func (s *Store) DeleteSourceWorkerConfig(ctx context.Context, id any) error {
+	return s.db.Conn().WithContext(ctx).Delete(&models.SourceWorkerConfig{}, "id = ?", id).Error
+}
+
+func (s *Store) SetSourceWorkerConfigActive(ctx context.Context, id any, active bool) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.SourceWorkerConfig{}).
+		Where("id = ?", id).
+		Update("is_active", active).Error
+}
+
+// ListUsersByActivePlan کاربرانی که همین الان یک اشتراکِ فعال از پلنِ
+// داده‌شده دارند — برای broadcastِ فیلترشده به تفکیکِ پلن.
+func (s *Store) ListUsersByActivePlan(ctx context.Context, planID string) ([]models.User, error) {
+	if isBlankID(planID) {
+		return nil, nil
+	}
+	var users []models.User
+	err := s.db.Conn().WithContext(ctx).
+		Joins("JOIN subscriptions ON subscriptions.user_id = users.id").
+		Where("subscriptions.plan_id = ? AND subscriptions.is_active = ?", planID, true).
+		Find(&users).Error
+	return users, err
+}
+
+// ListUsersWithoutActivePlan کاربرانی که هیچ اشتراکِ فعالی ندارند — برای
+// broadcastِ فیلترشده (مثلاً برای پیشنهادِ خرید پلن).
+func (s *Store) ListUsersWithoutActivePlan(ctx context.Context) ([]models.User, error) {
+	var users []models.User
+	err := s.db.Conn().WithContext(ctx).
+		Where("NOT EXISTS (SELECT 1 FROM subscriptions WHERE subscriptions.user_id = users.id AND subscriptions.is_active = true)").
+		Find(&users).Error
+	return users, err
+}
+
+// ---- PromoCode ----
+
+func (s *Store) CreatePromoCode(ctx context.Context, p *models.PromoCode) error {
+	return s.db.Conn().WithContext(ctx).Create(p).Error
+}
+
+func (s *Store) ListPromoCodes(ctx context.Context) ([]models.PromoCode, error) {
+	var list []models.PromoCode
+	err := s.db.Conn().WithContext(ctx).Order("created_at DESC").Find(&list).Error
+	return list, err
+}
+
+func (s *Store) FindPromoCodeByCode(ctx context.Context, code string) (*models.PromoCode, error) {
+	if code == "" {
+		return nil, nil
+	}
+	var p models.PromoCode
+	err := s.db.Conn().WithContext(ctx).Where("code = ?", code).First(&p).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &p, err
+}
+
+func (s *Store) FindPromoCode(ctx context.Context, id any) (*models.PromoCode, error) {
+	var p models.PromoCode
+	err := s.db.Conn().WithContext(ctx).First(&p, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &p, err
+}
+
+func (s *Store) DeletePromoCode(ctx context.Context, id any) error {
+	return s.db.Conn().WithContext(ctx).Delete(&models.PromoCode{}, "id = ?", id).Error
+}
+
+func (s *Store) SetPromoCodeActive(ctx context.Context, id any, active bool) error {
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.PromoCode{}).
+		Where("id = ?", id).
+		Update("is_active", active).Error
+}
+
+// RedeemPromoCode «claim» اتمیکِ یک redeem است: با قفلِ ردیف (SELECT ... FOR
+// UPDATE) از race بین دو تلاشِ هم‌زمان (که هردو چکِ «هنوز تمام نشده» را رد
+// کنند) جلوگیری می‌کند. این تابع فقط بخشِ DB (شمارنده + رکوردِ مصرف) را انجام
+// می‌دهد؛ اعتبار واقعی در کیفِ پول (botpay/NATS) جداگانه توسط کالر اعطا
+// می‌شود — عمداً *بعد* از claim موفق، چون در بدترین حالت (claim موفق ولی
+// Credit ناموفق) کاربر پولی از دست نمی‌دهد، فقط باید دوباره تلاش/پیگیری کند؛
+// ترتیبِ برعکس می‌توانست به دو بار اعتباردهی برای یک claim منجر شود.
+func (s *Store) RedeemPromoCode(ctx context.Context, promoID, userID uuid.UUID) error {
+	return s.db.Conn().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var p models.PromoCode
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&p, "id = ?", promoID).Error; err != nil {
+			return err
+		}
+		if !p.IsRedeemable() {
+			return ErrPromoNotRedeemable
+		}
+		var count int64
+		if err := tx.Model(&models.PromoRedemption{}).
+			Where("promo_id = ? AND user_id = ?", promoID, userID).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return ErrPromoAlreadyRedeemed
+		}
+		if err := tx.Model(&models.PromoCode{}).
+			Where("id = ?", promoID).
+			Update("used_count", gorm.Expr("used_count + 1")).Error; err != nil {
+			return err
+		}
+		return tx.Create(&models.PromoRedemption{PromoID: promoID, UserID: userID}).Error
+	})
+}
+
+// UpdateSourceWorkerHeartbeat آخرین heartbeat یک worker را (با WorkerID، نه
+// LicenseKey — worker بعد از register دیگر LicenseKey را با خودش حمل
+// نمی‌کند) ثبت می‌کند. fire-and-forget است، پس نبودِ رکورد خطای مهمی نیست.
+func (s *Store) UpdateSourceWorkerHeartbeat(ctx context.Context, workerID, status string) error {
+	if workerID == "" {
+		return nil
+	}
+	return s.db.Conn().WithContext(ctx).
+		Model(&models.SourceWorkerConfig{}).
+		Where("worker_id = ?", workerID).
+		Updates(map[string]any{
+			"last_heartbeat_at": timeNow(),
+			"last_status":       status,
+		}).Error
 }

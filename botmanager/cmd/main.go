@@ -2,23 +2,25 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os/signal"
 	"syscall"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
 
+	"github.com/mrjvadi/creatorbot/botmanager/internal/sourceworker"
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot"
+	"github.com/mrjvadi/creatorbot/shared-core/agentlistener"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
-	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared-core/ton"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -46,6 +48,11 @@ type Config struct {
 	BotpayURL   string `mapstructure:"BOTPAY_URL"`
 	BotpayKey   string `mapstructure:"BOTPAY_API_KEY"`
 	BotpaySvcID string `mapstructure:"BOTPAY_SERVICE_ID"`
+
+	// ServiceHMACSecret همان راز مادری است که botpay هم دارد — این سرویس
+	// کلید pay.* خودش را از آن مشتق می‌کند (auth.ComputeServiceKey)، به‌جای
+	// یک کلید ثابت جداگانه که باید دستی هماهنگ نگه داشته شود.
+	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
 }
 
 func main() {
@@ -84,6 +91,7 @@ func main() {
 		}
 		defer nc.Close()
 		log.Info("nats connected")
+		log.AttachNATS(nc, "botmanager")
 	} else {
 		log.Info("NATS not configured — docker commands disabled")
 	}
@@ -113,17 +121,25 @@ func main() {
 		Network:       cfg.TONNetwork,
 	})
 	var payClient *natspayclient.Client
+	var licenseClient *licenseclient.Client
 	if nc != nil {
+		if cfg.ServiceHMACSecret == "" {
+			log.Error("SERVICE_HMAC_SECRET not set — botpay/license-service will reject all requests from botmanager")
+		}
 		payClient = natspayclient.New(nc, cache, natspayclient.Config{
 			ServiceID:  "botmanager",
-			ServiceKey: cfg.BotpayKey,
+			ServiceKey: auth.ComputeServiceKey(cfg.ServiceHMACSecret, "botmanager"),
 		})
 		log.Info("botpay connected via NATS")
 		if err := payClient.SubscribeWalletUpdates(); err != nil {
 			log.Error("wallet updates subscription failed", ports.F("err", err))
 		}
+		licenseClient = licenseclient.New(nc, licenseclient.Config{
+			ServiceID:  "botmanager",
+			ServiceKey: auth.ComputeServiceKey(cfg.ServiceHMACSecret, "botmanager"),
+		})
 	}
-	h := tgbot.NewHandler(rawBot, st, cache, dockerManager, log, cfg.OwnerID, cfg.EncryptKey, tonClient, payClient, nc)
+	h := tgbot.NewHandler(rawBot, st, cache, dockerManager, log, cfg.OwnerID, cfg.EncryptKey, tonClient, payClient, nc, licenseClient)
 	tgbot.Register(rawBot, h)
 
 	// ── NATS: دریافت heartbeat و نتایج Docker ─────────────────
@@ -131,49 +147,53 @@ func main() {
 	defer stop()
 
 	if nc != nil {
-		// heartbeat
-		nc.QueueSubscribe("agent.*.heartbeat", "botmanager", func(data []byte) {
-			var msg protocol.HeartbeatMsg
-			if err := json.Unmarshal(data, &msg); err != nil {
-				return
-			}
+		// heartbeat — queue group "managers": فقط یک سرویس از بین botmanager/apimanager پردازش می‌کند
+		nc.QueueSubscribe("agent.*.heartbeat", "managers", func(data []byte) {
 			cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			_ = st.MarkServerOnlineByServerID(cctx, msg.ServerID)
-			for _, c := range msg.Containers {
-				switch c.State {
-				case "running":
-					_ = st.UpdateInstanceStatusByContainerName(cctx, c.Name, models.StatusRunning)
-				case "exited", "dead":
-					_ = st.UpdateInstanceStatusByContainerName(cctx, c.Name, models.StatusStopped)
-				}
-			}
+			agentlistener.HandleHeartbeat(cctx, data, st, log)
 		})
 
-		// نتایج دستورات
-		nc.QueueSubscribe("agent.*.result", "botmanager", func(data []byte) {
-			var msg protocol.ResultMsg
-			if err := json.Unmarshal(data, &msg); err != nil {
-				return
-			}
+		// نتایج دستورات (Deploy/Stop/Remove) — منطق کامل در shared-core/agentlistener
+		nc.QueueSubscribe("agent.*.result", "managers", func(data []byte) {
 			cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			if msg.Success {
-				_ = st.UpdateInstanceStatusByContainerName(cctx, msg.ContainerName, models.StatusRunning)
-			} else {
-				_ = st.UpdateInstanceStatusByContainerName(cctx, msg.ContainerName, models.StatusError)
-			}
-			log.Info("docker result",
-				ports.F("cmd", msg.CommandType),
-				ports.F("success", msg.Success),
-				ports.F("container", msg.ContainerName))
+			agentlistener.HandleResult(cctx, data, st, log)
 		})
 
 		log.Info("NATS listeners started")
+
+		// source-service worker contract (source.worker.register/heartbeat/update)
+		// — شرح در shared-core/protocol/source_worker.go و
+		// shared/PENDING_CHANGES.md. تا امروز پیاده نشده بود؛ اگر
+		// SERVICE_HMAC_SECRET ست نباشد، پاسخ‌ها همیشه unauthorized خواهند بود
+		// (همان رفتاری که pay.*/license.* هم دارند).
+		if err := sourceworker.Register(nc, st, sourceworker.Config{
+			ServiceHMACSecret: cfg.ServiceHMACSecret,
+			EncryptKey:        cfg.EncryptKey,
+		}, log); err != nil {
+			log.Error("source-service worker responders failed to register", ports.F("err", err))
+		}
 	}
 
 	// ── یادآورِ انقضای سرویس‌ها (job پس‌زمینه) ────────────────
 	h.StartExpiryReminders(ctx)
+
+	// ── سرورهای بی‌heartbeat را offline نشان بده ─────────────
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := st.MarkStaleServersOffline(context.Background(), 60); err != nil {
+					log.Warn("mark stale servers offline", ports.F("err", err))
+				}
+			}
+		}
+	}()
 
 	go func() {
 		<-ctx.Done()

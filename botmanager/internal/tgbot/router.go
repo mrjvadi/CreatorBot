@@ -28,6 +28,10 @@ func (h *Handler) onCallback(c tele.Context) error {
 		arg = parts[1]
 	}
 
+	if isAdminOnlyAction(action) && !h.IsAdmin(c) {
+		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyNoAccess), ShowAlert: true})
+	}
+
 	switch action {
 
 	case "lang":
@@ -61,8 +65,14 @@ func (h *Handler) onCallback(c tele.Context) error {
 		return h.BroadcastStartText(ctx, c)
 	case "bc_confirm":
 		return h.BroadcastConfirm(ctx, c)
-	case "bc_forward", "bc_filtered":
-		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
+	case "bc_forward":
+		return h.BroadcastForwardStart(ctx, c)
+	case "bc_fwd_confirm":
+		return h.BroadcastForwardConfirm(ctx, c)
+	case "bc_filtered":
+		return h.BroadcastFilteredMenu(ctx, c)
+	case "bc_filter":
+		return h.BroadcastFilterSelect(ctx, c, arg)
 
 	// ── کیف پول — بررسی پرداخت ───────────────────────────
 	// وضعیتِ خودِ تراکنش (با کُد فاکتور) به‌صورت اعلان نشان داده می‌شود؛
@@ -89,11 +99,55 @@ func (h *Handler) onCallback(c tele.Context) error {
 	case "admin_sys_templates":
 		_ = c.Respond()
 		return h.AdminTemplatesList(ctx, c)
+	case "admin_sys_sourceworkers":
+		_ = c.Respond()
+		return h.AdminSourceWorkersList(ctx, c)
+	case "admin_sys_promo":
+		_ = c.Respond()
+		return h.AdminPromoList(ctx, c)
 	case "admin_sys_member", "admin_sys_nats", "admin_sys_db", "admin_sys_metrics":
 		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
 
+	// ── ادمین — کدهای پروموشن ─────────────────────────────
+	case "admin_promo_add":
+		return h.AdminPromoStart(ctx, c)
+	case "admin_promo_del":
+		defer func() { _ = c.Respond() }()
+		return h.AdminPromoDeleteConfirm(ctx, c, arg)
+	case "admin_promo_del_do":
+		defer func() { _ = c.Respond() }()
+		return h.AdminPromoDelete(ctx, c, arg)
+	case "admin_promo_toggle":
+		return h.AdminPromoToggle(ctx, c, arg)
+
+	// ── ادمین — source-service workerها ──────────────────
+	case "admin_sw_add":
+		return h.AdminSourceWorkerStart(ctx, c)
+	case "admin_sw_del":
+		defer func() { _ = c.Respond() }()
+		return h.AdminSourceWorkerDeleteConfirm(ctx, c, arg)
+	case "admin_sw_del_do":
+		defer func() { _ = c.Respond() }()
+		return h.AdminSourceWorkerDelete(ctx, c, arg)
+	case "admin_sw_toggle":
+		return h.AdminSourceWorkerToggle(ctx, c, arg)
+
+	// ── ادمین — عملیاتِ روی بات‌ها (از لیستِ AdminBotsList) ─
+	case "admin_bot_stop":
+		return h.AdminBotStop(ctx, c, arg)
+	case "admin_bot_start":
+		return h.AdminBotStart(ctx, c, arg)
+	case "admin_bot_del":
+		return h.AdminBotDeleteConfirm(ctx, c, arg)
+	case "admin_bot_del_do":
+		return h.AdminBotDelete(ctx, c, arg)
+
+	// ── کاربر — redeem کدِ پروموشن ────────────────────────
+	case "redeem_promo":
+		return h.PromoRedeemStart(ctx, c)
+
 	// ── متفرقه (stub) ─────────────────────────────────────
-	case "redeem_promo", "sys_notif":
+	case "sys_notif":
 		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
 
 	case "sys_lang":
@@ -227,6 +281,11 @@ func (h *Handler) onCallback(c tele.Context) error {
 
 	case "add_server":
 		return h.AdminServerStart(ctx, c)
+	case "admin_srv_del":
+		return h.AdminServerDeleteConfirm(ctx, c, arg)
+	case "admin_srv_del_do":
+		defer func() { _ = c.Respond() }()
+		return h.AdminServerDelete(ctx, c, arg)
 	case "create_tmpl":
 		// نوعِ سرویس به‌صورت متن آزاد وارد می‌شود (انواع پویا).
 		h.SetStep(ctx, uid, stepTmplType)
@@ -234,6 +293,8 @@ func (h *Handler) onCallback(c tele.Context) error {
 			tele.ModeHTML, h.KbBackCancel(ctx, uid))
 	case "tmpl_test":
 		return h.AdminTestStart(ctx, c, arg)
+	case "tmpl_schema":
+		return h.AdminTemplateSchemaEdit(ctx, c, arg)
 
 	// ── لغو ───────────────────────────────────────────────
 	case "cancel":
@@ -242,4 +303,46 @@ func (h *Handler) onCallback(c tele.Context) error {
 	}
 
 	return nil
+}
+
+// adminOnlyActions لیستِ نامِ کامل اکشن‌هایی که فقط ادمین/مالک مجاز به اجرای
+// آن‌هاست. هر اکشنِ جدیدِ مختصِ ادمین باید اینجا (یا با پیشوندِ admin_) اضافه شود.
+var adminOnlyActions = map[string]bool{
+	"block_user":       true,
+	"unblock_user":     true,
+	"make_admin":       true,
+	"make_user":        true,
+	"admin_users":      true,
+	"add_credit":       true,
+	"add_server":       true,
+	"plan_edit":        true,
+	"admin_plans_back": true,
+	"plim_up":          true,
+	"plim_dn":          true,
+	"pmb_up":           true,
+	"pmb_dn":           true,
+	"start_plan_add":   true,
+	"create_tmpl":      true,
+	"tmpl_test":        true,
+	"tmpl_schema":      true,
+	// قبلاً این‌ها اینجا نبودند — یعنی نظری فقط با ساختنِ دستیِ callback_data
+	// درست (که بدون کلیک روی دکمه‌ی واقعیِ ادمین عملاً امکان‌پذیر نیست، ولی
+	// دفاعِ لایه‌ی دومِ درستی نبود) قابلِ صداکردن بودند. حالا مثلِ بقیه‌ی
+	// اکشن‌های ادمین صریحاً گارد می‌شوند.
+	"bc_text":        true,
+	"bc_confirm":     true,
+	"bc_forward":     true,
+	"bc_fwd_confirm": true,
+	"bc_filtered":    true,
+	"bc_filter":      true,
+}
+
+// isAdminOnlyAction بررسی می‌کند آیا نامِ اکشن (پیش از جداسازیِ arg) مختصِ
+// ادمین است. اکشن‌هایی با پیشوندِ "admin_" همیشه مختصِ ادمین‌اند؛ بقیه از
+// لیستِ adminOnlyActions خوانده می‌شوند.
+func isAdminOnlyAction(action string) bool {
+	if strings.HasPrefix(action, "admin_") {
+		return true
+	}
+	return adminOnlyActions[action]
 }
