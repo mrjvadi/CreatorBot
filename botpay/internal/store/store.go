@@ -32,7 +32,8 @@ func (s *Store) ValidateServiceID(ctx context.Context, serviceID string) bool {
 		return false
 	}
 	switch serviceID {
-	case "botmanager", "apimanager", "botpay", "ads-bot":
+	case "botmanager", "apimanager", "botpay", "ads-bot",
+		"community-service", "fraud-engine", "revenue-service":
 		return true
 	}
 	if !strings.HasPrefix(serviceID, "bot_") {

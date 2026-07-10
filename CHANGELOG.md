@@ -1,6 +1,19 @@
 # Changelog — CreatorBot V3
 
 ---
+## [2026-07-10] — Sprint: botpay allowlist + revenue-service NATS migration
+
+### botpay/internal/store/store.go
+- `ValidateServiceID` allowlist: اضافه شد `community-service`, `fraud-engine`, `revenue-service`
+- قبلاً این سه سرویس اگر pay.credit/deduct می‌زدند، botpay آن‌ها را رد می‌کرد
+
+### revenue-service — HTTP → NATS
+- `cmd/main.go`: `botpayClient` HTTP struct حذف شد → `natspayAdapter` با `natspayclient.Client`
+- Config: حذف `BOTPAY_URL/BOTPAY_API_KEY/BOTPAY_ADMIN_KEY` → اضافه `SERVICE_HMAC_SECRET`
+- `go.mod`: `shared-core` به عنوان dependency اضافه شد
+- `.env`: آدرس HTTP botpay حذف شد، `SERVICE_HMAC_SECRET` اضافه شد
+
+---
 ## [2026-07-10] — Sprint: License Fail-Closed + E2E Integration
 
 ### تغییرات این سشن (کامیت fdfb693)

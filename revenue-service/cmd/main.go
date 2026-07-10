@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/signal"
@@ -17,26 +15,24 @@ import (
 	"github.com/mrjvadi/creatorbot/revenue-service/internal/api"
 	revengine "github.com/mrjvadi/creatorbot/revenue-service/internal/engine"
 	"github.com/mrjvadi/creatorbot/revenue-service/internal/store"
+	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
-	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
+	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Config struct {
-	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
-	NatsURL     string `mapstructure:"NATS_URL"`
-	NatsUser    string `mapstructure:"NATS_USERNAME"`
-	NatsPass    string `mapstructure:"NATS_PASSWORD"`
-	Port        int    `mapstructure:"PORT"`
+	PostgresDSN        string `mapstructure:"POSTGRES_DSN"`
+	NatsURL            string `mapstructure:"NATS_URL"`
+	NatsUser           string `mapstructure:"NATS_USERNAME"`
+	NatsPass           string `mapstructure:"NATS_PASSWORD"`
+	Port               int    `mapstructure:"PORT"`
 	AdminKey           string `mapstructure:"ADMIN_API_KEY"`
 	PlatformTelegramID int64  `mapstructure:"PLATFORM_TELEGRAM_ID"`
-
-	// botpay — برای پرداخت سهم‌ها
-	BotpayURL   string `mapstructure:"BOTPAY_URL"`
-	BotpayKey   string `mapstructure:"BOTPAY_API_KEY"`
-	BotpayAdmin string `mapstructure:"BOTPAY_ADMIN_KEY"`
+	HmacSecret         string `mapstructure:"SERVICE_HMAC_SECRET"`
 }
 
 func main() {
@@ -75,9 +71,16 @@ func main() {
 		log.Fatal("nats", ports.F("err", err))
 	}
 	defer nc.Close()
+	log.AttachNATS(nc, "revenue-service")
 
-	// ── botpay client ──────────────────────────────────────
-	pay := newBotpayClient(cfg.BotpayURL, cfg.BotpayKey, cfg.BotpayAdmin)
+	// ── botpay client (NATS) ──────────────────────────────
+	pay := &natspayAdapter{
+		nc: natspayclient.New(nc, nil, natspayclient.Config{
+			ServiceID:  "revenue-service",
+			ServiceKey: auth.ComputeServiceKey(cfg.HmacSecret, "revenue-service"),
+			Timeout:    10 * time.Second,
+		}),
+	}
 
 	// ── Revenue Engine ─────────────────────────────────────
 	eng := revengine.New(st, pay, log)
@@ -113,7 +116,7 @@ func main() {
 
 	go func() {
 		metrics.ServeMetrics(":9092")
-	log.Info("revenue-service started",
+		log.Info("revenue-service started",
 			ports.F("addr", addr),
 			ports.F("nats", cfg.NatsURL))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -130,77 +133,23 @@ func main() {
 	log.Info("revenue-service stopped")
 }
 
-// ── botpay HTTP client ─────────────────────────────────────
+// ── botpay NATS adapter ────────────────────────────────────
+// پیاده‌سازی engine.PayClient از طریق NATS (جایگزین HTTP قدیمی).
 
-type botpayClient struct {
-	baseURL  string
-	apiKey   string
-	adminKey string
-	client   *http.Client
+type natspayAdapter struct {
+	nc *natspayclient.Client
 }
 
-func newBotpayClient(url, apiKey, adminKey string) revengine.PayClient {
-	return &botpayClient{
-		baseURL:  url,
-		apiKey:   apiKey,
-		adminKey: adminKey,
-		client:   &http.Client{Timeout: 10 * time.Second},
-	}
-}
-
-func (b *botpayClient) AddCredit(ctx context.Context, telegramID int64, amountTON float64, desc string) (string, error) {
-	return b.post(ctx, "/api/v1/pay/credit/add", map[string]any{
-		"telegram_id": telegramID,
-		"amount_ton":  amountTON,
-		"description": desc,
-	}, b.adminKey)
-}
-
-func (b *botpayClient) Deduct(ctx context.Context, telegramID int64, amountTON float64, ref, desc string) (string, error) {
-	return b.post(ctx, "/api/v1/pay/deduct", map[string]any{
-		"telegram_id": telegramID,
-		"amount_ton":  amountTON,
-		"ref":         ref,
-		"description": desc,
-	}, b.apiKey)
-}
-
-func (b *botpayClient) post(ctx context.Context, path string, body map[string]any, key string) (string, error) {
-	if b.baseURL == "" {
-		return "", nil // botpay not configured
-	}
-
-	data, err := json.Marshal(body)
-	if err != nil {
+func (a *natspayAdapter) AddCredit(ctx context.Context, telegramID int64, amountTON float64, desc string) (string, error) {
+	if err := a.nc.Credit(ctx, telegramID, amountTON, desc, `{"src":"revenue-service"}`); err != nil {
 		return "", err
 	}
+	return "", nil
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.baseURL+path, bytes.NewReader(data))
-	if err != nil {
+func (a *natspayAdapter) Deduct(ctx context.Context, telegramID int64, amountTON float64, ref, desc string) (string, error) {
+	if _, err := a.nc.Deduct(ctx, telegramID, amountTON, desc, ref); err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", key)
-	req.Header.Set("X-Service-ID", "revenue-service")
-
-	resp, err := b.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("botpay: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		OK   bool `json:"ok"`
-		Data struct {
-			TxID string `json:"tx_id"`
-		} `json:"data"`
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-	if !result.OK {
-		return "", fmt.Errorf("botpay: %s", result.Message)
-	}
-	return result.Data.TxID, nil
+	return "", nil
 }
