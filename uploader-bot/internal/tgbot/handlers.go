@@ -896,12 +896,18 @@ func (h *Handler) adminListAdmins(ctx context.Context, c tele.Context) error {
 
 // adminAskAdmin افزودن ادمین جدید.
 func (h *Handler) adminAskAdmin(ctx context.Context, c tele.Context) error {
+	if !h.adminCan(ctx, c, models.PermAdmins) {
+		return c.Respond(&tele.CallbackResponse{Text: "⛔ دسترسی ندارید"})
+	}
 	h.SetStep(ctx, c.Sender().ID, stepAddAdmin)
 	return c.Send("👑 آیدی عددی ادمین جدید را بفرستید:", kbCancelOnly())
 }
 
 // adminRemoveAdmin حذف یک ادمین.
 func (h *Handler) adminRemoveAdmin(ctx context.Context, c tele.Context, tgIDStr string) error {
+	if !h.adminCan(ctx, c, models.PermAdmins) {
+		return c.Respond(&tele.CallbackResponse{Text: "⛔ دسترسی ندارید"})
+	}
 	tgID, err := strconv.ParseInt(tgIDStr, 10, 64)
 	if err != nil {
 		return c.Edit(msgInvalid)

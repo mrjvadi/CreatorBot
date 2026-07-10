@@ -304,6 +304,10 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
 - `agentmanager` قبلاً مستقیم به `docker.sock` دسترسی کامل داشت (یعنی
   هر آسیب‌پذیری در آن معادل دسترسی root به host بود) — این محدود شد
   با یک `docker-socket-proxy` که فقط endpointهای لازم را باز می‌گذارد.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۰) **privilege escalation در uploader-bot**: هر ادمین با هر دسترسی
+  می‌توانست با ارسال مستقیم callback `aperm_t:<id>:admins` به خودش دسترسی `PermAdmins` بدهد —
+  چون `adminTogglePerm`/`adminPermsMenu`/`adminAskAdmin`/`adminRemoveAdmin` فقط `isAdmin` عمومی
+  داشتند نه `adminCan(ctx, c, PermAdmins)`. رفع: check دانه‌ریز اضافه شد به هر چهار تابع.
 - (رفع‌شده ۲۰۲۶-۰۷-۱۰) **TOCTOU race در `botpay/CreateWithdraw`**: چک
   موجودی (`HasEnough`) و قفل‌کردن (`frozen += amount`) در دو مرحله‌ی جدا
   بودند — دو درخواست هم‌زمان می‌توانستند هر دو رد شوند و `frozen` را

@@ -75,6 +75,9 @@ func permLabel(p string) string {
 
 // adminPermsMenu منوی تنظیم دسترسی‌های یک ادمین.
 func (h *Handler) adminPermsMenu(ctx context.Context, c tele.Context, tgIDStr string) error {
+	if !h.adminCan(ctx, c, models.PermAdmins) {
+		return c.Respond(&tele.CallbackResponse{Text: "⛔ دسترسی ندارید"})
+	}
 	tgID, err := strconv.ParseInt(tgIDStr, 10, 64)
 	if err != nil {
 		return c.Edit(msgInvalid)
@@ -103,6 +106,9 @@ func (h *Handler) adminPermsMenu(ctx context.Context, c tele.Context, tgIDStr st
 
 // adminTogglePerm یک دسترسی ادمین را روشن/خاموش می‌کند.
 func (h *Handler) adminTogglePerm(ctx context.Context, c tele.Context, tgIDStr, perm string) error {
+	if !h.adminCan(ctx, c, models.PermAdmins) {
+		return c.Respond(&tele.CallbackResponse{Text: "⛔ دسترسی ندارید"})
+	}
 	tgID, err := strconv.ParseInt(tgIDStr, 10, 64)
 	if err != nil {
 		return c.Edit(msgInvalid)
