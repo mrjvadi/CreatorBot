@@ -169,6 +169,9 @@ type MemberActivity struct {
 }
 
 func (s *Store) UpdateMemberActivity(ctx context.Context, telegramID, communityID int64, msgs, replies, reactions int) error {
+	if s.mongo == nil {
+		return nil
+	}
 	_, err := s.mongo.Collection("community_activity").UpdateOne(ctx,
 		bson.M{"telegram_id": telegramID, "community_id": communityID},
 		bson.M{
@@ -181,6 +184,9 @@ func (s *Store) UpdateMemberActivity(ctx context.Context, telegramID, communityI
 }
 
 func (s *Store) GetActiveMembers(ctx context.Context, communityID int64, since time.Time) ([]MemberActivity, error) {
+	if s.mongo == nil {
+		return nil, nil
+	}
 	cur, err := s.mongo.Collection("community_activity").Find(ctx,
 		bson.M{"community_id": communityID, "updated_at": bson.M{"$gte": since}},
 		options.Find().SetSort(bson.M{"activity_score": -1}),

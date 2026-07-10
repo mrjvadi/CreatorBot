@@ -70,6 +70,7 @@ func (e *Engine) HandleJoin(ctx context.Context, telegramID int64, communityID u
 	if err := e.store.RecordParticipant(ctx, p); err != nil {
 		return err
 	}
+	_ = e.store.IncrementMemberCount(ctx, communityID.String())
 
 	window := time.Duration(community.ValidationWindowSec) * time.Second
 	go func() {
@@ -243,7 +244,6 @@ func (e *Engine) HandleLeave(ctx context.Context, telegramID, chatID int64) erro
 		return nil // community ثبت‌نشده — نادیده بگیر
 	}
 
-	// آپدیت تعداد اعضا در MongoDB
 	if err := e.store.DecrementMemberCount(ctx, comm.ID.String()); err != nil {
 		e.log.Error("leave: decrement member count",
 			ports.F("chat", chatID), ports.F("err", err))
