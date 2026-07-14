@@ -1,11 +1,19 @@
+# همه‌ی فایل‌های .env حاوی secret هستند — از ۲۰۲۶-۰۷-۱۴ هیچ .env در git ردیابی
+# نمی‌شود؛ فقط .env.example (بدون secret) tracked است. رجوع SECRETS_ROTATION.md.
+**/.env
+!**/.env.example
+
 # env پایه‌ی سرور — secret واقعی، روی هر سرور جدا ساخته می‌شود (رجوع
-# agentmanager/.env کلید BOT_BASE_ENV_FILE). بقیه‌ی .env ها فعلاً در git
-# هستند (تصمیم قدیمی — CLAUDE.md: باید rotate شوند)؛ حداقل این یکی از
-# روز اول بیرون می‌ماند.
+# agentmanager/.env کلید BOT_BASE_ENV_FILE).
 agentmanager/botenv.env
 agentmanager/botenv/
 
 # خروجی اجرای محلی run.sh
 .logs/
 .run.pids
+
+# باینری‌ها و artifact های build
 tools/e2e-provision/e2e-provision
+/e2e-provision
+*.tar
+.gotmp/

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/models"
@@ -36,6 +37,19 @@ func (s *Store) UpdateBalance(ctx context.Context, userID uuid.UUID, delta float
 	return s.db.Conn().WithContext(ctx).Model(&models.User{}).
 		Where("id = ?", userID).
 		UpdateColumn("balance", gorm.Expr("balance + ?", delta)).Error
+}
+
+// DeductBalanceIfEnough به‌صورت اتمیک amount را کسر می‌کند فقط اگر موجودی کافی باشد.
+// شرط `balance >= amount` داخل همان UPDATE است تا دو درخواست هم‌زمان نتوانند هر دو
+// از یک موجودی کسر کنند (double-spend). ok=false یعنی موجودی کافی نبود.
+func (s *Store) DeductBalanceIfEnough(ctx context.Context, userID uuid.UUID, amount float64) (bool, error) {
+	res := s.db.Conn().WithContext(ctx).Model(&models.User{}).
+		Where("id = ? AND balance >= ?", userID, amount).
+		UpdateColumn("balance", gorm.Expr("balance - ?", amount))
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }
 
 // ---- Plan ----
@@ -135,6 +149,21 @@ func (s *Store) FindSubscriptionByID(ctx context.Context, id uuid.UUID) (*models
 
 func (s *Store) CreatePayment(ctx context.Context, p *models.Payment) error {
 	return s.db.Conn().WithContext(ctx).Create(p).Error
+}
+
+// ClaimOnlinePayment یک پرداخت آنلاین را به‌صورت اتمیک بر اساس (gateway, ref_code)
+// «claim» می‌کند. اگر قبلاً برای همین refCode رکوردی ثبت شده باشد (کلیک تکراری روی
+// «پرداخت کردم»)، ON CONFLICT DO NOTHING باعث می‌شود رکورد جدیدی ساخته نشود و
+// claimed=false برگردد؛ در این حالت نباید اشتراک دوباره فعال شود. یکتایی توسط
+// ایندکس partial روی جدول payments تضمین می‌شود (رجوع cmd/bot/main.go).
+func (s *Store) ClaimOnlinePayment(ctx context.Context, p *models.Payment) (bool, error) {
+	res := s.db.Conn().WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(p)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }
 
 func (s *Store) FindPaymentByID(ctx context.Context, id uuid.UUID) (*models.Payment, error) {

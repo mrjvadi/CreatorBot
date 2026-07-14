@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 
@@ -167,7 +168,14 @@ func (h *Handler) getUserProfile(c *gin.Context) {
 }
 
 func (h *Handler) authMiddleware(c *gin.Context) {
-	if c.GetHeader("X-Admin-Key") != h.adminKey {
+	// fail-closed: اگر کلید ادمین تنظیم نشده باشد، هیچ درخواستی نباید به مسیرهای
+	// ادمین برسد (در غیر این صورت هدر غایب == کلید خالی → دسترسی باز می‌شد).
+	if h.adminKey == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"ok": false})
+		return
+	}
+	got := c.GetHeader("X-Admin-Key")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(h.adminKey)) != 1 {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"ok": false})
 		return
 	}

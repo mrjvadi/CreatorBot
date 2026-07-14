@@ -43,6 +43,11 @@ func main() {
 	if cfg.MongoDB == "" {
 		cfg.MongoDB = "creatorbot"
 	}
+	// fail-closed: بدون ADMIN_KEY مسیرهای /admin احراز هویت نمی‌شوند (fail-open) —
+	// سرویس نباید با auth شکسته بالا بیاید.
+	if cfg.AdminKey == "" {
+		log.Fatal("ADMIN_KEY تنظیم نشده — مسیرهای admin بدون آن ناامن‌اند")
+	}
 
 	// ── MongoDB ───────────────────────────────────────────
 	ctx := context.Background()

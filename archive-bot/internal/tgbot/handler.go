@@ -21,7 +21,7 @@ type Handler struct {
 }
 
 func NewHandler(bot *tele.Bot, st *store.Store, db ports.DB, cache ports.Cache, log ports.Logger, ownerID int64, botUsername string) *Handler {
-	return &Handler{bot: bot, store: st, db: db, cache: cache, log: log, ownerID: ownerID}
+	return &Handler{bot: bot, store: st, db: db, cache: cache, log: log, ownerID: ownerID, botUsername: botUsername}
 }
 
 func Register(b *tele.Bot, h *Handler) {

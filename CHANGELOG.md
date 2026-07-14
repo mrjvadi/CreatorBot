@@ -1,6 +1,66 @@
 # Changelog — CreatorBot V3
 
 ---
+## [2026-07-14] — Sprint: audit fixes + E2E اجاره‌ی قفل + runbook + rotation
+
+### Security — رفع باگ‌های audit (کارگاه A)
+
+- **fraud-engine: رفع fail-open در احراز هویت admin.**
+  - `internal/api/api.go` — `authMiddleware` اگر `adminKey` خالی باشد همیشه `401` می‌دهد
+    (قبلاً هدر غایب `""` با کلید خالی برابر می‌شد → همه‌ی `/admin/*` باز). مقایسه با
+    `crypto/subtle.ConstantTimeCompare`.
+  - `cmd/main.go` — اگر `ADMIN_KEY` تنظیم نشده باشد `log.Fatal` (fail-closed در startup).
+- **vpn-bot: رفع double-spend race در خرید با موجودی.**
+  - `internal/store/store.go` — متد اتمیک `DeductBalanceIfEnough`
+    (`UPDATE ... WHERE balance >= amount` + بررسی `RowsAffected`).
+  - `internal/tgbot/user.go:confirmBuyWithBalance` — استفاده از متد اتمیک به‌جای
+    check-then-`UpdateBalance`؛ دو کلیک هم‌زمان دیگر دو اشتراک نمی‌سازند.
+- **vpn-bot: رفع نبود dedup در تأیید پرداخت آنلاین.**
+  - `internal/store/store.go` — متد `ClaimOnlinePayment` با `ON CONFLICT DO NOTHING`.
+  - `cmd/bot/main.go` — ایندکس partial یکتا `uq_payment_online_ref` روی
+    `payments(gateway, ref_code)` برای گیت‌وی‌های آنلاین.
+  - `internal/tgbot/user.go:verifyOnlinePayment` — پرداخت را بر اساس `refID` «claim» می‌کند؛
+    کلیک تکراری «پرداخت کردم» دیگر اشتراک دوم نمی‌سازد.
+- **archive-bot: رفع باگ کوچک `botUsername`.**
+  - `internal/tgbot/handler.go` — `NewHandler` حالا `botUsername` را به struct ست می‌کند.
+- (فقط مستند، بدون تغییر کد) **source-service hotspots** برای audit بعدی: مرز authorization در
+  `internal/userbot/run_bot_command.go`، ذخیره‌ی session کامل MTProto در DB، لاگ‌شدن شماره تلفن.
+
+### Added — تست E2E اجاره‌ی قفل کانال (کارگاه B)
+
+- **`ads-bot/tools/e2e-lockrental/`** — ابزار تست end-to-end مدل اقتصادی lock-rental بدون تلگرام،
+  با متدهای واقعی `ads-bot/internal/store` + botpay واقعی (NATS/HMAC): seed → approve → join →
+  idempotency → fraud reversal → settlement → completion. داخل ماژول ads-bot و زیر `tools/`
+  (نه `cmd/`) تا run.sh دست‌نخورده بماند. + `README.md`.
+
+### Docs — runbook و آماده‌سازی مسیر A (کارگاه D)
+
+- **`E2E_RUNBOOK.md`** — راهنمای سه سطح تست + وضعیت زیرساخت. زیرساخت داده بالاست ولی
+  سرویس‌های go خاموش و local-bot-api (`141.95.210.17:8081`) در دسترس نیست → botpay startup
+  را کامل نمی‌کند، پس اجرای زنده به bot API قابل‌دسترس موکول است (هر دو تست `go build` سبز).
+
+### Security — چرخش secret ها + بازنویسی history (کارگاه C)
+
+- **چرخش secret های اپلیکیشنی** در همه‌ی `.env` ها با `openssl rand -hex 32`، گروه‌های مشترک
+  بین‌سرویسی هماهنگ (تأییدشده با hash): `SERVICE_HMAC_SECRET`، `ENCRYPTION_KEY`، `JWT_*`،
+  `AGENT_API_KEY`، `INTERNAL_KEY`، `LOCK_API_SECRET`، `SERVICE_KEY_*`، `BOTPAY_API_KEY`،
+  جفت‌های admin (fraud/image-registry/botpay)، `LICENSE_SIGNING_SECRET`،
+  `SESSION_ENCRYPTION_KEY`، `LOG_API_KEY`، `GRAFANA_PASSWORD` و کلیدهای admin مستقل.
+- **توقف ردیابی:** همه‌ی ۱۹ فایل `.env` با `git rm --cached` از git خارج شدند (روی دیسک با
+  مقدار نو ماندند)؛ `.gitignore` → `**/.env` (فقط `.env.example` tracked).
+- **بازنویسی history:** با `git filter-branch` همه‌ی `.env` از کل history حذف و
+  `git push --force` روی `origin/main`. backup: `../CreatorBotV3-backup.git` (mirror).
+- **دستی (در `SECRETS_ROTATION.md`):** پسوردهای زیرساخت (Postgres/Redis/NATS/Mongo — نیاز به
+  تغییر سرور) و توکن‌های خارجی (BotFather/toncenter/پنل VPN — نیاز به revoke) عمداً env-only
+  عوض نشدند چون stack را می‌شکست؛ با دستور دقیق مستند شدند.
+- **`SECRETS_ROTATION.md`** (جدید) — runbook کامل چرخش.
+
+### Process
+
+- از این سشن هر تغییر در **CHANGELOG.md** و کل پروژه با جزئیات در **`prog/`** ثبت می‌شود
+  (خواسته‌ی کاربر ۲۰۲۶-۰۷-۱۴).
+
+---
 ## [2026-07-10] — Sprint: یکپارچه‌سازی botmanager+apimanager + Env Schema wizard
 
 ### فاز ۱: اصلاح تداخل heartbeat/result بین botmanager و apimanager

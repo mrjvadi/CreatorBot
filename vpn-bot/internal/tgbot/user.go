@@ -365,11 +365,14 @@ func (h *Handler) confirmBuyWithBalance(ctx context.Context, c tele.Context, pla
 	if u == nil {
 		return c.Edit("❌ خطا.")
 	}
-	if u.Balance < plan.Price {
-		return c.Edit("❌ موجودی کافی نیست.")
-	}
-	if err := h.store.UpdateBalance(ctx, u.ID, -plan.Price); err != nil {
+	// کسر اتمیک: شرط موجودی داخل همان UPDATE است تا دو کلیک هم‌زمان نتوانند
+	// دو بار از یک موجودی خرید کنند (double-spend).
+	ok, err := h.store.DeductBalanceIfEnough(ctx, u.ID, plan.Price)
+	if err != nil {
 		return c.Edit("❌ خطا در کسر موجودی.")
+	}
+	if !ok {
+		return c.Edit("❌ موجودی کافی نیست.")
 	}
 	h.clearState(ctx, c.Sender().ID)
 	return h.activateSubscription(ctx, c, u.ID, plan)
@@ -395,6 +398,26 @@ func (h *Handler) verifyOnlinePayment(ctx context.Context, c tele.Context, refID
 	u, _ := h.getOrCreate(ctx, c)
 	if u == nil {
 		return c.Edit("❌ خطا.")
+	}
+	// dedup: هر refID فقط یک بار می‌تواند اشتراک فعال کند. کلیک تکراری روی
+	// «پرداخت کردم» (یا verify هم‌زمان) نباید اشتراک دوم بسازد.
+	gw := st.Data["gw"]
+	if gw == "" {
+		gw = "zarinpal"
+	}
+	claimed, err := h.store.ClaimOnlinePayment(ctx, &models.Payment{
+		UserID:  u.ID,
+		Amount:  plan.Price,
+		Gateway: gw,
+		Status:  "verified",
+		RefCode: refID,
+		PlanID:  &planID,
+	})
+	if err != nil {
+		return c.Edit("❌ خطا در ثبت پرداخت.")
+	}
+	if !claimed {
+		return c.Edit("✅ این پرداخت قبلاً تأیید و اشتراک آن فعال شده است.")
 	}
 	return h.activateSubscription(ctx, c, u.ID, plan)
 }

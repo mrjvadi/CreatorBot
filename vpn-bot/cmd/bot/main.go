@@ -75,6 +75,16 @@ func main() {
 	db.Migrate(&models.User{}, &models.Panel{}, &models.Plan{}, &models.Subscription{},
 		&models.DiscountCode{}, &models.Payment{}, &models.Setting{})
 
+	// یکتایی پرداخت‌های آنلاین: از فعال‌سازی چندباره‌ی اشتراک با کلیک تکراری روی
+	// «پرداخت کردم» جلوگیری می‌کند (dedup در ClaimOnlinePayment به این ایندکس تکیه دارد).
+	if err := db.Conn().Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_online_ref ` +
+			`ON payments (gateway, ref_code) ` +
+			`WHERE gateway IN ('zarinpal','nowpayments') AND ref_code <> ''`,
+	).Error; err != nil {
+		log.Fatal("payment index", ports.F("err", err))
+	}
+
 	cache, err := sharedredis.New(sharedredis.Config{
 		Addr: cfg.RedisAddr, Password: cfg.RedisPass, DB: cfg.RedisDB,
 	})

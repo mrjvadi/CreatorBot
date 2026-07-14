@@ -320,6 +320,28 @@ escrow (در انتظار) هست تا فرصت تشخیص تقلب باشد.
   تراکنش + re-check قبل از increment. خطای `store.ErrInsufficientBalance`
   تعریف شد و wallet آن را با `wallet.ErrInsufficientBalance` wrap می‌کند
   تا `errors.Is` در responder همچنان کار کند.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۴) **fraud-engine fail-open auth**: `authMiddleware` وقتی
+  `ADMIN_KEY` خالی بود، هدر غایب `""` را با کلید خالی برابر می‌دید و همه‌ی
+  `/admin/*` باز می‌ماند. رفع: fail-closed (کلید خالی → همیشه 401) +
+  `crypto/subtle.ConstantTimeCompare` + `log.Fatal` در startup اگر کلید نباشد.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۴) **vpn-bot double-spend race**: `confirmBuyWithBalance`
+  چک `balance < price` و `UpdateBalance(-price)` را جدا انجام می‌داد → دو کلیک
+  هم‌زمان دو اشتراک می‌ساخت. رفع: متد اتمیک `DeductBalanceIfEnough`
+  (`UPDATE ... WHERE balance >= amount` + بررسی `RowsAffected`).
+- (رفع‌شده ۲۰۲۶-۰۷-۱۴) **vpn-bot payment بدون dedup**: `verifyOnlinePayment`
+  هر کلیک «پرداخت کردم» را یک subscription جدید می‌کرد. رفع: `ClaimOnlinePayment`
+  با `ON CONFLICT DO NOTHING` روی ایندکس partial یکتای `(gateway, ref_code)`.
+- (رفع‌شده ۲۰۲۶-۰۷-۱۴) **secret rotation + بازنویسی history**: همه‌ی secret های
+  اپلیکیشنی در `.env` ها rotate شدند (HMAC/ENCRYPTION/JWT/admin pairs/… هماهنگ)،
+  همه‌ی `.env` ها untrack و `**/.env` به gitignore اضافه شد، و کل git history با
+  `filter-branch` از `.env` پاک و force-push شد. پسوردهای زیرساخت و توکن‌های خارجی
+  نیاز به اقدام دستی دارند — رجوع `SECRETS_ROTATION.md`. (backup:
+  `../CreatorBotV3-backup.git`.)
+
+### تست
+- (اضافه‌شده ۲۰۲۶-۰۷-۱۴) `ads-bot/tools/e2e-lockrental/` — تست E2E کامل مدل اقتصادی
+  اجاره‌ی قفل بدون تلگرام (با store واقعی + botpay واقعی). رجوع `E2E_RUNBOOK.md`.
+  مستند کامل پروژه در `prog/`، تاریخچه در `CHANGELOG.md`.
 
 ### معماری ناتمام
 - `apimanager` (دروازه‌ی HTTP بیرونی برای وب/اپ) ساخته شده ولی هنوز
