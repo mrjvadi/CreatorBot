@@ -41,7 +41,8 @@ type Config struct {
 	// and hands back a worker ID + the Telegram account (app id/hash/phone,
 	// session encryption key) to run as. Give every instance its own key to
 	// run more than one worker — see README.
-	LicenseKey string `mapstructure:"LICENSE_KEY"`
+	LicenseKey        string `mapstructure:"LICENSE_KEY"`
+	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
 }
 
 func main() {
@@ -51,6 +52,9 @@ func main() {
 		cfg.ServiceID = "source-service"
 	}
 	log := logger.MustNew(false)
+	if cfg.ServiceHMACSecret == "" {
+		log.Fatal("SERVICE_HMAC_SECRET is required for source task authorization")
+	}
 
 	db, err := postgres.New(postgres.Config{DSN: cfg.PostgresDSN})
 	if err != nil {
@@ -136,7 +140,7 @@ func main() {
 		}
 	}()
 
-	b := bus.New(nc, cache, st, log, tasks, identity.ID)
+	b := bus.New(nc, cache, st, log, tasks, identity.ID, cfg.ServiceHMACSecret)
 	log.Info("source-service worker started", ports.F("worker_id", identity.ID))
 	if err := b.Start(ctx); err != nil {
 		log.Fatal("bus", ports.F("err", err))

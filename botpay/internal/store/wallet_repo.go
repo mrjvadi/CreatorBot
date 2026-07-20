@@ -86,37 +86,61 @@ func (s *Store) GetWalletByAddress(ctx context.Context, address string) (*Wallet
 }
 
 // Deposit واریز TON به wallet — atomic با transaction.
-func (s *Store) Deposit(ctx context.Context, walletID uuid.UUID, amountNano int64, txHash, fromAddr, desc string) (*Transaction, error) {
+// DepositRecord داده‌ی کاملِ یک واریزِ on-chain TON — تمام اطلاعاتی که از شبکه
+// می‌گیریم ذخیره می‌شود (آدرس‌ها، کامنت، logical time، unix time، کارمزد).
+type DepositRecord struct {
+	WalletID   uuid.UUID
+	AmountNano int64
+	FeeNano    int64
+	TxHash     string
+	FromAddr   string
+	ToAddr     string
+	Comment    string // in_msg comment (کدِ فاکتور)
+	LT         int64  // logical time تراکنش TON
+	Utime      int64  // unix time on-chain
+	Desc       string
+}
+
+// Deposit واریزِ TON را ثبت می‌کند: افزایش ton_balance، یک Transactionِ کامل با
+// همه‌ی اطلاعاتِ on-chain، و یک بلوکِ credit در دفترِ هش. با tx_hash idempotent است.
+func (s *Store) Deposit(ctx context.Context, rec DepositRecord) (*Transaction, error) {
 	var tx *Transaction
 	err := s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
-		// بررسی تکراری نبودن tx
 		var existing Transaction
-		if err := db.Where("tx_hash = ?", txHash).First(&existing).Error; err == nil {
+		if err := db.Where("tx_hash = ?", rec.TxHash).First(&existing).Error; err == nil {
 			tx = &existing
 			return nil // تکراری — ok
 		}
-
-		// آپدیت موجودی
-		if err := db.Model(&Wallet{}).
-			Where("id = ?", walletID).
-			UpdateColumn("ton_balance", gorm.Expr("ton_balance + ?", amountNano)).
-			Error; err != nil {
+		var w Wallet
+		if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", rec.WalletID).First(&w).Error; err != nil {
 			return err
 		}
-
-		// ثبت تراکنش
+		if err := db.Model(&Wallet{}).Where("id = ?", rec.WalletID).
+			UpdateColumn("ton_balance", gorm.Expr("ton_balance + ?", rec.AmountNano)).Error; err != nil {
+			return err
+		}
 		now := time.Now()
 		tx = &Transaction{
-			WalletID:    walletID,
+			WalletID:    rec.WalletID,
 			Type:        TxDeposit,
 			Status:      TxConfirmed,
-			Amount:      amountNano,
-			TxHash:      txHash,
-			FromAddress: fromAddr,
-			Description: desc,
+			Amount:      rec.AmountNano,
+			Fee:         rec.FeeNano,
+			TxHash:      rec.TxHash,
+			FromAddress: rec.FromAddr,
+			ToAddress:   rec.ToAddr,
+			Ref:         rec.Comment,
+			TxLT:        rec.LT,
+			TxUtime:     rec.Utime,
+			Description: rec.Desc,
 			ConfirmedAt: &now,
 		}
-		return db.Create(tx).Error
+		if err := db.Create(tx).Error; err != nil {
+			return err
+		}
+		balanceAfter := w.TONBalance + w.Credit + rec.AmountNano
+		return s.appendLedger(db, rec.WalletID, tx.ID, EntryCredit, rec.AmountNano, balanceAfter, rec.Comment, rec.Desc)
 	})
 	return tx, err
 }
@@ -128,11 +152,12 @@ func (s *Store) Deposit(ctx context.Context, walletID uuid.UUID, amountNano int6
 // serviceID+ref با هم idempotency key هستند: اگر تراکنشی از قبل با همین جفت
 // ثبت شده باشد (مثلاً به‌خاطر retry سمت کلاینت روی timeout)، دوباره کسر
 // نمی‌شود — همان تراکنش قبلی برگردانده می‌شود.
-func (s *Store) Deduct(ctx context.Context, walletID uuid.UUID, amountNano int64, serviceID, ref, desc string) (*Transaction, error) {
+func (s *Store) Deduct(ctx context.Context, walletID uuid.UUID, amountNano int64, serviceID, ref, desc string) (*Transaction, bool, error) {
 	if amountNano <= 0 {
-		return nil, fmt.Errorf("invalid amount: must be positive")
+		return nil, false, fmt.Errorf("invalid amount: must be positive")
 	}
 	var tx *Transaction
+	created := false
 	err := s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
 		if ref != "" {
 			var existing Transaction
@@ -191,32 +216,71 @@ func (s *Store) Deduct(ctx context.Context, walletID uuid.UUID, amountNano int64
 			Description: desc,
 			ConfirmedAt: &now,
 		}
-		return db.Create(tx).Error
+		if err := db.Create(tx).Error; err != nil {
+			return err
+		}
+		balanceAfter := (w.TONBalance + w.Credit) - amountNano
+		if err := s.appendLedger(db, walletID, tx.ID, EntryDebit, amountNano, balanceAfter, ref, desc); err != nil {
+			return err
+		}
+		created = true
+		return nil
 	})
-	return tx, err
+	return tx, created, err
 }
 
-// AddCredit افزایش اعتبار داخلی توسط ادمین.
-func (s *Store) AddCredit(ctx context.Context, walletID uuid.UUID, amountNano int64, desc string) error {
+// AddCredit افزایش اعتبار داخلی را با کلید serviceID+ref به‌صورت idempotent انجام می‌دهد.
+// ref برای تمام callerهای سرویس‌به‌سرویس اجباری است؛ retry همان تراکنش قبلی را برمی‌گرداند.
+// created=true یعنی یک credit تازه اعمال شد؛ created=false یعنی این فراخوانی یک
+// retry idempotent بود (تراکنش قبلی برگردانده شد و موجودی تغییر نکرد). caller از
+// این برای ارسالِ دقیقاً-یک‌بارِ اعلان به کاربر استفاده می‌کند.
+func (s *Store) AddCredit(ctx context.Context, walletID uuid.UUID, amountNano int64, serviceID, ref, desc, metadata string) (*Transaction, bool, error) {
 	if amountNano <= 0 {
-		return fmt.Errorf("invalid amount: must be positive")
+		return nil, false, fmt.Errorf("invalid amount: must be positive")
 	}
-	return s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+	if serviceID == "" || ref == "" {
+		return nil, false, fmt.Errorf("service_id and ref are required")
+	}
+	var tx *Transaction
+	created := false
+	err := s.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		// قفل wallet همه creditهای هم‌زمان همین کاربر را serialize می‌کند؛ constraint DB
+		// نیز از تکرار در برابر مسیرهای آینده دفاع می‌کند.
+		var wallet Wallet
+		if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", walletID).First(&wallet).Error; err != nil {
+			return err
+		}
+		var existing Transaction
+		err := db.Where("wallet_id = ? AND service_id = ? AND ref = ? AND type = ?",
+			walletID, serviceID, ref, TxCreditAdd).First(&existing).Error
+		if err == nil {
+			tx = &existing
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err := db.Model(&Wallet{}).Where("id = ?", walletID).
 			UpdateColumn("credit", gorm.Expr("credit + ?", amountNano)).Error; err != nil {
 			return err
 		}
 		now := time.Now()
-		return db.Create(&Transaction{
-			WalletID:    walletID,
-			Type:        TxCreditAdd,
-			Status:      TxConfirmed,
-			Amount:      amountNano,
-			TxHash:      "int-" + uuid.New().String(),
-			Description: desc,
-			ConfirmedAt: &now,
-		}).Error
+		tx = &Transaction{
+			WalletID: walletID, Type: TxCreditAdd, Status: TxConfirmed, Amount: amountNano,
+			ServiceID: serviceID, Ref: ref, Metadata: metadata,
+			TxHash: "int-" + uuid.New().String(), Description: desc, ConfirmedAt: &now,
+		}
+		if err := db.Create(tx).Error; err != nil {
+			return err
+		}
+		balanceAfter := wallet.TONBalance + wallet.Credit + amountNano
+		if err := s.appendLedger(db, walletID, tx.ID, EntryCredit, amountNano, balanceAfter, ref, desc); err != nil {
+			return err
+		}
+		created = true
+		return nil
 	})
+	return tx, created, err
 }
 
 // ListTransactions تراکنش‌های اخیر یک کیف پول را برمی‌گرداند.

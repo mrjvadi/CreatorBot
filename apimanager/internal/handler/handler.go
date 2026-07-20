@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
@@ -47,6 +48,7 @@ type Handler struct {
 	// endpoint هایی که نیازش دارند (مثل AddUserCredit) با 503 fail-closed می‌شوند،
 	// نه با یک panic یا رفتار نامشخص.
 	payClient *natspayclient.Client
+	license   *licenseclient.Client
 	// imageRegistryURL/imageRegistryAdminKey برای اتصال به سرویسِ جداگانه‌ی Image Registry —
 	// رجوع به image_registry.go. اگر URL خالی باشد آن endpoint ها 503 برمی‌گردانند.
 	imageRegistryURL      string
@@ -62,6 +64,7 @@ func New(
 	agentAPIKey string,
 	telegramBotToken string,
 	payClient *natspayclient.Client,
+	license *licenseclient.Client,
 	imageRegistryURL, imageRegistryAdminKey string,
 ) *Handler {
 	return &Handler{
@@ -75,6 +78,7 @@ func New(
 		agentAPIKey:           agentAPIKey,
 		telegramBotTok:        telegramBotToken,
 		payClient:             payClient,
+		license:               license,
 		imageRegistryURL:      imageRegistryURL,
 		imageRegistryAdminKey: imageRegistryAdminKey,
 	}
@@ -95,7 +99,8 @@ func fail(c *gin.Context, code int, msg string) {
 // POST /api/v1/auth/telegram
 func (h *Handler) TelegramAuth(c *gin.Context) {
 	var req struct {
-		TelegramID int64  `json:"telegram_id" binding:"required"`
+		ID         int64  `json:"id"`
+		TelegramID int64  `json:"telegram_id"`
 		FirstName  string `json:"first_name"`
 		LastName   string `json:"last_name"`
 		Username   string `json:"username"`
@@ -107,6 +112,16 @@ func (h *Handler) TelegramAuth(c *gin.Context) {
 		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	telegramID := req.ID
+	signedIDKey := "id"
+	if telegramID == 0 {
+		telegramID = req.TelegramID
+		signedIDKey = "telegram_id"
+	}
+	if telegramID <= 0 {
+		fail(c, http.StatusBadRequest, "telegram id is required")
+		return
+	}
 
 	// ── تأیید امضای HMAC ویجت لاگین تلگرام ─────────────────
 	// بدونِ توکنِ ربات پیکربندی‌شده، fail-closed: هیچ لاگینی پذیرفته نمی‌شود.
@@ -114,32 +129,33 @@ func (h *Handler) TelegramAuth(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "telegram auth not configured")
 		return
 	}
-	if req.AuthDate == 0 || time.Since(time.Unix(req.AuthDate, 0)) > maxAuthAge {
+	now := time.Now()
+	if !validTelegramAuthTime(now, req.AuthDate) {
 		fail(c, http.StatusUnauthorized, "auth data expired")
 		return
 	}
 	fields := map[string]string{
-		"telegram_id": strconv.FormatInt(req.TelegramID, 10),
-		"first_name":  req.FirstName,
-		"last_name":   req.LastName,
-		"username":    req.Username,
-		"photo_url":   req.PhotoURL,
-		"auth_date":   strconv.FormatInt(req.AuthDate, 10),
+		signedIDKey:  strconv.FormatInt(telegramID, 10),
+		"first_name": req.FirstName,
+		"last_name":  req.LastName,
+		"username":   req.Username,
+		"photo_url":  req.PhotoURL,
+		"auth_date":  strconv.FormatInt(req.AuthDate, 10),
 	}
 	if !verifyTelegramAuth(fields, req.Hash, h.telegramBotTok) {
-		fail(c, http.StatusUnauthorized, "invalid telegram signature")
+		fail(c, http.StatusUnauthorized, "invalid telegram signature; dev login token must match apimanager BOT_TOKEN")
 		return
 	}
 
 	ctx := c.Request.Context()
-	u, err := h.store.FindUserByTelegramID(ctx, req.TelegramID)
+	u, err := h.store.FindUserByTelegramID(ctx, telegramID)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "db error")
 		return
 	}
 	if u == nil {
 		u = &models.User{
-			TelegramID: req.TelegramID,
+			TelegramID: telegramID,
 			FirstName:  req.FirstName,
 			Username:   req.Username,
 			Role:       models.RoleUser,
@@ -148,6 +164,10 @@ func (h *Handler) TelegramAuth(c *gin.Context) {
 			fail(c, http.StatusInternalServerError, "user create failed")
 			return
 		}
+	}
+	if u.IsBlocked {
+		fail(c, http.StatusForbidden, "user is blocked")
+		return
 	}
 
 	accessToken, err := auth.GenerateAccessToken(u.ID.String(), string(u.Role), auth.JWTConfig{AccessSecret: h.accessSecret, AccessTTL: 15 * time.Minute})
@@ -181,7 +201,17 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	accessToken, _ := auth.GenerateAccessToken(claims.UserID, claims.Role, auth.JWTConfig{AccessSecret: h.accessSecret, AccessTTL: 15 * time.Minute})
+	uid, parseErr := uuid.Parse(claims.UserID)
+	if parseErr != nil {
+		fail(c, http.StatusUnauthorized, "invalid refresh token")
+		return
+	}
+	u, lookupErr := h.store.FindUserByID(c.Request.Context(), uid)
+	if lookupErr != nil || u == nil || u.IsBlocked {
+		fail(c, http.StatusUnauthorized, "user is unavailable")
+		return
+	}
+	accessToken, _ := auth.GenerateAccessToken(u.ID.String(), string(u.Role), auth.JWTConfig{AccessSecret: h.accessSecret, AccessTTL: 15 * time.Minute})
 	ok(c, gin.H{"access_token": accessToken})
 }
 
@@ -875,9 +905,8 @@ func (h *Handler) GetWalletTopupStatus(c *gin.Context) {
 
 // POST /api/v1/plans/:id/buy — خریدِ واقعیِ یک پلن. برای پلن‌های غیررایگان، از همان
 // natspayclient.DeductForService استفاده می‌کند که از قبل برای دقیقاً همین کار نوشته شده بود
-// (idempotency key اش "plan:<planID>" است — یعنی طبق طراحیِ خودِ botpay، این مسیر همیشه از
-// کسرِ دوبرابری برای همان پلن جلوگیری می‌کند؛ این رفتار همان چیزی است که DeductForService از
-// قبل پیاده‌سازی کرده، این‌جا فقط صدا زده می‌شود، نه بازطراحی شده).
+// کلید idempotency هر خرید از هدر Idempotency-Key می‌آید؛ نبود هدر یک UUID جدید می‌سازد.
+// بنابراین retry آگاهانه با همان هدر کسر دوباره ندارد، ولی خرید مستقل همان plan هزینه‌ی جدا دارد.
 func (h *Handler) BuyPlan(c *gin.Context) {
 	ctx := c.Request.Context()
 	u, err := h.currentUser(c)
@@ -900,12 +929,18 @@ func (h *Handler) BuyPlan(c *gin.Context) {
 		return
 	}
 
+	attemptID := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if attemptID == "" {
+		attemptID = uuid.NewString()
+	}
+	charged := false
+	var payment *models.Payment
 	if !plan.IsFree && plan.Price > 0 {
 		if h.payClient == nil {
 			fail(c, http.StatusServiceUnavailable, "pay client not configured")
 			return
 		}
-		if _, err := h.payClient.DeductForService(ctx, u.TelegramID, plan.Price, plan.ID.String()); err != nil {
+		if _, err := h.payClient.DeductForService(ctx, u.TelegramID, plan.Price, plan.ID.String(), attemptID); err != nil {
 			if natspayclient.IsInsufficientBalance(err) {
 				fail(c, http.StatusPaymentRequired, "insufficient balance")
 				return
@@ -913,20 +948,19 @@ func (h *Handler) BuyPlan(c *gin.Context) {
 			fail(c, http.StatusInternalServerError, "payment failed: "+err.Error())
 			return
 		}
+		charged = true
 
 		// ثبتِ رکورد پرداخت برای تاریخچه — best-effort: پول از قبل کسر شده، پس شکستِ ثبتِ
 		// این رکورد نباید کل خرید را ناموفق نشان بدهد.
 		now := time.Now()
-		payment := &models.Payment{
+		payment = &models.Payment{
 			UserID:      u.ID,
 			PlanID:      &plan.ID,
 			Amount:      plan.Price,
 			Currency:    "TON",
 			Status:      models.PaymentDone,
 			ConfirmedAt: &now,
-		}
-		if err := h.store.CreatePayment(ctx, payment); err != nil {
-			h.log.Warn("create payment record failed", ports.F("err", err))
+			InvoiceID:   "plan:" + attemptID,
 		}
 	}
 
@@ -942,12 +976,29 @@ func (h *Handler) BuyPlan(c *gin.Context) {
 		ExpiresAt: expiresAt,
 		IsActive:  true,
 	}
-	if err := h.store.CreateSubscription(ctx, sub); err != nil {
+	if err := h.store.ActivateSubscription(ctx, sub); err != nil {
+		if charged {
+			if refundErr := h.payClient.RefundService(ctx, u.TelegramID, plan.Price, plan.ID.String()+":"+attemptID+":sub_create_failed"); refundErr != nil {
+				h.log.Error("plan activation and refund failed", ports.F("err", err), ports.F("refund_err", refundErr), ports.F("user", u.ID))
+			}
+		}
 		fail(c, http.StatusInternalServerError, "subscription creation failed")
 		return
 	}
+	if payment != nil {
+		if err := h.store.CreatePayment(ctx, payment); err != nil {
+			h.log.Warn("create payment record failed", ports.F("err", err))
+		}
+	}
+	if h.nc != nil {
+		_ = h.nc.PublishCore("plan.upgraded", map[string]any{
+			"user_id": u.ID, "telegram_id": u.TelegramID, "plan_id": plan.ID,
+			"plan_name": plan.Name, "max_bots": plan.MaxBots,
+		})
+	}
+	h.createAudit(c, u.ID, string(u.Role), models.AuditBuyPlan, plan.ID.String(), "plan", plan.Name)
 
-	ok(c, sub)
+	ok(c, gin.H{"subscription": sub, "attempt_id": attemptID})
 }
 
 // ── Service types / templates (کاربر عادی) ─────────────────
@@ -1071,6 +1122,17 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 
 	// ── ساخت instance در DB ─────────────────────────────────
 	u, _ := h.store.FindUserByID(ctx, userID)
+	var planID *uuid.UUID
+	lockMode := models.LockModeNone
+	if sub, _ := h.store.GetActiveSubscription(ctx, userID); sub != nil {
+		planID = &sub.PlanID
+		if plan, _ := h.store.FindPlan(ctx, sub.PlanID.String()); plan != nil && plan.IsFree {
+			lockMode = models.LockModeFree
+		}
+	}
+	if tmpl.IsFree {
+		lockMode = models.LockModeFree
+	}
 	containerName := fmt.Sprintf("%s-%d", tmpl.Type, botID)
 	inst := &models.BotInstance{
 		OwnerID:       userID,
@@ -1081,10 +1143,25 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 		ContainerName: containerName,
 		DBSchema:      fmt.Sprintf("inst_%d", botID),
 		Status:        models.StatusPending,
+		PlanID:        planID,
+		LockMode:      lockMode,
 	}
 	if err := h.store.CreateInstance(ctx, inst); err != nil {
 		fail(c, http.StatusInternalServerError, "create instance failed")
 		return
+	}
+	planIDStr := ""
+	if planID != nil {
+		planIDStr = planID.String()
+	}
+	if h.nc != nil {
+		if lockMode == models.LockModeFree {
+			_ = h.nc.PublishCore(protocol.SubjFreeBotCreated, protocol.FreeBotCreatedEvent{InstanceID: inst.ID.String(), BotID: botID})
+		}
+		_ = h.nc.PublishCore(protocol.ServiceCreationRequested, protocol.ServiceProvisionPayload{
+			InstanceID: inst.ID.String(), OwnerID: userID.String(), ServiceType: tmpl.Type,
+			PlanID: planIDStr,
+		})
 	}
 
 	// ── ارسال deploy command به agentmanager ────────────────
@@ -1112,9 +1189,18 @@ func (h *Handler) CreateInstance(c *gin.Context) {
 // POST /api/v1/instances/:id/start
 func (h *Handler) StartInstance(c *gin.Context) {
 	ctx := c.Request.Context()
+	userID, parseErr := uuid.Parse(c.GetString("user_id"))
+	if parseErr != nil {
+		fail(c, http.StatusUnauthorized, "invalid user")
+		return
+	}
 	inst, err := h.store.FindInstance(ctx, c.Param("id"))
 	if err != nil || inst == nil {
 		fail(c, http.StatusNotFound, "instance not found")
+		return
+	}
+	if inst.OwnerID != userID {
+		fail(c, http.StatusForbidden, "instance access denied")
 		return
 	}
 	if inst.Status == models.StatusRunning {
@@ -1122,21 +1208,7 @@ func (h *Handler) StartInstance(c *gin.Context) {
 		return
 	}
 
-	tmpl, _ := h.store.FindTemplate(ctx, inst.TemplateID.String())
-	server, _ := h.store.FindServerByID(ctx, inst.ServerID.String())
-	if tmpl == nil || server == nil {
-		fail(c, http.StatusInternalServerError, "missing template or server")
-		return
-	}
-
-	// decrypt توکن
-	plainToken, err := auth.Decrypt(inst.BotToken, h.encryptKey)
-	if err != nil {
-		fail(c, http.StatusInternalServerError, "decrypt failed")
-		return
-	}
-
-	if err := h.publishDeploy(ctx, inst, tmpl, server, plainToken); err != nil {
+	if err := h.publishCommand(ctx, inst, protocol.MsgStart); err != nil {
 		fail(c, http.StatusInternalServerError, "start command failed")
 		return
 	}
@@ -1148,9 +1220,18 @@ func (h *Handler) StartInstance(c *gin.Context) {
 // POST /api/v1/instances/:id/stop
 func (h *Handler) StopInstance(c *gin.Context) {
 	ctx := c.Request.Context()
+	userID, parseErr := uuid.Parse(c.GetString("user_id"))
+	if parseErr != nil {
+		fail(c, http.StatusUnauthorized, "invalid user")
+		return
+	}
 	inst, err := h.store.FindInstance(ctx, c.Param("id"))
 	if err != nil || inst == nil {
 		fail(c, http.StatusNotFound, "instance not found")
+		return
+	}
+	if inst.OwnerID != userID {
+		fail(c, http.StatusForbidden, "instance access denied")
 		return
 	}
 
@@ -1166,29 +1247,21 @@ func (h *Handler) StopInstance(c *gin.Context) {
 // POST /api/v1/instances/:id/restart
 func (h *Handler) RestartInstance(c *gin.Context) {
 	ctx := c.Request.Context()
+	userID, parseErr := uuid.Parse(c.GetString("user_id"))
+	if parseErr != nil {
+		fail(c, http.StatusUnauthorized, "invalid user")
+		return
+	}
 	inst, err := h.store.FindInstance(ctx, c.Param("id"))
 	if err != nil || inst == nil {
 		fail(c, http.StatusNotFound, "instance not found")
 		return
 	}
-
-	tmpl, _ := h.store.FindTemplate(ctx, inst.TemplateID.String())
-	server, _ := h.store.FindServerByID(ctx, inst.ServerID.String())
-	if tmpl == nil || server == nil {
-		fail(c, http.StatusInternalServerError, "missing template or server")
+	if inst.OwnerID != userID {
+		fail(c, http.StatusForbidden, "instance access denied")
 		return
 	}
-
-	plainToken, err := auth.Decrypt(inst.BotToken, h.encryptKey)
-	if err != nil {
-		fail(c, http.StatusInternalServerError, "decrypt failed")
-		return
-	}
-
-	// stop → deploy
-	h.publishCommand(ctx, inst, protocol.MsgStop)
-	time.Sleep(2 * time.Second)
-	if err := h.publishDeploy(ctx, inst, tmpl, server, plainToken); err != nil {
+	if err := h.publishCommand(ctx, inst, protocol.MsgRestart); err != nil {
 		fail(c, http.StatusInternalServerError, "restart failed")
 		return
 	}
@@ -1200,9 +1273,18 @@ func (h *Handler) RestartInstance(c *gin.Context) {
 // DELETE /api/v1/instances/:id
 func (h *Handler) DeleteInstance(c *gin.Context) {
 	ctx := c.Request.Context()
+	userID, parseErr := uuid.Parse(c.GetString("user_id"))
+	if parseErr != nil {
+		fail(c, http.StatusUnauthorized, "invalid user")
+		return
+	}
 	inst, err := h.store.FindInstance(ctx, c.Param("id"))
 	if err != nil || inst == nil {
 		fail(c, http.StatusNotFound, "instance not found")
+		return
+	}
+	if inst.OwnerID != userID {
+		fail(c, http.StatusForbidden, "instance access denied")
 		return
 	}
 
@@ -1219,9 +1301,18 @@ func (h *Handler) DeleteInstance(c *gin.Context) {
 // GET /api/v1/instances/:id/logs
 func (h *Handler) GetInstanceLogs(c *gin.Context) {
 	ctx := c.Request.Context()
+	userID, parseErr := uuid.Parse(c.GetString("user_id"))
+	if parseErr != nil {
+		fail(c, http.StatusUnauthorized, "invalid user")
+		return
+	}
 	inst, err := h.store.FindInstance(ctx, c.Param("id"))
 	if err != nil || inst == nil {
 		fail(c, http.StatusNotFound, "instance not found")
+		return
+	}
+	if inst.OwnerID != userID {
+		fail(c, http.StatusForbidden, "instance access denied")
 		return
 	}
 
@@ -1752,6 +1843,14 @@ func (h *Handler) AdminStats(c *gin.Context) {
 	})
 }
 
+func validTelegramAuthTime(now time.Time, authDate int64) bool {
+	if authDate == 0 {
+		return false
+	}
+	authTime := time.Unix(authDate, 0)
+	return now.Sub(authTime) <= maxAuthAge && !authTime.After(now.Add(5*time.Minute))
+}
+
 // verifyTelegramAuth دقیقاً طبق مستنداتِ Telegram Login Widget عمل می‌کند:
 // data-check-string = تمامِ فیلدهای دریافتی (به‌جز hash) که خالی نیستند،
 // به‌صورت "key=value" مرتب‌شده‌ی الفبایی و جداشده با "\n"؛
@@ -1913,9 +2012,38 @@ func (h *Handler) DeletePromoCode(c *gin.Context) {
 // ── NATS publish helpers ──────────────────────────────────
 
 func (h *Handler) publishDeploy(ctx context.Context, inst *models.BotInstance, tmpl *models.BotTemplate, server *models.Server, plainToken string) error {
+	owner, _ := h.store.FindUserByID(ctx, inst.OwnerID)
+	ownerTelegram := int64(0)
+	if owner != nil {
+		ownerTelegram = owner.TelegramID
+	}
+	planID := ""
+	if inst.PlanID != nil {
+		planID = inst.PlanID.String()
+	}
+	jwtToken := ""
+	if owner != nil {
+		jwtToken, _ = auth.GenerateAccessToken(owner.ID.String(), string(owner.Role), auth.JWTConfig{AccessSecret: h.accessSecret, AccessTTL: 15 * time.Minute})
+	}
+	licenseToken := ""
+	if h.license != nil {
+		issued, err := h.license.Issue(ctx, inst.BotID, "bot_"+strconv.FormatInt(inst.BotID, 10), inst.OwnerID.String(), server.ID.String(), planID)
+		if err != nil {
+			h.log.Warn("license issue failed", ports.F("err", err), ports.F("instance", inst.ID))
+		} else {
+			licenseToken = issued
+		}
+	}
+	serviceName := strings.TrimSpace(tmpl.Name)
+	if serviceName == "" {
+		serviceName = tmpl.Type
+	}
 	envVars := map[string]string{
-		"BOT_TOKEN":   plainToken,
-		"INSTANCE_ID": fmt.Sprintf("bot_%d", inst.BotID),
+		"BOT_TOKEN": plainToken, "INSTANCE_ID": fmt.Sprintf("bot_%d", inst.BotID),
+		"OWNER_TELEGRAM": strconv.FormatInt(ownerTelegram, 10),
+		"OWNER_ID":       strconv.FormatInt(ownerTelegram, 10), "PLAN_ID": planID,
+		"JWT_TOKEN": jwtToken, "LICENSE_TOKEN": licenseToken, "SERVER_ID": server.ID.String(),
+		"APP_ENV": "production", "BOT_SERVICE_NAME": serviceName,
 	}
 	// تنظیمات کاربرمحوری که کاربر از طریق UpdateInstanceSettings ذخیره کرده — این تنها جایی
 	// است که EnvOverrides واقعاً روی کانتینر اعمال می‌شود، پس فقط با start/restart جدید اثر
@@ -1940,7 +2068,7 @@ func (h *Handler) publishDeploy(ctx context.Context, inst *models.BotInstance, t
 
 	pubCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return h.nc.Publish(pubCtx, protocol.DeploySubject(server.ID.String()), cmd)
+	return h.docker.Send(pubCtx, server.ID.String(), cmd)
 }
 
 func (h *Handler) publishCommand(ctx context.Context, inst *models.BotInstance, msgType protocol.MsgType) error {
@@ -1953,9 +2081,19 @@ func (h *Handler) publishCommand(ctx context.Context, inst *models.BotInstance, 
 		Type:          msgType,
 		ServerID:      server.ID.String(),
 		ContainerName: inst.ContainerName,
+		ContainerID:   firstNonEmpty(inst.ContainerID, inst.ContainerName),
 	}
 
 	pubCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return h.nc.Publish(pubCtx, protocol.DeploySubject(server.ID.String()), cmd)
+	return h.docker.Send(pubCtx, server.ID.String(), cmd)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

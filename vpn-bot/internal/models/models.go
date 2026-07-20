@@ -1,57 +1,56 @@
+// Package models مدل‌های دامنه‌ی vpn-bot را تعریف می‌کند.
+//
+// این‌ها value object های خالص Go هستند (بدون tag مخصوص هیچ دیتابیسی) — تبدیل
+// به/از سند MongoDB درون internal/store انجام می‌شود تا این پکیج به هیچ
+// درایوری وابسته نباشد. شکل و نام فیلدها عمداً با نسخه‌ی قبلیِ Postgres یکی
+// نگه داشته شده تا کد لایه‌ی handler (tgbot/scheduler) بدون تغییر کار کند.
 package models
 
 import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
-type Base struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt `gorm:"index"`
-}
-
-func (b *Base) BeforeCreate(_ *gorm.DB) error {
-	if b.ID == uuid.Nil {
-		b.ID = uuid.New()
-	}
-	return nil
-}
-
+// User کاربر ربات (خریدار اشتراک VPN).
 type User struct {
-	Base
-	TelegramID int64      `gorm:"uniqueIndex;not null"`
+	ID         uuid.UUID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	TelegramID int64
 	Username   string
 	FirstName  string
-	Balance    float64    `gorm:"default:0"`
-	IsBlocked  bool       `gorm:"default:false"`
-	ResellerID *uuid.UUID `gorm:"type:uuid;index"`
-	Discount   float64    `gorm:"default:0"` // reseller discount %
+	Balance    float64
+	IsBlocked  bool
+	ResellerID *uuid.UUID
+	Discount   float64 // reseller discount % — تعریف‌شده، فعلاً بلااستفاده (مثل قبل)
 }
 
-// Type must match a registered ports.VPNPanel adapter name.
+// Panel یک پنل VPN (Marzban/X-UI/...).
 type Panel struct {
-	Base
-	Name       string `gorm:"not null"`
-	Type       string `gorm:"not null"` // marzban | marzneshin | hiddify | xui | ...
-	BaseURL    string `gorm:"not null"`
-	Username   string
-	Password   string // AES-256-GCM encrypted
-	Capacity   int    `gorm:"default:0"` // 0 = unlimited
-	ActiveCount int   `gorm:"default:0"`
-	IsActive   bool   `gorm:"default:true"`
+	ID          uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Name        string
+	Type        string // marzban | marzneshin | hiddify | xui | ...
+	BaseURL     string
+	Username    string
+	Password    string // AES-256-GCM encrypted
+	Capacity    int    // 0 = unlimited
+	ActiveCount int
+	IsActive    bool
 }
 
+// Plan پلن فروش اشتراک.
 type Plan struct {
-	Base
-	Name        string  `gorm:"not null"`
-	DurationDay int     `gorm:"not null"`
-	DataGB      float64 `gorm:"default:0"` // 0 = unlimited
-	Price       float64 `gorm:"not null"`
-	IsActive    bool    `gorm:"default:true"`
+	ID          uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Name        string
+	DurationDay int
+	DataGB      float64 // 0 = unlimited
+	Price       float64
+	IsActive    bool
 }
 
 type SubscriptionStatus string
@@ -62,40 +61,43 @@ const (
 	SubDisabled SubscriptionStatus = "disabled"
 )
 
+// Subscription یک اشتراک فعال/تاریخ‌گذشته‌ی کاربر.
 type Subscription struct {
-	Base
-	UserID    uuid.UUID          `gorm:"not null;index"`
-	User      User               `gorm:"foreignKey:UserID"`
-	PanelID   uuid.UUID          `gorm:"not null;index"`
-	PlanID    uuid.UUID          `gorm:"not null"`
-	Username  string             // panel-side username
-	Status    SubscriptionStatus `gorm:"default:'active'"`
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	UserID    uuid.UUID
+	PanelID   uuid.UUID
+	PlanID    uuid.UUID
+	Username  string // panel-side username
+	Status    SubscriptionStatus
 	ExpiresAt time.Time
 	DataLimit float64
 	UsedData  float64
 }
 
+// DiscountCode کد تخفیف — تعریف‌شده، فعلاً در مسیر خرید استفاده نمی‌شود (مثل قبل).
 type DiscountCode struct {
-	Base
-	Code      string  `gorm:"uniqueIndex;not null"`
-	Percent   float64 `gorm:"not null"`
-	MaxUse    int     `gorm:"default:1"`
-	UsedCount int     `gorm:"default:0"`
-	IsActive  bool    `gorm:"default:true"`
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Code      string
+	Percent   float64
+	MaxUse    int
+	UsedCount int
+	IsActive  bool
 }
 
+// Payment یک پرداخت (آنلاین یا کارت‌به‌کارت).
 type Payment struct {
-	Base
-	UserID  uuid.UUID `gorm:"not null;index"`
-	Amount  float64
-	Gateway string // "zarinpal" | "nowpayments" | "card"
-	Status  string `gorm:"default:'pending'"`
-	RefCode string
-	Receipt string // photo file_id for card
-	PlanID  *uuid.UUID
-}
-
-type Setting struct {
-	Key   string `gorm:"primaryKey"`
-	Value string
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	UserID    uuid.UUID
+	Amount    float64
+	Gateway   string // "zarinpal" | "nowpayments" | "card"
+	Status    string // "pending" | "confirmed"
+	RefCode   string
+	Receipt   string // photo file_id for card
+	PlanID    *uuid.UUID
 }

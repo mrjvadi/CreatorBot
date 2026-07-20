@@ -208,16 +208,17 @@ function DevLogin({
   async function onSubmit(values: DevLoginForm) {
     try {
       const authDate = Math.floor(Date.now() / 1000);
+      const telegramID = Number(values.telegram_id.trim());
       const fields = {
-        telegram_id: values.telegram_id,
+        id: telegramID,
         first_name: values.first_name,
         last_name: values.last_name,
         username: values.username,
         auth_date: authDate,
       };
-      const hash = await signTelegramAuth(values.bot_token, fields);
+      const hash = await signTelegramAuth(values.bot_token.trim(), fields);
       await onSubmitPayload({
-        telegram_id: Number(values.telegram_id),
+        id: telegramID,
         first_name: values.first_name,
         last_name: values.last_name,
         username: values.username,

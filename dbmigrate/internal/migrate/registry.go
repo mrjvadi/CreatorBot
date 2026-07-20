@@ -21,9 +21,12 @@ type Service struct {
 
 // Registry لیست کامل سرویس‌های Postgres پلتفرم.
 //
-// سرویس‌های Mongo (uploader-bot, fraud-engine, log-collector, admanager-bot)
-// این‌جا نیستند — Mongo schema ندارد و index هایش را خود سرویس در startup
-// می‌سازد. agentmanager و webhook-gateway هم اصلاً دیتابیس ندارند.
+// سرویس‌های Mongo (uploader-bot, vpn-bot, archive-bot, member-bot,
+// fraud-engine, log-collector, admanager-bot) این‌جا نیستند — Mongo schema
+// ندارد و index هایش را خود سرویس در startup می‌سازد (رجوع
+// dbmigrate/migrations/{vpn-bot,archive-bot,member-bot}/RETIRED.md برای
+// تاریخچه‌ی cutover از Postgres، ۲۰۲۶-۰۷-۱۷). agentmanager و webhook-gateway
+// هم اصلاً دیتابیس ندارند.
 var Registry = []Service{
 	{
 		Name: "botmanager", DBName: "botmanager",
@@ -36,9 +39,6 @@ var Registry = []Service{
 	{Name: "revenue-service", DBName: "revenue", Aliases: []string{"revenue"}, Note: "قوانین کمیسیون و واریز"},
 	{Name: "license-service", DBName: "license", Aliases: []string{"license"}, Note: "لایسنس ضدکپی ربات‌ها"},
 	{Name: "image-registry", DBName: "imageregistry", Aliases: []string{"imageregistry"}, Note: "رجیستری imageهای مجاز"},
-	{Name: "vpn-bot", DBName: "vpn_bot", Note: "محصول — چند instance با یک DB (جدا با instance_id)"},
-	{Name: "member-bot", DBName: "member_bot", Note: "زیرساخت چک عضویت"},
-	{Name: "archive-bot", DBName: "archive_bot", Note: "آرشیو فایل (pg_trgm در baseline ساخته می‌شود)"},
 	{Name: "source-service", DBName: "source_svc", Note: "فوروارد MTProto (فعلاً stub)"},
 }
 

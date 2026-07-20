@@ -93,10 +93,11 @@ func (s *Store) ListPendingEarnings(ctx context.Context, limit int) ([]Earning, 
 		Find(&earnings).Error
 }
 
-func (s *Store) MarkProcessing(ctx context.Context, id uuid.UUID) error {
-	return s.db.WithContext(ctx).Model(&Earning{}).
+func (s *Store) MarkProcessing(ctx context.Context, id uuid.UUID) (bool, error) {
+	result := s.db.WithContext(ctx).Model(&Earning{}).
 		Where("id = ? AND status = ?", id, EarningPending).
-		Update("status", EarningProcessing).Error
+		Update("status", EarningProcessing)
+	return result.RowsAffected == 1, result.Error
 }
 
 func (s *Store) MarkDone(ctx context.Context, id uuid.UUID, ownerTxID, platformTxID string, ownerNano, platformNano int64) error {

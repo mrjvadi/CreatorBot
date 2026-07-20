@@ -1,6 +1,8 @@
 package tgbot
 
 import (
+	"fmt"
+
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/botpay/internal/i18n"
@@ -8,89 +10,185 @@ import (
 	"github.com/mrjvadi/creatorbot/botpay/internal/wallet"
 )
 
-// kbMain کیبورد اصلی reply را با برچسب‌های ترجمه‌شده می‌سازد.
-func kbMain(lang i18n.Lang) *tele.ReplyMarkup {
+// depositPresetsTON مبالغ پیش‌فرض دکمه‌های واریز.
+var depositPresetsTON = []float64{1, 5, 10, 50}
+
+// ── کیبورد اصلی (reply، همیشه چسبیده) ──
+
+func kbMain(lang i18n.Lang, isAdmin bool) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
-	kb.Reply(
+	rows := []tele.Row{
 		kb.Row(kb.Text(i18n.T(lang, i18n.KBtnWallet))),
 		kb.Row(kb.Text(i18n.T(lang, i18n.KBtnDeposit)), kb.Text(i18n.T(lang, i18n.KBtnWithdraw))),
 		kb.Row(kb.Text(i18n.T(lang, i18n.KBtnTransfer)), kb.Text(i18n.T(lang, i18n.KBtnHistory))),
 		kb.Row(kb.Text(i18n.T(lang, i18n.KBtnHelp)), kb.Text(i18n.T(lang, i18n.KBtnLanguage))),
-	)
+	}
+	if isAdmin {
+		rows = append(rows, kb.Row(kb.Text(i18n.T(lang, i18n.KBtnAdmin))))
+	}
+	kb.Reply(rows...)
 	return kb
 }
 
-// kbCancelOnly کیبوردی فقط با دکمه‌ی انصراف.
 func kbCancelOnly(lang i18n.Lang) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{ResizeKeyboard: true}
 	kb.Reply(kb.Row(kb.Text(i18n.T(lang, i18n.KBtnCancel))))
 	return kb
 }
 
-// kbLanguage کیبورد inline انتخاب زبان — هر زبان با نام بومی خودش.
-// قالب callback: "set_lang:<code>" (سازگار با پارسر onCallback).
+// ── کیف پول (inline) ──
+
+func kbWallet(lang i18n.Lang) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(
+			kb.Data(i18n.T(lang, i18n.KBtnWalletDep), "nav:deposit"),
+			kb.Data(i18n.T(lang, i18n.KBtnWalletWdr), "nav:withdraw"),
+		),
+		kb.Row(
+			kb.Data(i18n.T(lang, i18n.KBtnWalletTrf), "nav:transfer"),
+			kb.Data(i18n.T(lang, i18n.KBtnWalletHist), "nav:history:0"),
+		),
+		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnRefresh), "nav:wallet")),
+	)
+	return kb
+}
+
+// ── واریز ──
+
+func kbDepositMenu(lang i18n.Lang) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	var presets []tele.Btn
+	for _, p := range depositPresetsTON {
+		presets = append(presets, kb.Data(fmt.Sprintf("%s TON", fmtTON(p)), fmt.Sprintf("dep:amt:%d", wallet.TONToNano(p))))
+	}
+	kb.Inline(
+		kb.Row(presets[0], presets[1]),
+		kb.Row(presets[2], presets[3]),
+		kb.Row(
+			kb.Data(i18n.T(lang, i18n.KBtnDepositCustom), "dep:custom"),
+			kb.Data(i18n.T(lang, i18n.KBtnDepositAny), "dep:any"),
+		),
+		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnBack), "nav:wallet")),
+	)
+	return kb
+}
+
+func kbDepositInvoice(lang i18n.Lang, payURL, code string) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(kb.URL(i18n.T(lang, i18n.KBtnOpenWallet), payURL)),
+		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnCheckDeposit), "dep:check:"+code)),
+		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnBack), "nav:deposit")),
+	)
+	return kb
+}
+
+// ── تأیید (برداشت/انتقال) ──
+
+func kbConfirm(lang i18n.Lang, okData, cancelData string) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(kb.Row(
+		kb.Data(i18n.T(lang, i18n.KBtnConfirm), okData),
+		kb.Data(i18n.T(lang, i18n.KBtnCancel), cancelData),
+	))
+	return kb
+}
+
+// ── تاریخچه (inline + pager) ──
+
+func kbHistory(lang i18n.Lang, page, totalPages int) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	var pager []tele.Btn
+	if page > 0 {
+		pager = append(pager, kb.Data(i18n.T(lang, i18n.KBtnPrev), fmt.Sprintf("nav:history:%d", page-1)))
+	}
+	if page < totalPages-1 {
+		pager = append(pager, kb.Data(i18n.T(lang, i18n.KBtnNext), fmt.Sprintf("nav:history:%d", page+1)))
+	}
+	rows := []tele.Row{}
+	if len(pager) > 0 {
+		rows = append(rows, kb.Row(pager...))
+	}
+	rows = append(rows, kb.Row(kb.Data(i18n.T(lang, i18n.KBtnBack), "nav:wallet")))
+	kb.Inline(rows...)
+	return kb
+}
+
+// ── زبان ──
+
 func kbLanguage() *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	for _, l := range i18n.Supported() {
-		rows = append(rows, kb.Row(kb.Data(i18n.Name(l), "set_lang:"+string(l))))
+		rows = append(rows, kb.Row(kb.Data(i18n.Name(l), "lang:"+string(l))))
 	}
 	kb.Inline(rows...)
 	return kb
 }
 
-// kbDeposit کیبورد inline صفحه‌ی واریز.
-// قالب callback بررسی: "check_deposit:<code>".
-func kbDeposit(lang i18n.Lang, payURL, code string) *tele.ReplyMarkup {
-	kb := &tele.ReplyMarkup{}
-	kb.Inline(
-		kb.Row(kb.URL(i18n.T(lang, i18n.KBtnOpenWallet), payURL)),
-		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnCheckDeposit), "check_deposit:"+code)),
-	)
-	return kb
-}
+// ── پنل ادمین ──
 
-// kbAdminMenu منوی اصلی پنل ادمین (inline).
 func kbAdminMenu(lang i18n.Lang) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{}
 	kb.Inline(
-		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnAdminWithdraws), "adm:withdraws")),
+		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnAdminWithdraws), "adm:withdraws:0")),
 		kb.Row(
 			kb.Data(i18n.T(lang, i18n.KBtnAdminCredit), "adm:credit"),
-			kb.Data(i18n.T(lang, i18n.KBtnAdminRefresh), "adm:stats"),
+			kb.Data(i18n.T(lang, i18n.KBtnAdminLookup), "adm:lookup"),
+		),
+		kb.Row(
+			kb.Data(i18n.T(lang, i18n.KBtnAdminChain), "adm:chain"),
+			kb.Data(i18n.T(lang, i18n.KBtnAdminRefresh), "adm:home"),
 		),
 	)
 	return kb
 }
 
-// kbWithdrawList فهرست برداشت‌های منتظر را با دکمه‌های تأیید/رد برای هر مورد می‌سازد.
-func kbWithdrawList(lang i18n.Lang, reqs []store.WithdrawRequest) *tele.ReplyMarkup {
+// kbAdminWithdrawList فهرست برداشت‌ها را با دکمه‌ی «جزئیات» برای هر مورد + pager می‌سازد.
+func kbAdminWithdrawList(lang i18n.Lang, reqs []store.WithdrawRequest, page, totalPages int) *tele.ReplyMarkup {
 	kb := &tele.ReplyMarkup{}
 	var rows []tele.Row
 	for _, r := range reqs {
-		id := r.ID.String()
-		short := id
-		if len(short) > 6 {
-			short = short[:6]
-		}
-		rows = append(rows, kb.Row(
-			kb.Data("✅ "+short, "wd:approve:"+id),
-			kb.Data("🚫 "+short, "wd:reject:"+id),
-		))
+		label := fmt.Sprintf("🔍 %s TON — %s", fmtNano(r.Amount), shortID(r.ID.String()))
+		rows = append(rows, kb.Row(kb.Data(label, "adm:wd:"+r.ID.String())))
 	}
-	rows = append(rows, kb.Row(kb.Data(i18n.T(lang, i18n.KBtnAdminBack), "adm:menu")))
+	var pager []tele.Btn
+	if page > 0 {
+		pager = append(pager, kb.Data(i18n.T(lang, i18n.KBtnPrev), fmt.Sprintf("adm:withdraws:%d", page-1)))
+	}
+	if page < totalPages-1 {
+		pager = append(pager, kb.Data(i18n.T(lang, i18n.KBtnNext), fmt.Sprintf("adm:withdraws:%d", page+1)))
+	}
+	if len(pager) > 0 {
+		rows = append(rows, kb.Row(pager...))
+	}
+	rows = append(rows, kb.Row(kb.Data(i18n.T(lang, i18n.KBtnAdminBack), "adm:home")))
 	kb.Inline(rows...)
 	return kb
 }
 
-// adminWithdrawText متن یک مورد برداشت را برای فهرست ادمین قالب‌بندی می‌کند.
-func adminWithdrawText(lang i18n.Lang, r store.WithdrawRequest) string {
-	return i18n.T(lang, i18n.KAdminWithdrawItem,
-		r.ID, wallet.NanoToTON(r.Amount), wallet.NanoToTON(r.Fee),
-		r.ToAddress, r.CreatedAt.Format("01/02 15:04"))
+// kbAdminWithdrawDetail دکمه‌های تأیید/رد یک برداشت + بازگشت.
+func kbAdminWithdrawDetail(lang i18n.Lang, id string) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(
+		kb.Row(
+			kb.Data(i18n.T(lang, i18n.KBtnApprove), "adm:approve:"+id),
+			kb.Data(i18n.T(lang, i18n.KBtnReject), "adm:reject:"+id),
+		),
+		kb.Row(kb.Data(i18n.T(lang, i18n.KBtnAdminBack), "adm:withdraws:0")),
+	)
+	return kb
 }
 
-// isCancel بررسی می‌کند متن ورودی، دستور انصراف باشد (در همه‌ی زبان‌ها).
+// kbAdminBack فقط دکمه‌ی بازگشت به منوی مدیریت.
+func kbAdminBack(lang i18n.Lang) *tele.ReplyMarkup {
+	kb := &tele.ReplyMarkup{}
+	kb.Inline(kb.Row(kb.Data(i18n.T(lang, i18n.KBtnAdminBack), "adm:home")))
+	return kb
+}
+
+// isCancel بررسی می‌کند متن ورودی دستور انصراف باشد (در همه‌ی زبان‌ها).
 func isCancel(text string) bool {
 	if text == "/cancel" {
 		return true

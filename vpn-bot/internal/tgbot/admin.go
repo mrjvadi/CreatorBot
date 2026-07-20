@@ -34,7 +34,6 @@ func (h *Handler) handleAdminText(ctx context.Context, c tele.Context, text stri
 		return h.adminPlans(ctx, c)
 	case "🖥 پنل‌ها":
 		return h.adminPanels(ctx, c)
-		return h.adminPanels(ctx, c)
 	case "💸 پرداخت‌ها":
 		return h.adminPayments(ctx, c)
 	case "📣 broadcast":
@@ -175,21 +174,22 @@ func (h *Handler) approvePayment(ctx context.Context, c tele.Context, payIDStr s
 		return c.Edit("❌ ID نامعتبر.")
 	}
 
-	payment, err := h.store.FindPaymentByID(ctx, payID)
-	if err != nil || payment == nil {
-		return c.Edit("❌ پرداخت یافت نشد.")
+	// تأیید اتمیک: status را فقط اگر هنوز pending باشد به confirmed می‌برد
+	// (findOneAndUpdate اتمیک) — رفع باگ واقعیِ duplicate-credit که در نسخه‌ی
+	// قبلی وجود داشت: دو کلیک هم‌زمان روی «تأیید» هر دو از چک جداگانه‌ی
+	// status رد می‌شدند و موجودی دو بار افزایش می‌یافت.
+	payment, err := h.store.ClaimPendingPayment(ctx, payID, "confirmed")
+	if err != nil {
+		return c.Edit("❌ خطا در پردازش پرداخت.")
 	}
-	if payment.Status != "pending" {
-		return c.Edit("این پرداخت قبلاً پردازش شده.")
+	if payment == nil {
+		return c.Edit("این پرداخت یافت نشد یا قبلاً پردازش شده.")
 	}
 
 	// افزایش موجودی کاربر
 	if err := h.store.UpdateBalance(ctx, payment.UserID, payment.Amount); err != nil {
 		return c.Edit("❌ خطا در افزایش موجودی.")
 	}
-
-	// تأیید پرداخت
-	h.store.UpdatePaymentStatus(ctx, payID, "confirmed")
 
 	// فعال‌سازی اشتراک اگه plan_id داره
 	if payment.PlanID != nil {

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { Bot, Plus, Play, Square, RotateCw, Trash2, ScrollText, Settings, FolderOpen, FolderPlus, KeyRound } from "lucide-react";
+import { Bot, Plus, Play, Square, RotateCw, Trash2, ScrollText, Settings, FolderOpen, FolderPlus, KeyRound, CreditCard } from "lucide-react";
 import { api, apiErrorMessage, unwrap } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
@@ -47,7 +47,7 @@ export default function Instances() {
     onError: (err) => toast.error(apiErrorMessage(err, t("instances.createFailed"))),
   });
 
-  async function runAction(id: string, action: "start" | "stop" | "restart" | "delete") {
+  async function runAction(id: string, action: "start" | "stop" | "restart" | "renew" | "delete") {
     setPendingAction(id + action);
     try {
       if (action === "delete") {
@@ -116,6 +116,7 @@ export default function Instances() {
           <ActionMenu
             ariaLabel={t("common.actions")}
             items={[
+              { label: t("instances.actionRenew"), icon: CreditCard, onClick: () => runAction(row.id, "renew") },
               { label: t("instances.actionSettings"), icon: Settings, onClick: () => setSettingsFor(row) },
               { label: t("instances.actionContent"), icon: FolderOpen, onClick: () => setContentFor(row) },
               { label: t("instances.actionLogs"), icon: ScrollText, onClick: () => setLogsFor(row) },

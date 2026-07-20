@@ -104,14 +104,16 @@ func (h *User) InstanceRenewExecute(ctx context.Context, c tele.Context, idStr s
 		return c.Edit(h.T(ctx, uid, i18n.KeyError))
 	}
 
-	// اگر سرویس روشن نیست، دستور start به agent بفرست
-	if inst.Status != models.StatusRunning && h.NC != nil {
-		_ = h.NC.PublishCore("instance.start", map[string]any{
-			"instance_id":    inst.ID,
-			"container_name": inst.ContainerName,
-			"server_id":      inst.ServerID,
-			"action":         "start",
-		})
+	// اگر سرویس روشن نیست، همان قرارداد deploy.{server_id} مشترک را استفاده کن.
+	if inst.Status != models.StatusRunning {
+		containerID := inst.ContainerID
+		if containerID == "" {
+			containerID = inst.ContainerName
+		}
+		if err := h.Docker.Start(ctx, inst.ServerID.String(), containerID); err != nil {
+			h.Log.Error("renew start command failed", ports.F("err", err), ports.F("instance", inst.ID))
+			return c.Edit(h.T(ctx, uid, i18n.KeyBotActionFailed))
+		}
 		_ = h.Store.UpdateInstanceStatus(ctx, inst.ID.String(), models.StatusPending)
 	}
 

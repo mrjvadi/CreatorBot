@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
-	"github.com/mrjvadi/creatorbot/shared-core/store"
 )
 
 // MockDB یک پیاده‌سازی ساده از ports.DB برای تست.
@@ -117,7 +116,7 @@ func TestInstanceStatus(t *testing.T) {
 
 // TestUserRole بررسی role های معتبر.
 func TestUserRole(t *testing.T) {
-	roles := []models.Role{
+	roles := []models.UserRole{
 		models.RoleUser,
 		models.RoleAdmin,
 		models.RoleOwner,

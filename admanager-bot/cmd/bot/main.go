@@ -13,6 +13,7 @@ import (
 	"github.com/mrjvadi/creatorbot/admanager-bot/internal/tgbot"
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -20,11 +21,12 @@ import (
 
 // Config متغیرهای محیطی ربات.
 type Config struct {
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
 
-	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
 	MongoURI    string `mapstructure:"MONGO_URI"`
 	MongoDB     string `mapstructure:"MONGO_DB"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
@@ -50,7 +52,6 @@ func main() {
 	// ── Engine ────────────────────────────────────────────────
 	eng, err := engine.New(engine.Config{
 		BotToken:     cfg.BotToken,
-		PostgresDSN:  cfg.PostgresDSN,
 		MongoURI:     cfg.MongoURI,
 		MongoDB:      cfg.MongoDB,
 		RedisAddr:    cfg.RedisAddr,
@@ -96,6 +97,12 @@ func main() {
 		Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
 	}); err2 != nil {
 		log.Error("webhook setup", ports.F("err", err2))
+	}
+	if err := botprofile.Sync(rawBot, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "Ad Manager Bot"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
 	}
 
 	log.Info("admanager-bot starting",

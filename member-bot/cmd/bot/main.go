@@ -2,38 +2,44 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/signal"
 	"syscall"
 
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/member-bot/internal/dispatcher"
-	"github.com/mrjvadi/creatorbot/member-bot/internal/events"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/lock"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/memberresponder"
-	"github.com/mrjvadi/creatorbot/member-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/scheduler"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/store"
 	"github.com/mrjvadi/creatorbot/member-bot/internal/tgbot"
 	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/mongodb"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
-	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
+	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Config struct {
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
 	NatsURL     string `mapstructure:"NATS_URL"`
 	NatsUser    string `mapstructure:"NATS_USERNAME"`
 	NatsPass    string `mapstructure:"NATS_PASSWORD"`
 	FraudURL    string `mapstructure:"FRAUD_ENGINE_URL"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
-	PostgresDSN string `mapstructure:"MASTER_DSN"`
+	// این ربات هیچ Postgres ندارد؛ همه‌ی داده روی MongoDB است (دیتابیس
+	// اختصاصیِ نوع سرویس member-bot).
+	MongoURI    string `mapstructure:"MONGO_URI"`
+	MongoDB     string `mapstructure:"MONGO_DB"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
 	RedisDB     int    `mapstructure:"REDIS_DB"`
@@ -55,13 +61,20 @@ func main() {
 	config.MustLoad(&cfg)
 	log := logger.MustNew(false)
 
-	db, err := postgres.New(postgres.Config{DSN: cfg.PostgresDSN})
+	// instanceID جدا می‌کند دیتای این deploy را از بقیه‌ی instanceهای member-bot
+	// که همگی روی همان دیتابیسِ مشترکِ Mongo (MONGO_DB=member_bot) نشسته‌اند —
+	// همان الگویی که uploader-bot با shared-core/docstore پیاده می‌کند.
+	botID := webhook.BotIDFromToken(cfg.BotToken)
+	instanceID := fmt.Sprintf("bot_%d", botID)
+
+	mdb, err := mongodb.New(mongodb.Config{URI: cfg.MongoURI, Database: cfg.MongoDB})
 	if err != nil {
-		log.Fatal("db", ports.F("err", err))
+		log.Fatal("mongodb", ports.F("err", err))
 	}
-	db.Migrate(&models.Owner{}, &models.Lock{}, &models.CheckBot{},
-		&models.BotChannelMembership{}, &models.MemberVerification{},
-		&models.Payment{}, &models.Setting{})
+	st := store.New(mdb.Database(), instanceID)
+	if err := st.EnsureIndexes(context.Background()); err != nil {
+		log.Fatal("mongo indexes", ports.F("err", err))
+	}
 
 	cache, err := sharedredis.New(sharedredis.Config{
 		Addr: cfg.RedisAddr, Password: cfg.RedisPass, DB: cfg.RedisDB,
@@ -71,7 +84,6 @@ func main() {
 	}
 
 	mode := webhook.ParseMode(cfg.BotMode)
-	botID := webhook.BotIDFromToken(cfg.BotToken)
 	// نکته: قبلاً این اتصال فقط در حالت webhook ساخته می‌شد، یعنی در حالت
 	// polling نه memberresponder (member.check) نه license check-in کار
 	// می‌کردند. حالا در هر دو حالت، وقتی NATS_URL تنظیم شده باشد، ساخته می‌شود.
@@ -87,7 +99,7 @@ func main() {
 		}
 	}
 	if wnc != nil {
-		log.AttachNATS(wnc, "member-bot")
+		log.AttachNATS(wnc, "member-bot", instanceID)
 	}
 	poller := webhook.BuildPoller(webhook.PollerConfig{
 		Mode: mode, BotID: botID, Token: cfg.BotToken,
@@ -108,7 +120,12 @@ func main() {
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
 	}
-	st := store.New(db)
+	if err := botprofile.Sync(rawBot, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "Member Bot"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
+	}
 	h := tgbot.NewHandler(rawBot, st, cache, log, cfg.OwnerID, cfg.EncryptKey)
 	tgbot.Register(rawBot, h)
 
@@ -116,7 +133,7 @@ func main() {
 	// قبلاً هرگز ساخته نمی‌شد: همه‌ی رویدادهای عضویت بی‌صدا از دست می‌رفتند.
 	if wnc != nil {
 		fc := fraudclient.New(wnc)
-		pub := events.NewPublisher(wnc, fc, log)
+		pub := joinevents.NewPublisher(wnc, fc, log)
 		pub.Register(rawBot)
 		h.SetActivityPublisher(pub)
 	}
@@ -149,7 +166,7 @@ func main() {
 	}
 
 	// Worker dispatcher
-	disp := dispatcher.New(db, st, cache, log, cfg.EncryptKey)
+	disp := dispatcher.New(st, cache, log, cfg.EncryptKey)
 	go func() {
 		if err := disp.Start(ctx); err != nil && ctx.Err() == nil {
 			log.Fatal("dispatcher", ports.F("err", err))

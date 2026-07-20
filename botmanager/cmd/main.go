@@ -21,12 +21,15 @@ import (
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Config struct {
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
@@ -97,7 +100,10 @@ func main() {
 	}
 
 	// ── Docker Manager (از طریق NATS) ────────────────────────
-	dockerManager := sharedocker.NewManager(nc)
+	// امضاشده: هر دستور deploy با HMAC امضا می‌شود تا agentmanager اصالتش را
+	// تأیید کند. اگر SERVICE_HMAC_SECRET خالی باشد، دستورها بدون امضا می‌روند و
+	// agentmanagerِ به‌روز آن‌ها را رد می‌کند (هشدارِ همان بلوکِ HMAC پایین‌تر).
+	dockerManager := sharedocker.NewSignedManager(nc, "botmanager", cfg.ServiceHMACSecret)
 
 	// ── Telegram Bot ──────────────────────────────────────────
 	settings := tele.Settings{
@@ -110,6 +116,12 @@ func main() {
 	rawBot, err := tele.NewBot(settings)
 	if err != nil {
 		log.Fatal("bot init failed", ports.F("err", err))
+	}
+	if err := botprofile.Sync(rawBot, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "CreatorBot Manager"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
 	}
 	log.Info("bot connected", ports.F("username", rawBot.Me.Username))
 

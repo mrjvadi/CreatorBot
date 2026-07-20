@@ -2,8 +2,8 @@
 
 فرانت‌اند وب برای سرویس `apimanager` — دو بخش دارد:
 
-- **پنل کاربری** (`/app`): داشبورد، مدیریت instance های ربات (ساخت/اجرا/توقف/راه‌اندازی مجدد/حذف/لاگ)، پلن‌ها.
-- **پنل مدیریت** (`/admin`): آمار کلی پلتفرم، مدیریت سرورها، مدیریت قالب‌ها. فقط برای نقش‌های `admin`/`owner`.
+- **پنل کاربری** (/app): داشبورد، مدیریت instanceهای ربات شامل ساخت، کنترل، لاگ، تنظیمات و محتوا، به‌همراه پلن‌ها و پرداخت‌ها.
+- **پنل مدیریت** (/admin): آمار و مدیریت instanceها، سرورها، قالب‌ها، imageها، پلن‌ها، پرداخت‌ها، کدهای تخفیف، کاربران و لاگ درخواست مرورگر. فقط برای نقش‌های admin/owner.
 
 ورود با **Telegram Login Widget** انجام می‌شود و مستقیم به endpoint های موجود در
 `internal/handler/handler.go` وصل می‌شود (بدون هیچ تغییری در بک‌اند).
@@ -67,22 +67,22 @@ apimanager هیچ static file ای سرو نمی‌کند، پس این فران
   در AdminStats یک نمودار دونات واقعی (recharts) وضعیت instance ها را نشان می‌دهد و KPI cardها دلتای
   واقعی نسبت به poll قبلی را نمایش می‌دهند (نه داده‌ی فرضی). صفحات سنگین‌تر (خصوصاً AdminStats به‌خاطر
   recharts) با `React.lazy` جدا بارگذاری می‌شوند تا bundle اولیه سبک بماند.
-- **لاگ درخواست‌ها**: صفحه‌ی «لاگ درخواست‌ها» (`/app/request-logs`, `/admin/request-logs`) هر درخواست
-  API این مرورگر را در حافظه نگه می‌دارد (بدون ارسال/ذخیره‌ی جایی دیگر)؛ زنگ اعلان در تاپ‌بار تعداد
-  درخواست‌های ناموفق همین session را نشان می‌دهد و به همین صفحه لینک می‌شود.
+- **لاگ درخواست‌ها**: صفحه ادمین /admin/request-logs درخواست‌های API همین مرورگر را در حافظه نگه
+  می‌دارد و به سرور ارسال نمی‌کند؛ زنگ اعلان پنل ادمین تعداد خطاهای همین session را نشان می‌دهد.
+- **موبایل و دسترس‌پذیری**: پنل کاربر در موبایل نوار دسترسی سریع چهارقسمتی دارد و safe-area دستگاه‌های
+  دارای home indicator را رعایت می‌کند. skip link، aria-current مسیر فعال، فوکوس واضح کیبورد و
+  prefers-reduced-motion نیز در پوسته مشترک فعال‌اند.
 - **پروکسی dev برای دور زدن CORS**: apimanager هیچ CORS middleware ای ندارد. در `npm run dev`،
   `vite.config.ts` مسیر `/api` را به آدرس واقعی apimanager (از `VITE_API_BASE_URL`) پروکسی می‌کند تا
   مرورگر آن را هم‌مبدأ ببیند. در build نهایی این پروکسی وجود ندارد — یا فرانت و apimanager باید هم‌مبدأ
   سرو شوند، یا CORS باید به apimanager اضافه شود.
 - **RTL/LTR و فونت**: فونت Vazirmatn هم فارسی و هم لاتین را پوشش می‌دهد، پس نیازی به تعویض فونت بین
   زبان‌ها نیست.
-- **ساخت instance جدید**: چون apimanager برای کاربر عادی endpoint فهرست‌کردن قالب‌ها (templates) ندارد
-  (فقط ادمین `GET /admin/templates` را می‌بیند)، فرم ساخت ربات فعلاً `template_id` را به‌صورت متنی
-  می‌گیرد. اگر بخواهید کاربر عادی هم قالب‌ها را انتخابی ببیند، باید یک endpoint عمومی
-  (مثلاً `GET /templates`) به بک‌اند اضافه شود.
-- **تایپ‌های API** (`src/lib/types.ts`) بر اساس رفتار واقعی `handler.go` نوشته شده‌اند، نه خودِ
-  `shared-core/models` (که در این workspace در دسترس نبود). اگر نام دقیق فیلدها فرق داشت، همین فایل را
-  اصلاح کنید.
+- **ساخت instance جدید**: فرم ابتدا GET /service-types را می‌خواند و سپس قالب‌های فعال همان نوع را
+  از GET /templates?type=... می‌گیرد؛ کاربر به‌جای واردکردن شناسه خام، نوع سرویس و نسخه را انتخاب
+  می‌کند.
+- **تایپ‌های API**: قرارداد پاسخ‌های مصرف‌شده از apimanager در src/lib/types.ts تعریف شده و باید همراه
+  تغییر handlerها به‌روز بماند.
 
 ## ساختار پوشه‌ها
 
@@ -92,7 +92,7 @@ src/
     index.ts                init i18next + تنظیم خودکار dir/lang روی <html>
     locales/fa.json          en.json
   components/
-    Layout/AppShell.tsx     شل مشترک: سایدبار جمع‌شونده + تاپ‌بار (breadcrumb, notification bell, زبان, تم, منوی کاربر)
+    Layout/AppShell.tsx     شل مشترک: سایدبار دسکتاپ + ناوبری پایین موبایل + تاپ‌بار، زبان، تم و منوی کاربر
     LanguageSwitcher.tsx    سوییچر زبان
     ProtectedRoute.tsx      گارد لاگین و گارد نقش ادمین
     ui/                     Button, Card (+StatCard با delta), Badge, Modal, Input/Select,
@@ -110,7 +110,8 @@ src/
     Dashboard.tsx
     Instances.tsx           DataTable + فیلتر وضعیت + منوی عملیات
     Plans.tsx
-    RequestLogs.tsx
+    Payments.tsx
+    RequestLogs.tsx         ابزار مشاهده درخواست‌های همین session برای ادمین
     admin/AdminStats.tsx    KPI + نمودار دونات recharts
     admin/AdminServers.tsx
     admin/AdminTemplates.tsx

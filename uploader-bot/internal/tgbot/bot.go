@@ -12,6 +12,8 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
+	"github.com/mrjvadi/creatorbot/shared-core/memberclient"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/core"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/models"
@@ -27,11 +29,13 @@ type Handler struct {
 
 // Deps وابستگی‌های Handler — هماهنگ با الگوی سایر bot های فرعی.
 type Deps struct {
-	Engine     *engine.Engine
-	Bot        *tele.Bot
-	OwnerID    int64
-	ChannelID  int64
-	EncryptKey string // برای رمزنگاری BotToken قفل‌های نوع «ربات» قبل از ذخیره
+	Engine        *engine.Engine
+	Bot           *tele.Bot
+	OwnerID       int64
+	ChannelID     int64
+	EncryptKey    string // برای رمزنگاری BotToken قفل‌های نوع «ربات» قبل از ذخیره
+	RentalStatus  *memberclient.RentalStatus
+	JoinPublisher *joinevents.Publisher
 }
 
 // NewHandler سازنده‌ی هماهنگ با Deps. از engine، DB/Cache را می‌سازد
@@ -40,15 +44,17 @@ func NewHandler(d Deps) *Handler {
 	st := store.New(d.Engine.Mongo, d.Engine.InstanceID, d.Engine.Cache, d.Engine.Log)
 	h := &Handler{
 		App: &core.App{
-			Bot:        d.Bot,
-			Store:      st,
-			Cache:      d.Engine.Cache,
-			Log:        d.Engine.Log,
-			OwnerID:    d.OwnerID,
-			ChannelID:  d.ChannelID,
-			InstanceID: d.Engine.InstanceID,
-			Eng:        d.Engine,
-			EncryptKey: d.EncryptKey,
+			Bot:           d.Bot,
+			Store:         st,
+			Cache:         d.Engine.Cache,
+			Log:           d.Engine.Log,
+			OwnerID:       d.OwnerID,
+			ChannelID:     d.ChannelID,
+			InstanceID:    d.Engine.InstanceID,
+			Eng:           d.Engine,
+			EncryptKey:    d.EncryptKey,
+			RentalStatus:  d.RentalStatus,
+			JoinPublisher: d.JoinPublisher,
 		},
 		bcJobs: make(chan bcJobMsg, 50),
 	}
@@ -86,7 +92,11 @@ func Register(b *tele.Bot, h *Handler) {
 	b.Handle(tele.OnSticker, h.onMedia)
 	b.Handle(tele.OnQuery, h.onInlineQuery)
 	b.Handle(tele.OnMyChatMember, h.onMyChatMember)
-	b.Handle(tele.OnChatMember, h.onChatMember) // تشخیص لفت برای گزارش لفت
+	b.Handle(tele.OnChatMember, h.onChatMember) // تشخیص لفت برای گزارش لفت + join/leave رایگان‌ها
+	if h.JoinPublisher != nil {
+		b.Handle(tele.OnUserJoined, h.JoinPublisher.HandleUserJoined)
+		b.Handle(tele.OnUserLeft, h.JoinPublisher.HandleUserLeft)
+	}
 }
 
 // ── /start ────────────────────────────────────────────────────

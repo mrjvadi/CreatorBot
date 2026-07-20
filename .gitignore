@@ -15,5 +15,31 @@ agentmanager/botenv/
 # باینری‌ها و artifact های build
 tools/e2e-provision/e2e-provision
 /e2e-provision
+ads-bot/e2e-lockrental
 *.tar
+*.orig
+*.tmp.*
 .gotmp/
+graphify-out
+graphify-out/
+plans/
+prog/*
+test/
+.log/
+
+# فایل‌های ادیتور/IDE
+.idea/
+.vscode/
+.agents/
+.claude/
+
+# Go — کاورج و باینریِ تست
+*.test
+coverage.out
+coverage.txt
+
+# apimanager/web (Vite/TS) — artifact های build؛ node_modules خودش یک
+# .gitignore مجزا در همان پوشه دارد.
+apimanager/web/vite.config.js
+apimanager/web/vite.config.d.ts
+*.tsbuildinfo

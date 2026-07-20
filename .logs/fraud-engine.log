@@ -1,6 +1,44 @@
-2026-06-23T19:51:05.362+0330	[34mINFO[0m	logger/logger.go:48	mongodb connected
-2026-06-23T19:51:05.376+0330	[34mINFO[0m	logger/logger.go:48	fraud-engine listeners registered
-2026-06-23T19:51:05.377+0330	[34mINFO[0m	logger/logger.go:48	fraud-engine score handlers registered
-2026-06-23T19:51:05.380+0330	[34mINFO[0m	logger/logger.go:48	periodic recalc started
-2026-06-23T19:51:05.381+0330	[34mINFO[0m	logger/logger.go:48	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
-2026-06-23T23:36:14.203+0330	[34mINFO[0m	logger/logger.go:48	shutting down...
+2026-07-20T07:08:24.013+0330	[34mINFO[0m	logger/logger.go:88	mongodb connected
+2026-07-20T07:08:24.015+0330	[34mINFO[0m	logger/logger.go:88	fraud-engine listeners registered
+2026-07-20T07:08:24.015+0330	[34mINFO[0m	logger/logger.go:88	fraud-engine score handlers registered
+2026-07-20T07:08:24.016+0330	[34mINFO[0m	logger/logger.go:88	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-07-20T07:08:24.016+0330	[31mFATAL[0m	logger/logger.go:104	http	{"err": "listen tcp :8092: bind: address already in use"}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Fatal
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:104
+main.main.func1
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/fraud-engine/cmd/main.go:113
+exit status 1
+2026-07-20T07:14:56.689+0330	[34mINFO[0m	logger/logger.go:94	mongodb connected
+2026-07-20T07:14:56.691+0330	[34mINFO[0m	logger/logger.go:94	fraud-engine listeners registered
+2026-07-20T07:14:56.691+0330	[34mINFO[0m	logger/logger.go:94	fraud-engine score handlers registered
+2026-07-20T07:14:56.692+0330	[34mINFO[0m	logger/logger.go:94	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-07-20T07:14:56.692+0330	[34mINFO[0m	logger/logger.go:94	periodic recalc started
+2026-07-20T07:14:56.692+0330	[31mFATAL[0m	logger/logger.go:110	http	{"err": "listen tcp :8092: bind: address already in use"}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Fatal
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:110
+main.main.func1
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/fraud-engine/cmd/main.go:113
+exit status 1
+2026-07-20T07:20:12.115+0330	[34mINFO[0m	logger/logger.go:94	mongodb connected
+2026-07-20T07:20:12.118+0330	[34mINFO[0m	logger/logger.go:94	fraud-engine listeners registered
+2026-07-20T07:20:12.119+0330	[34mINFO[0m	logger/logger.go:94	fraud-engine score handlers registered
+2026-07-20T07:20:12.120+0330	[34mINFO[0m	logger/logger.go:94	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-07-20T07:20:12.120+0330	[34mINFO[0m	logger/logger.go:94	periodic recalc started
+2026-07-20T07:50:25.510+0330	[34mINFO[0m	logger/logger.go:94	shutting down...
+2026-07-20T07:50:33.074+0330	[34mINFO[0m	logger/logger.go:103	mongodb connected
+2026-07-20T07:50:33.076+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine listeners registered
+2026-07-20T07:50:33.076+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine score handlers registered
+2026-07-20T07:50:33.077+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-07-20T07:50:33.077+0330	[34mINFO[0m	logger/logger.go:103	periodic recalc started
+2026-07-20T08:16:59.447+0330	[34mINFO[0m	logger/logger.go:103	shutting down...
+2026-07-20T08:18:30.901+0330	[34mINFO[0m	logger/logger.go:103	mongodb connected
+2026-07-20T08:18:30.902+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine listeners registered
+2026-07-20T08:18:30.902+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine score handlers registered
+2026-07-20T08:18:30.902+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-07-20T08:18:30.903+0330	[34mINFO[0m	logger/logger.go:103	periodic recalc started
+2026-07-20T11:36:05.056+0330	[34mINFO[0m	logger/logger.go:103	shutting down...
+2026-07-20T11:36:55.127+0330	[34mINFO[0m	logger/logger.go:103	mongodb connected
+2026-07-20T11:36:55.129+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine listeners registered
+2026-07-20T11:36:55.129+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine score handlers registered
+2026-07-20T11:36:55.129+0330	[34mINFO[0m	logger/logger.go:103	fraud-engine started	{"addr": ":8092", "mongo": "creatorbot"}
+2026-07-20T11:36:55.130+0330	[34mINFO[0m	logger/logger.go:103	periodic recalc started

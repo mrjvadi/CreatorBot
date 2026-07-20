@@ -14,6 +14,13 @@ import (
 // نیازمندی: ربات باید در آن چت ادمین باشد و آپدیت‌های chat_member در poller
 // فعال باشد (allowed_updates شامل "chat_member").
 func (h *Handler) onChatMember(c tele.Context) error {
+	// اول: اگر این instance رایگان به یک کمپینِ اجاره‌ی فعال وصل است، عضویتِ
+	// واقعیِ کانالِ خریدار را به membership.joined/left منتشر کن (پاداشِ
+	// per-join در ads-bot). این بی‌ربط به منطقِ «گزارش لفت» پایین است.
+	if h.JoinPublisher != nil {
+		h.LogErr("onChatMember: join publisher", h.JoinPublisher.HandleChatMember(c))
+	}
+
 	cm := c.ChatMember()
 	if cm == nil || cm.NewChatMember == nil || cm.Chat == nil {
 		return nil

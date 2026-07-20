@@ -43,6 +43,7 @@
     "payments": "پرداختی‌ها",
     "paymentsAdmin": "پرداختی‌ها",
     "promoCodes": "کدهای تخفیف",
+    "operations": "عملیات",
     "images": "ایمیج‌ها",
     "goToUserPanel": "رفتن به پنل کاربری",
     "goToAdminPanel": "رفتن به پنل مدیریت",
@@ -56,7 +57,9 @@
     "notifications": "اعلان‌ها",
     "language": "زبان",
     "collapseSidebar": "جمع کردن نوار کناری",
-    "expandSidebar": "باز کردن نوار کناری"
+    "expandSidebar": "باز کردن نوار کناری",
+    "skipToContent": "رفتن به محتوای اصلی",
+    "mobileNavigation": "دسترسی سریع موبایل"
   },
   "status": {
     "running": "در حال اجرا",
@@ -84,7 +87,7 @@
     "welcomeToast": "خوش آمدید!",
     "loginFailedToast": "ورود ناموفق بود.",
     "devLoginToggle": "ورود آزمایشی (بدون نیاز به ثبت دامنه در BotFather)",
-    "devLoginHint": "این روش فقط برای توسعه/تست محلی است. توکن ربات را همین‌جا وارد کنید — امضای HMAC کاملاً در مرورگر شما ساخته می‌شود و توکن هیچ‌وقت به سروری فرستاده نمی‌شود. بعداً که دامنه‌ی واقعی سایت را در BotFather با /setdomain ثبت کردید، همان دکمه‌ی ورود با تلگرام بالا کافی است.",
+    "devLoginHint": "این روش فقط برای توسعه/تست محلی است. توکن باید دقیقاً همان BOT_TOKEN تنظیم‌شده در apimanager باشد؛ توکن botmanager یا ربات دیگری امضای نامعتبر می‌سازد. HMAC در مرورگر ساخته می‌شود و خود توکن ارسال یا ذخیره نمی‌شود.",
     "botTokenLabel": "توکن ربات (فقط محلی، ذخیره نمی‌شود)",
     "botTokenRequired": "توکن ربات لازم است",
     "telegramIdLabel": "Telegram ID",
@@ -137,6 +140,7 @@
     "actionStart": "اجرا",
     "actionStop": "توقف",
     "actionRestart": "راه‌اندازی مجدد",
+    "actionRenew": "تمدید سرویس",
     "actionLogs": "لاگ‌ها",
     "actionSettings": "تنظیمات",
     "actionContent": "مدیریت محتوا",
@@ -217,6 +221,10 @@
     "topupCodeLabel": "کد (comment)",
     "topupExpiresLabel": "انقضای فاکتور",
     "topupCheckStatusButton": "بررسی وضعیت"
+    ,"promoLabel": "کد تخفیف یا شارژ",
+    "promoSubmit": "اعمال کد",
+    "promoSuccess": "اعتبار کد به کیف‌پول اضافه شد.",
+    "promoFailed": "اعمال کد ناموفق بود."
   },
   "payments": {
     "title": "پرداختی‌ها",
@@ -532,6 +540,35 @@
       "uploadSuccess": "فایل آپلود شد.",
       "uploadFailed": "آپلود فایل ناموفق بود."
     }
+  },
+  "operations": {
+    "title": "عملیات پلتفرم",
+    "subtitle": "ارسال همگانی، Source Workerها و تاریخچه ممیزی",
+    "broadcastTitle": "ارسال همگانی تلگرام",
+    "broadcastPlaceholder": "متن پیام را وارد کنید...",
+    "audience": "مخاطبان",
+    "audienceAll": "همه کاربران",
+    "audienceNoPlan": "کاربران بدون پلن فعال",
+    "audiencePlan": "کاربران یک پلن مشخص",
+    "plan": "پلن",
+    "choosePlan": "یک پلن انتخاب کنید...",
+    "queueBroadcast": "قرار دادن در صف ارسال",
+    "broadcastQueued": "ارسال برای {{count}} کاربر در صف قرار گرفت.",
+    "broadcastFailed": "ثبت ارسال همگانی ناموفق بود.",
+    "workersTitle": "Source Workerها",
+    "workerLabel": "برچسب",
+    "phone": "شماره تلفن",
+    "createWorker": "ساخت Worker",
+    "workerCreated": "Worker ساخته شد.",
+    "workerCreateFailed": "ساخت Worker ناموفق بود.",
+    "workerUpdateFailed": "تغییر وضعیت Worker ناموفق بود.",
+    "workerDeleteFailed": "حذف Worker ناموفق بود.",
+    "toggleWorker": "فعال/غیرفعال",
+    "deleteWorkerConfirm": "این Worker حذف شود؟",
+    "licenseOnce": "لایسنس را همین حالا کپی کنید؛ فقط یک‌بار نمایش داده می‌شود:",
+    "noWorkers": "هنوز Source Worker ثبت نشده است.",
+    "auditTitle": "تاریخچه ممیزی",
+    "noAudit": "هنوز رویداد ممیزی ثبت نشده است."
   },
   "requestLogs": {
     "title": "لاگ درخواست‌های API",

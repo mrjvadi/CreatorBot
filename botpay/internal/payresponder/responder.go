@@ -329,12 +329,14 @@ func (r *Responder) handleCredit(data []byte) (any, error) {
 		return protocol.DeductResponse{Error: "invalid amount"}, nil
 	}
 
-	w, err := r.wallet.GetOrCreate(ctx, req.TelegramID)
-	if err != nil {
-		return protocol.DeductResponse{Error: err.Error()}, nil
+	if req.Ref == "" {
+		return protocol.DeductResponse{Success: false, Error: "ref is required"}, nil
 	}
 	nano := wallet.TONToNano(req.AmountTON)
-	if err := r.wallet.Store().AddCredit(ctx, w.ID, nano, req.Reason); err != nil {
+	// از مسیر سرویس تا کاربر اعلان اعتبار بگیرد (دقیقاً یک‌بار، نه روی retry).
+	// Credit خودش wallet را در صورت نبود می‌سازد.
+	tx, err := r.wallet.Credit(ctx, req.TelegramID, nano, req.ServiceID, req.Ref, req.Reason, req.Metadata)
+	if err != nil {
 		return protocol.DeductResponse{Success: false, Error: err.Error()}, nil
 	}
 
@@ -344,8 +346,12 @@ func (r *Responder) handleCredit(data []byte) (any, error) {
 		newBal = wallet.NanoToTON(w2.TONBalance + w2.Credit)
 		r.writeBalanceCache(ctx, w2)
 	}
-	r.publishWalletUpdated(req.TelegramID, "refund")
-	return protocol.DeductResponse{Success: true, NewBalance: newBal}, nil
+	r.publishWalletUpdated(req.TelegramID, "credit")
+	txID := ""
+	if tx != nil {
+		txID = tx.ID.String()
+	}
+	return protocol.DeductResponse{Success: true, NewBalance: newBal, TxID: txID}, nil
 }
 
 // publishWalletUpdated به همه سرویس‌ها خبر می‌دهد موجودی کاربر تغییر کرد

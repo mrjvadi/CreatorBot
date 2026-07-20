@@ -7,8 +7,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
@@ -144,10 +147,20 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 		}
 	}
 
-	// ثبت deposit در wallet — توضیح خالی تا تاریخچه برچسب نوع تراکنش را به
-	// زبان هر کاربر نمایش دهد.
-	if _, err := s.store.Deposit(ctx, w.ID, event.AmountNano,
-		event.TxHash, event.FromAddr, ""); err != nil {
+	// ثبت deposit با تمام اطلاعاتِ on-chain (Comment خالی نگه‌داشته نمی‌شود؛
+	// همه‌ی داده‌ی TON ذخیره می‌شود). Description خالی می‌ماند تا تاریخچه برچسبِ
+	// نوعِ تراکنش را به زبانِ هر کاربر نمایش دهد.
+	if _, err := s.store.Deposit(ctx, store.DepositRecord{
+		WalletID:   w.ID,
+		AmountNano: event.AmountNano,
+		FeeNano:    event.FeeNano,
+		TxHash:     event.TxHash,
+		FromAddr:   event.FromAddr,
+		ToAddr:     event.ToAddr,
+		Comment:    event.InvoiceCode,
+		LT:         event.LT,
+		Utime:      event.Utime,
+	}); err != nil {
 		return fmt.Errorf("deposit to wallet: %w", err)
 	}
 
@@ -204,7 +217,7 @@ func (s *Service) HandleDeposit(ctx context.Context, event ton.DepositEvent) err
 		if updated, _ := s.store.GetWalletByID(ctx, w.ID); updated != nil {
 			newBalance = updated.TotalTON()
 		}
-		msg := i18n.T(i18n.Normalize(w.Lang), i18n.KDepositConfirmed, event.AmountTON, newBalance)
+		msg := i18n.T(i18n.Normalize(w.Lang), i18n.KDepositConfirmed, fmtTONStr(event.AmountTON), fmtTONStr(newBalance))
 		if err := s.notify.SendHTML(ctx, w.TelegramID, msg); err != nil {
 			s.log.Error("notify deposit failed", ports.F("err", err))
 		}
@@ -247,7 +260,7 @@ func (s *Service) Pay(ctx context.Context, telegramID int64, amountNano int64, s
 		}
 	}
 
-	tx, err := s.store.Deduct(ctx, w.ID, amountNano, serviceID, ref, desc)
+	tx, created, err := s.store.Deduct(ctx, w.ID, amountNano, serviceID, ref, desc)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +273,19 @@ func (s *Service) Pay(ctx context.Context, telegramID int64, amountNano int64, s
 		"amount_ton": float64(amountNano) / 1e9,
 		"tx_id":      tx.ID.String(),
 	})
+
+	// اعلان به کاربر فقط برای کسرِ تازه (نه retry idempotent).
+	if created && s.notify != nil {
+		newTotal := 0.0
+		if updated, _ := s.store.GetWalletByID(ctx, w.ID); updated != nil {
+			newTotal = updated.TotalTON()
+		}
+		msg := i18n.T(i18n.Normalize(w.Lang), i18n.KNotifyPayment,
+			fmtTONStr(NanoToTON(amountNano)), serviceID, fmtTONStr(newTotal))
+		if err := s.notify.SendHTML(ctx, telegramID, msg); err != nil {
+			s.log.Error("notify payment failed", ports.F("err", err))
+		}
+	}
 
 	return tx, nil
 }
@@ -335,6 +361,17 @@ func IsValidTONAddress(addr string) bool {
 // NanoToTON تبدیل nano-TON به TON.
 func NanoToTON(nano int64) float64 { return float64(nano) / 1e9 }
 
+// fmtTONStr مقدار TON را با حداکثر ۴ رقم اعشار و بدون صفرهای انتهایی قالب می‌کند
+// (هم‌سو با نمایش ربات) — برای جای‌گذاری در قالب‌های %s پیام‌های اعلان.
+func fmtTONStr(v float64) string {
+	s := strconv.FormatFloat(v, 'f', 4, 64)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	if s == "" || s == "-0" {
+		s = "0"
+	}
+	return s
+}
+
 // TONToNano تبدیل TON به nano-TON.
 func TONToNano(ton float64) int64 { return int64(ton * 1e9) }
 
@@ -370,7 +407,7 @@ func (s *Service) Transfer(ctx context.Context, fromTelegramID, toTelegramID int
 
 	// اعلان به گیرنده (به زبان خودش)
 	if s.notify != nil {
-		msg := i18n.T(i18n.Normalize(toWallet.Lang), i18n.KTransferReceived, NanoToTON(amountNano), fromTelegramID)
+		msg := i18n.T(i18n.Normalize(toWallet.Lang), i18n.KTransferReceived, fmtTONStr(NanoToTON(amountNano)), fromTelegramID)
 		if err := s.notify.SendHTML(ctx, toTelegramID, msg); err != nil {
 			s.log.Error("notify transfer failed", ports.F("err", err))
 		}
@@ -382,4 +419,68 @@ func (s *Service) Transfer(ctx context.Context, fromTelegramID, toTelegramID int
 		ports.F("amount_ton", NanoToTON(amountNano)))
 
 	return nil
+}
+
+// ── تسویه‌ی برداشت و افزودن اعتبار (با اعلانِ کاربر) ─────────────
+// این متدها لایه‌ی store را می‌پوشانند تا هر عملیاتِ تغییردهنده‌ی موجودی که
+// توسط ادمین یا سرویس انجام می‌شود، به کاربرِ متأثر هم اطلاع بدهد (مثل مسیر
+// deposit/transfer). اعلان‌ها best-effort هستند و در صورت خطا فقط log می‌شوند.
+
+// SettleWithdraw یک برداشت را نهایی می‌کند (کسر موجودی) و به کاربر اطلاع می‌دهد.
+func (s *Service) SettleWithdraw(ctx context.Context, id uuid.UUID, txHash string) error {
+	req, _ := s.store.GetWithdraw(ctx, id) // پیش از تغییر وضعیت، برای مبلغ/کیف پول
+	if err := s.store.CompleteWithdraw(ctx, id, txHash); err != nil {
+		return err
+	}
+	s.notifyWithdraw(ctx, req, i18n.KNotifyWithdrawDone, txHash)
+	return nil
+}
+
+// RejectWithdraw یک برداشت را رد می‌کند (frozen آزاد/بازگشت) و به کاربر اطلاع می‌دهد.
+func (s *Service) RejectWithdraw(ctx context.Context, id uuid.UUID, reason string) error {
+	req, _ := s.store.GetWithdraw(ctx, id)
+	if err := s.store.RejectWithdraw(ctx, id, reason); err != nil {
+		return err
+	}
+	s.notifyWithdraw(ctx, req, i18n.KNotifyWithdrawRejected, reason)
+	return nil
+}
+
+// notifyWithdraw اعلان برداشت (تأیید یا رد) را به صاحب کیف پول می‌فرستد.
+func (s *Service) notifyWithdraw(ctx context.Context, req *store.WithdrawRequest, key, arg string) {
+	if req == nil || s.notify == nil {
+		return
+	}
+	w, err := s.store.GetWalletByID(ctx, req.WalletID)
+	if err != nil || w == nil {
+		return
+	}
+	msg := i18n.T(i18n.Normalize(w.Lang), key, fmtTONStr(NanoToTON(req.Amount)), arg)
+	if err := s.notify.SendHTML(ctx, w.TelegramID, msg); err != nil {
+		s.log.Error("notify withdraw failed", ports.F("err", err), ports.F("key", key))
+	}
+}
+
+// Credit اعتبار به کاربر اضافه می‌کند و فقط در صورت ایجاد creditِ تازه (نه retryِ
+// idempotent) به او اطلاع می‌دهد. این تنها مسیرِ افزودن اعتبار در ربات/سرویس‌هاست.
+func (s *Service) Credit(ctx context.Context, telegramID int64, amountNano int64, serviceID, ref, desc, metadata string) (*store.Transaction, error) {
+	w, err := s.GetOrCreate(ctx, telegramID)
+	if err != nil {
+		return nil, err
+	}
+	tx, created, err := s.store.AddCredit(ctx, w.ID, amountNano, serviceID, ref, desc, metadata)
+	if err != nil {
+		return nil, err
+	}
+	if created && s.notify != nil {
+		newTotal := NanoToTON(amountNano)
+		if updated, _ := s.store.GetWalletByID(ctx, w.ID); updated != nil {
+			newTotal = updated.TotalTON()
+		}
+		msg := i18n.T(i18n.Normalize(w.Lang), i18n.KNotifyCreditAdded, fmtTONStr(NanoToTON(amountNano)), fmtTONStr(newTotal))
+		if err := s.notify.SendHTML(ctx, telegramID, msg); err != nil {
+			s.log.Error("notify credit failed", ports.F("err", err))
+		}
+	}
+	return tx, nil
 }

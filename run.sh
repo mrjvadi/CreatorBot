@@ -53,41 +53,50 @@ echo ""
 echo "📦 در حال راه‌اندازی سرویس‌ها..."
 echo ""
 
-# ۱. botpay — اول باید بالا بیاد چون بقیه به آن وابسته‌اند
+# ۱. log-collector — قبل از همه، تا لاگ‌های startup بقیه‌ی سرویس‌ها هم
+#    (که با log.AttachNATS به آن وصل می‌شوند) از همون اول جمع بشه
+start_service "log-collector" "$ROOT/log-collector" "./cmd/..."
+sleep 1
+
+# ۲. botpay — باید زود بالا بیاد چون بقیه به آن وابسته‌اند
 start_service "botpay"      "$ROOT/botpay"      "./cmd/..."
 sleep 2
 
-# ۲. image-registry و license-service — agentmanager (چک image، fail-closed)
+# ۳. image-registry و license-service — agentmanager (چک image، fail-closed)
 #    و botmanager (صدور لایسنس) به این دو وابسته‌اند
 start_service "image-registry"  "$ROOT/image-registry"  "./cmd/..."
 start_service "license-service" "$ROOT/license-service" "./cmd/..."
 sleep 1
 
-# ۳. سرویس‌های پشتیبان (بدون ربات)
+# ۴. سرویس‌های پشتیبان (بدون ربات)
 start_service "fraud-engine"    "$ROOT/fraud-engine"      "./cmd/..."
 start_service "revenue-service" "$ROOT/revenue-service"   "./cmd/..."
 start_service "community-service" "$ROOT/community-service" "./cmd/..."
 sleep 1
 
-# ۴. member-bot — زیرساخت چک عضویت (قبل از botmanager)
+# ۵. webhook-gateway — دروازه‌ی webhook تلگرام (لازم اگر هر رباتی BOT_MODE=webhook باشد)
+start_service "webhook-gateway" "$ROOT/webhook-gateway" "./cmd/..."
+sleep 1
+
+# ۶. member-bot — زیرساخت چک عضویت (قبل از botmanager)
 start_service "member-bot"  "$ROOT/member-bot"  "./cmd/bot/..."
 sleep 1
 
-# ۵. ads-bot
+# ۷. ads-bot
 start_service "ads-bot"     "$ROOT/ads-bot"     "./cmd/..."
 sleep 1
 
-# ۶. agentmanager — مدیریت deploy container های کاربران
+# ۸. agentmanager — مدیریت deploy container های کاربران
 #    (uploader-bot دیگر این‌جا اجرا نمی‌شود — به‌صورت container داینامیک
 #    توسط agentmanager ساخته می‌شود؛ برای dev دستی: cd uploader-bot && go run ./cmd/bot)
 start_service "agentmanager" "$ROOT/agentmanager" "./cmd/..."
 sleep 1
 
-# ۷. apimanager — دروازه‌ی HTTP (قبل از botmanager؛ به NATS/DB مشترک وصل است)
+# ۹. apimanager — دروازه‌ی HTTP (قبل از botmanager؛ به NATS/DB مشترک وصل است)
 start_service "apimanager"  "$ROOT/apimanager"  "./cmd/..."
 sleep 1
 
-# ۸. botmanager — آخرین (به همه وابسته است)
+# ۱۰. botmanager — آخرین (به همه وابسته است)
 start_service "botmanager"  "$ROOT/botmanager"  "./cmd/..."
 
 echo ""

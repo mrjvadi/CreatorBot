@@ -62,9 +62,12 @@ type SourceWorkerRegisterResponse struct {
 // SourceWorkerHeartbeat is published (fire-and-forget) by a worker on
 // SubjSourceWorkerHeartbeat.
 type SourceWorkerHeartbeat struct {
+	ServiceID     string `json:"service_id"`
+	ServiceKey    string `json:"service_key"`
 	WorkerID      string `json:"worker_id"`
 	Status        string `json:"status"`
 	UptimeSeconds int    `json:"uptime_seconds"`
+	Timestamp     int64  `json:"timestamp"`
 }
 
 // SourceWorkerUpdateRequest reports a task's real result — possibly

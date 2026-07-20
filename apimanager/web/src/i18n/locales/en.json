@@ -43,6 +43,7 @@
     "payments": "Payments",
     "paymentsAdmin": "Payments",
     "promoCodes": "Promo Codes",
+    "operations": "Operations",
     "images": "Images",
     "goToUserPanel": "Go to user panel",
     "goToAdminPanel": "Go to admin panel",
@@ -56,7 +57,9 @@
     "notifications": "Notifications",
     "language": "Language",
     "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar"
+    "expandSidebar": "Expand sidebar",
+    "skipToContent": "Skip to main content",
+    "mobileNavigation": "Mobile quick navigation"
   },
   "status": {
     "running": "Running",
@@ -84,7 +87,7 @@
     "welcomeToast": "Welcome!",
     "loginFailedToast": "Sign-in failed.",
     "devLoginToggle": "Dev login (no BotFather domain required)",
-    "devLoginHint": "This is for local development/testing only. Enter the bot token here — the HMAC signature is computed entirely in your browser and the token is never sent to any server. Once you register the real domain with BotFather via /setdomain, use the Telegram login button above instead.",
+    "devLoginHint": "For local development/testing only. The token must exactly match BOT_TOKEN configured in apimanager; a botmanager or other bot token produces an invalid signature. HMAC is computed in your browser and the token is never sent or stored.",
     "botTokenLabel": "Bot token (local only, never stored)",
     "botTokenRequired": "Bot token is required",
     "telegramIdLabel": "Telegram ID",
@@ -137,6 +140,7 @@
     "actionStart": "Start",
     "actionStop": "Stop",
     "actionRestart": "Restart",
+    "actionRenew": "Renew service",
     "actionLogs": "Logs",
     "actionSettings": "Settings",
     "actionContent": "Manage content",
@@ -217,6 +221,10 @@
     "topupCodeLabel": "Code (comment)",
     "topupExpiresLabel": "Invoice expires",
     "topupCheckStatusButton": "Check status"
+    ,"promoLabel": "Promo code",
+    "promoSubmit": "Redeem",
+    "promoSuccess": "Promo credit added to your wallet.",
+    "promoFailed": "Failed to redeem promo code."
   },
   "payments": {
     "title": "Payments",
@@ -532,6 +540,35 @@
       "uploadSuccess": "File uploaded.",
       "uploadFailed": "Failed to upload the file."
     }
+  },
+  "operations": {
+    "title": "Operations",
+    "subtitle": "Broadcasts, source workers and the platform audit trail",
+    "broadcastTitle": "Telegram broadcast",
+    "broadcastPlaceholder": "Message to send...",
+    "audience": "Audience",
+    "audienceAll": "All users",
+    "audienceNoPlan": "Users without an active plan",
+    "audiencePlan": "Users on a specific plan",
+    "plan": "Plan",
+    "choosePlan": "Choose a plan...",
+    "queueBroadcast": "Queue broadcast",
+    "broadcastQueued": "Broadcast queued for {{count}} users.",
+    "broadcastFailed": "Failed to queue broadcast.",
+    "workersTitle": "Source workers",
+    "workerLabel": "Label",
+    "phone": "Phone",
+    "createWorker": "Create worker",
+    "workerCreated": "Worker created.",
+    "workerCreateFailed": "Failed to create worker.",
+    "workerUpdateFailed": "Failed to update worker.",
+    "workerDeleteFailed": "Failed to delete worker.",
+    "toggleWorker": "Enable/disable",
+    "deleteWorkerConfirm": "Delete this worker?",
+    "licenseOnce": "Copy this license now; it is shown only once:",
+    "noWorkers": "No source workers yet.",
+    "auditTitle": "Audit log",
+    "noAudit": "No audit entries yet."
   },
   "requestLogs": {
     "title": "API request log",

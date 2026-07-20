@@ -129,7 +129,7 @@ func (h *Admin) AdminTestDeploy(ctx context.Context, c tele.Context, tmplID, tok
 		_ = h.Store.UpdateInstanceStatus(ctx, instance.ID.String(), "failed")
 		return c.Send(h.T(ctx, uid, i18n.KeyWizardDeployError), tele.ModeHTML)
 	}
-	if err := h.NC.Publish(ctx, protocol.DeploySubject(server.ID.String()), cmd); err != nil {
+	if err := h.Docker.Send(ctx, server.ID.String(), cmd); err != nil {
 		h.Log.Error("admin test deploy failed", ports.F("err", err))
 		_ = h.Store.UpdateInstanceStatus(ctx, instance.ID.String(), "failed")
 		return c.Send(h.T(ctx, uid, i18n.KeyWizardDeployError), tele.ModeHTML)

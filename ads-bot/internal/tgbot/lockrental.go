@@ -522,3 +522,26 @@ func (h *Handler) ConfirmChannelAdminByBotID(ctx context.Context, botID int64) e
 	}
 	return h.store.ConfirmChannelAdmin(ctx, slot.ID)
 }
+
+// GetBotStatus برمی‌گرداند که آیا این bot (با BotID تلگرامیِ خودش) الان به
+// یک کمپینِ اجاره‌ی قفلِ فعال وصل است — پاسخ به bot فرعیِ رایگانی که هنگام
+// start و به‌صورت دوره‌ای می‌پرسد (رجوع protocol.SubjBotStatusCheck). این
+// جایگزینِ کوئریِ مستقیمِ Postgres/bot_instances.lock_mode شد که با قطعِ
+// Postgres از ربات‌های محصول از کار افتاده بود.
+func (h *Handler) GetBotStatus(ctx context.Context, botID int64) (inCampaign bool, campaignID string, err error) {
+	slot, err := h.store.FindFreeBotSlotByBotID(ctx, botID)
+	if err != nil {
+		return false, "", err
+	}
+	if slot == nil || slot.IsFree() {
+		return false, "", nil
+	}
+	rental, err := h.store.FindLockRental(ctx, *slot.RentalID)
+	if err != nil {
+		return false, "", err
+	}
+	if rental == nil || !rental.IsActive() {
+		return false, "", nil
+	}
+	return true, rental.ID.String(), nil
+}

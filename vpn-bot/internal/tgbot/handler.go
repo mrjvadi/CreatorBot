@@ -17,6 +17,9 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
+	"github.com/mrjvadi/creatorbot/shared-core/memberclient"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/store"
 )
@@ -31,7 +34,15 @@ type Handler struct {
 	log        ports.Logger
 	channelID  int64
 	ownerID    int64
+	botID      int64
 	encryptKey string
+	nats       *natsclient.Client
+
+	// rentalStatus/joinPublisher فقط وقتی این instance رایگان به یک کمپینِ
+	// اجاره‌ی قفلِ فعال در ads-bot وصل است معنی دارند — nil یعنی راه‌اندازی
+	// نشده (مثلاً NATS در دسترس نبوده، رجوع main.go).
+	rentalStatus  *memberclient.RentalStatus
+	joinPublisher *joinevents.Publisher
 }
 
 func NewHandler(
@@ -44,12 +55,17 @@ func NewHandler(
 	channelID int64,
 	ownerID int64,
 	encryptKey string,
+	botID int64,
+	nc *natsclient.Client,
+	rentalStatus *memberclient.RentalStatus,
+	joinPublisher *joinevents.Publisher,
 ) *Handler {
 	return &Handler{
 		bot: bot, store: st, panel: panel,
 		gateway: gateway, cache: cache, log: log,
 		channelID: channelID, ownerID: ownerID,
-		encryptKey: encryptKey,
+		encryptKey: encryptKey, botID: botID, nats: nc,
+		rentalStatus: rentalStatus, joinPublisher: joinPublisher,
 	}
 }
 
@@ -65,6 +81,12 @@ func Register(b *tele.Bot, h *Handler) {
 	b.Handle(tele.OnText, h.onText)
 	b.Handle(tele.OnPhoto, h.onPhoto)
 	b.Handle(tele.OnCallback, h.onCallback)
+	b.Handle(tele.OnMyChatMember, h.onMyChatMember)
+	if h.joinPublisher != nil {
+		b.Handle(tele.OnChatMember, h.joinPublisher.HandleChatMember)
+		b.Handle(tele.OnUserJoined, h.joinPublisher.HandleUserJoined)
+		b.Handle(tele.OnUserLeft, h.joinPublisher.HandleUserLeft)
+	}
 }
 
 func (h *Handler) onStart(c tele.Context) error {

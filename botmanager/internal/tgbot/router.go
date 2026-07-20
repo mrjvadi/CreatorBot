@@ -105,6 +105,12 @@ func (h *Handler) onCallback(c tele.Context) error {
 	case "admin_sys_promo":
 		_ = c.Respond()
 		return h.AdminPromoList(ctx, c)
+	case "admin_sys_payments":
+		_ = c.Respond()
+		return h.AdminPaymentsList(ctx, c)
+	case "admin_sys_audit":
+		_ = c.Respond()
+		return h.AdminAuditList(ctx, c)
 	case "admin_sys_member", "admin_sys_nats", "admin_sys_db", "admin_sys_metrics":
 		return c.Respond(&tele.CallbackResponse{Text: h.T(ctx, uid, i18n.KeyComingSoon)})
 
@@ -137,6 +143,10 @@ func (h *Handler) onCallback(c tele.Context) error {
 		return h.AdminBotStop(ctx, c, arg)
 	case "admin_bot_start":
 		return h.AdminBotStart(ctx, c, arg)
+	case "admin_bot_migrate":
+		return h.AdminBotMigrateMenu(ctx, c, arg)
+	case "admin_bot_migrate_do":
+		return h.AdminBotMigrate(ctx, c, arg)
 	case "admin_bot_del":
 		return h.AdminBotDeleteConfirm(ctx, c, arg)
 	case "admin_bot_del_do":

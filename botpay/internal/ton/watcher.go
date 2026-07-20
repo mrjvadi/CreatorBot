@@ -27,6 +27,11 @@ type DepositEvent struct {
 	TxHash      string  `json:"tx_hash"`
 	FromAddr    string  `json:"from_addr"`
 	InvoiceCode string  `json:"invoice_code,omitempty"`
+	// داده‌ی کاملِ on-chain — تمام اطلاعاتی که از TON می‌گیریم ذخیره می‌شود.
+	ToAddr  string `json:"to_addr,omitempty"`
+	LT      int64  `json:"lt,omitempty"`      // logical time
+	Utime   int64  `json:"utime,omitempty"`   // unix time on-chain
+	FeeNano int64  `json:"fee_nano,omitempty"`
 }
 
 type PaymentHandler func(ctx context.Context, event DepositEvent) error
@@ -100,9 +105,11 @@ func (w *Watcher) poll(ctx context.Context) {
 		}
 		w.seenTx[tx.Hash] = true
 
-		// parse amount
-		var amountNano int64
+		// parse amount / fee / lt (همه در API رشته‌اند)
+		var amountNano, feeNano, lt int64
 		fmt.Sscanf(tx.InMsg.Value, "%d", &amountNano)
+		fmt.Sscanf(tx.Fee, "%d", &feeNano)
+		fmt.Sscanf(tx.TransactionID.LT, "%d", &lt)
 		if amountNano <= 0 {
 			continue
 		}
@@ -113,7 +120,11 @@ func (w *Watcher) poll(ctx context.Context) {
 			AmountTON:   float64(amountNano) / 1e9,
 			TxHash:      tx.Hash,
 			FromAddr:    tx.InMsg.Source,
+			ToAddr:      tx.InMsg.Destination,
 			InvoiceCode: tx.InMsg.Message,
+			LT:          lt,
+			Utime:       tx.Utime,
+			FeeNano:     feeNano,
 		}
 
 		w.log.Info("new TON transaction",
@@ -135,11 +146,17 @@ func (w *Watcher) poll(ctx context.Context) {
 // ── toncenter API ──────────────────────────────────────────
 
 type tonTx struct {
-	Hash  string `json:"hash"`
+	Hash          string `json:"hash"`
+	Utime         int64  `json:"utime"`
+	Fee           string `json:"fee"` // string در API (nano)
+	TransactionID struct {
+		LT string `json:"lt"` // string در API
+	} `json:"transaction_id"`
 	InMsg struct {
-		Source  string `json:"source"`
-		Value   string `json:"value"` // string در API
-		Message string `json:"message"`
+		Source      string `json:"source"`
+		Destination string `json:"destination"`
+		Value       string `json:"value"` // string در API
+		Message     string `json:"message"`
 	} `json:"in_msg"`
 }
 

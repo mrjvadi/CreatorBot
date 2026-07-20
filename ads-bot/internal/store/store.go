@@ -211,7 +211,9 @@ func (s *Store) ListCategories(ctx context.Context) ([]ChannelCategory, error) {
 func (s *Store) FindCategoryByName(ctx context.Context, name string) (*ChannelCategory, error) {
 	var cat ChannelCategory
 	err := s.db.WithContext(ctx).Where("name = ?", name).First(&cat).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &cat, err
 }
 
@@ -264,7 +266,9 @@ func (s *Store) GetChannelFakeStats(ctx context.Context, channelID int64) (total
 func (s *Store) FindChannelByID(ctx context.Context, id uuid.UUID) (*AdChannel, error) {
 	var ch AdChannel
 	err := s.db.WithContext(ctx).Preload("Category").Where("id = ?", id).First(&ch).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) { return nil, nil }
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	return &ch, err
 }
 
@@ -554,7 +558,8 @@ func (s *Store) AssignSlotsToRental(ctx context.Context, rentalID uuid.UUID, buy
 	var assigned []FreeBotSlot
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var free []FreeBotSlot
-		if err := tx.Where("rental_id IS NULL").Limit(count).Find(&free).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("rental_id IS NULL").Order("created_at ASC").Limit(count).Find(&free).Error; err != nil {
 			return err
 		}
 		for i := range free {

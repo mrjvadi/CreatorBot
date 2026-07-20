@@ -26,9 +26,9 @@ func (s *Store) CreateArchiveFile(ctx context.Context, f *models.ArchiveFile) er
 }
 
 // GetArchiveFile fetches an archived file by its UUID.
-func (s *Store) GetArchiveFile(ctx context.Context, id uuid.UUID) (*models.ArchiveFile, error) {
+func (s *Store) GetArchiveFile(ctx context.Context, tenantID string, id uuid.UUID) (*models.ArchiveFile, error) {
 	var f models.ArchiveFile
-	if err := s.db.Conn().WithContext(ctx).First(&f, "id = ?", id).Error; err != nil {
+	if err := s.db.Conn().WithContext(ctx).First(&f, "id = ? AND tenant_id = ?", id, tenantID).Error; err != nil {
 		return nil, err
 	}
 	return &f, nil
@@ -41,10 +41,10 @@ func (s *Store) UpsertBotFileCache(ctx context.Context, c *models.BotFileCache) 
 }
 
 // GetBotFileCache looks up a cached file_id for a bot, if one exists.
-func (s *Store) GetBotFileCache(ctx context.Context, archiveFileID uuid.UUID, botTokenHash string) (*models.BotFileCache, error) {
+func (s *Store) GetBotFileCache(ctx context.Context, tenantID string, archiveFileID uuid.UUID, botTokenHash string) (*models.BotFileCache, error) {
 	var c models.BotFileCache
 	err := s.db.Conn().WithContext(ctx).
-		Where("archive_file_id = ? AND bot_token_hash = ?", archiveFileID, botTokenHash).
+		Where("tenant_id = ? AND archive_file_id = ? AND bot_token_hash = ?", tenantID, archiveFileID, botTokenHash).
 		First(&c).Error
 	if err != nil {
 		return nil, err

@@ -14,7 +14,12 @@ import (
 const (
 	collLogs   = "log_entries"
 	collTopics = "log_topics"
+	collStatus = "log_status_dashboard"
 )
+
+// statusDashboardID تنها _id ای که در collStatus استفاده می‌شود — این
+// کالکشن همیشه دقیقاً صفر یا یک سند دارد (singleton).
+const statusDashboardID = "main"
 
 // Store لایه‌ی دسترسی MongoDB این سرویس.
 type Store struct {
@@ -102,5 +107,30 @@ func (s *Store) GetTopicID(ctx context.Context, service string) (int, bool) {
 // SaveTopicID نگاشت سرویس→topic را ذخیره می‌کند.
 func (s *Store) SaveTopicID(ctx context.Context, service string, threadID int) error {
 	_, err := s.db.Collection(collTopics).InsertOne(ctx, TopicMapping{Service: service, MessageThreadID: threadID})
+	return err
+}
+
+// GetStatusDashboard وضعیتِ ذخیره‌شده‌ی پیامِ داشبورد را برمی‌گرداند (اگر
+// قبلاً ساخته شده).
+func (s *Store) GetStatusDashboard(ctx context.Context) (StatusDashboard, bool) {
+	var d StatusDashboard
+	err := s.db.Collection(collStatus).FindOne(ctx, bson.M{"_id": statusDashboardID}, &d)
+	if err != nil {
+		return StatusDashboard{}, false
+	}
+	return d, true
+}
+
+// SaveStatusDashboard topic/message_id پیامِ داشبورد را ذخیره می‌کند —
+// اولین‌بار insert، بعدها update (چون Collection این پکیج متدِ upsert ندارد).
+func (s *Store) SaveStatusDashboard(ctx context.Context, d StatusDashboard) error {
+	d.ID = statusDashboardID
+	if _, exists := s.GetStatusDashboard(ctx); exists {
+		return s.db.Collection(collStatus).UpdateOne(ctx, bson.M{"_id": statusDashboardID}, bson.M{"$set": bson.M{
+			"message_thread_id": d.MessageThreadID,
+			"message_id":        d.MessageID,
+		}})
+	}
+	_, err := s.db.Collection(collStatus).InsertOne(ctx, d)
 	return err
 }

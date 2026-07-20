@@ -38,7 +38,7 @@ export async function signTelegramAuth(
   const entries = Object.entries(fields).filter(
     ([, v]) => v !== undefined && v !== null && String(v) !== ""
   ) as [string, string | number][];
-  entries.sort(([a], [b]) => a.localeCompare(b));
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 
   const dataCheckString = entries.map(([k, v]) => `${k}=${v}`).join("\n");
   const secretKey = await sha256(botToken);

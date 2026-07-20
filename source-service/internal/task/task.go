@@ -33,9 +33,14 @@ type Handler func(ctx context.Context, id string, payload json.RawMessage) (any,
 // synchronous Result; it's required if the task type reports results
 // asynchronously to botmanager and you need to correlate that report.
 type Envelope struct {
-	ID      string          `json:"id,omitempty"`
-	Type    string          `json:"type"`
-	Payload json.RawMessage `json:"payload"`
+	ID         string          `json:"id,omitempty"`
+	Type       string          `json:"type"`
+	Payload    json.RawMessage `json:"payload"`
+	ServiceID  string          `json:"service_id"`
+	ServiceKey string          `json:"service_key"`
+	TenantID   string          `json:"tenant_id"`
+	IssuedAt   int64           `json:"issued_at"`
+	Nonce      string          `json:"nonce"`
 }
 
 // Result is always what callers get back, on both success and failure —

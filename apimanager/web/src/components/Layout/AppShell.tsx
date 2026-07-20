@@ -23,6 +23,7 @@ import {
   HardDrive,
   PanelLeftClose,
   PanelLeftOpen,
+  Radio,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
@@ -56,6 +57,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/payments", labelKey: "nav.paymentsAdmin", icon: Receipt },
   { to: "/admin/promo-codes", labelKey: "nav.promoCodes", icon: Ticket },
   { to: "/admin/users", labelKey: "nav.users", icon: Users },
+  { to: "/admin/operations", labelKey: "nav.operations", icon: Radio },
   { to: "/admin/request-logs", labelKey: "nav.requestLogs", icon: Activity },
 ];
 
@@ -111,6 +113,7 @@ export default function AppShell({ variant }: { variant: "user" | "admin" }) {
               end={item.end}
               onClick={() => setMobileOpen(false)}
               title={showLabels ? undefined : t(item.labelKey)}
+              aria-current={active ? "page" : undefined}
               className={clsx(
                 "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                 !showLabels && "justify-center px-0",
@@ -130,6 +133,10 @@ export default function AppShell({ variant }: { variant: "user" | "admin" }) {
 
   return (
     <div className="min-h-screen">
+      <a href="#main-content" className="skip-link">
+        {t("nav.skipToContent")}
+      </a>
+
       {/* سایدبار — دسکتاپ */}
       <aside
         className={clsx(
@@ -262,12 +269,44 @@ export default function AppShell({ variant }: { variant: "user" | "admin" }) {
           </div>
         </header>
 
-        <main className="pt-5">
-          <div className="animate-fade-in">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className={clsx("mx-auto w-full max-w-[1600px] pt-5", variant === "user" && "user-mobile-content")}
+        >
+          <div key={location.pathname} className="animate-fade-in">
             <Outlet />
           </div>
         </main>
       </div>
+
+      {variant === "user" && (
+        <nav
+          aria-label={t("nav.mobileNavigation")}
+          className="mobile-bottom-nav fixed inset-x-3 bottom-3 z-30 grid grid-cols-4 gap-1 rounded-2xl border border-slate-200/80 bg-white/90 p-1.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl dark:border-white/10 dark:bg-ink-900/90 dark:shadow-black/30 lg:hidden"
+        >
+          {userNav.map((item) => {
+            const active = isActiveItem(item);
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                aria-current={active ? "page" : undefined}
+                className={clsx(
+                  "flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors sm:text-xs",
+                  active
+                    ? "bg-brand-gradient text-white shadow-glow"
+                    : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+                )}
+              >
+                <item.icon className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
+                <span className="max-w-full truncate">{t(item.labelKey)}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@ const AdminInstances = lazy(() => import("@/pages/admin/AdminInstances"));
 const AdminPayments = lazy(() => import("@/pages/admin/AdminPayments"));
 const AdminPromoCodes = lazy(() => import("@/pages/admin/AdminPromoCodes"));
 const AdminImages = lazy(() => import("@/pages/admin/AdminImages"));
+const AdminOperations = lazy(() => import("@/pages/admin/AdminOperations"));
 const RequestLogs = lazy(() => import("@/pages/RequestLogs"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
@@ -66,6 +67,7 @@ export default function App() {
               <Route path="payments" element={<AdminPayments />} />
               <Route path="promo-codes" element={<AdminPromoCodes />} />
               <Route path="images" element={<AdminImages />} />
+              <Route path="operations" element={<AdminOperations />} />
               <Route path="request-logs" element={<RequestLogs />} />
             </Route>
           </Route>

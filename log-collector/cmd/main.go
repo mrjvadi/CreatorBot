@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrjvadi/creatorbot/log-collector/internal/api"
 	"github.com/mrjvadi/creatorbot/log-collector/internal/collector"
+	"github.com/mrjvadi/creatorbot/log-collector/internal/status"
 	"github.com/mrjvadi/creatorbot/log-collector/internal/store"
 	"github.com/mrjvadi/creatorbot/log-collector/internal/telegram"
 	sharedmongo "github.com/mrjvadi/creatorbot/shared/pkg/adapters/mongodb"
@@ -77,6 +78,11 @@ func main() {
 		log.Fatal("nats", ports.F("err", err))
 	}
 	defer nc.Close()
+	// خودِ log-collector هم باید در داشبوردِ وضعیتِ خودش دیده شود — بدونِ این،
+	// همیشه ❔ «هنوز دیده نشده» می‌ماند چون این تنها سرویسی است که AttachNATS
+	// را روی خودش صدا نمی‌زد (فقط برای مصرف‌کردنِ لاگ/heartbeatِ بقیه استفاده
+	// می‌شد، نه انتشارِ لاگِ خودش).
+	log.AttachNATS(nc, "log-collector")
 
 	// ── Telegram (اختیاری) ─────────────────────────────────
 	tg := telegram.New(cfg.TelegramBotAPI, cfg.TelegramToken, cfg.TelegramChatID)
@@ -89,6 +95,14 @@ func main() {
 		log.Fatal("subscribe logs.events failed", ports.F("err", err))
 	}
 	log.Info("subscribed", ports.F("subject", logger.SubjLogEvents))
+
+	// ── داشبوردِ زنده‌ی وضعیتِ سرویس‌های اصلی (پیامِ تلگرامی که edit می‌شود) ──
+	statusMon := status.NewMonitor()
+	if err := nc.Subscribe(logger.SubjHeartbeat, statusMon.Handle); err != nil {
+		log.Error("subscribe service.heartbeat failed — status dashboard disabled", ports.F("err", err))
+	} else {
+		go status.NewReporter(statusMon, tg, st, log).Run()
+	}
 
 	// ── HTTP query API ──────────────────────────────────────
 	gin.SetMode(gin.ReleaseMode)

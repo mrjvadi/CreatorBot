@@ -140,11 +140,11 @@ type natspayAdapter struct {
 	nc *natspayclient.Client
 }
 
-func (a *natspayAdapter) AddCredit(ctx context.Context, telegramID int64, amountTON float64, desc string) (string, error) {
-	if err := a.nc.Credit(ctx, telegramID, amountTON, desc, `{"src":"revenue-service"}`); err != nil {
+func (a *natspayAdapter) AddCredit(ctx context.Context, telegramID int64, amountTON float64, ref, desc string) (string, error) {
+	if err := a.nc.Credit(ctx, telegramID, amountTON, ref, `{"src":"revenue-service"}`); err != nil {
 		return "", err
 	}
-	return "", nil
+	return ref, nil
 }
 
 func (a *natspayAdapter) Deduct(ctx context.Context, telegramID int64, amountTON float64, ref, desc string) (string, error) {

@@ -41,8 +41,10 @@ type Config struct {
 // Identity is what this process is, once activated: a worker ID plus the
 // Telegram account it should operate.
 type Identity struct {
-	ID       string
-	Telegram protocol.SourceWorkerTelegramCreds
+	ID         string
+	ServiceID  string
+	ServiceKey string
+	Telegram   protocol.SourceWorkerTelegramCreds
 }
 
 // Register activates cfg.LicenseKey with botmanager and returns this
@@ -69,5 +71,5 @@ func Register(ctx context.Context, nc *natsclient.Client, cfg Config) (*Identity
 		return nil, fmt.Errorf("botmanager reply missing worker_id")
 	}
 
-	return &Identity{ID: reply.WorkerID, Telegram: reply.Telegram}, nil
+	return &Identity{ID: reply.WorkerID, ServiceID: cfg.ServiceID, ServiceKey: cfg.ServiceKey, Telegram: reply.Telegram}, nil
 }

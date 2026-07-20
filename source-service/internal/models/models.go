@@ -1,20 +1,22 @@
 package models
 
 import (
-	"time"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"time"
 )
 
 type Base struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 func (b *Base) BeforeCreate(_ *gorm.DB) error {
-	if b.ID == uuid.Nil { b.ID = uuid.New() }
+	if b.ID == uuid.Nil {
+		b.ID = uuid.New()
+	}
 	return nil
 }
 
@@ -26,6 +28,7 @@ func (b *Base) BeforeCreate(_ *gorm.DB) error {
 // chats/bots, so a single global unique index would eventually collide.
 type ArchiveFile struct {
 	Base
+	TenantID  string `gorm:"index"`
 	MessageID int    `gorm:"not null"`
 	FileType  string `gorm:"not null"`
 	FileName  string
@@ -35,6 +38,7 @@ type ArchiveFile struct {
 }
 
 type BotFileCache struct {
+	TenantID      string    `gorm:"index"`
 	ArchiveFileID uuid.UUID `gorm:"primaryKey;type:uuid"`
 	BotTokenHash  string    `gorm:"primaryKey"` // SHA-256 of token
 	FileID        string    `gorm:"not null"`

@@ -1,6 +1,12 @@
-// Package events رویدادهای join/leave را از Telegram update ها دریافت
-// و به NATS publish می‌کند تا fraud-engine و community-service مطلع شوند.
-package events
+// Package joinevents رویدادهای Telegram chat_member/user_joined/user_left
+// را می‌گیرد و membership.joined/membership.left را روی NATS منتشر می‌کند.
+//
+// این منطق در اصل داخل member-bot/internal/events بود؛ به این‌جا منتقل شد
+// تا هر ربات دیگری هم (uploader-bot/vpn-bot/archive-bot، وقتی instance
+// رایگان‌شان به یک کمپینِ اجاره‌ی قفلِ فعال در ads-bot وصل است) بتواند
+// بدونِ کپی همین رفتار را داشته باشد — با Gate برای فعال/غیرفعال‌کردنِ
+// شرطی (member-bot همیشه فعال است، ربات‌های رایگان فقط وقتی در کمپین‌اند).
+package joinevents
 
 import (
 	"strings"
@@ -18,22 +24,42 @@ type Publisher struct {
 	nc    *natsclient.Client
 	fraud *fraudclient.Client
 	log   ports.Logger
+
+	// Gate اگر ست شده باشد و false برگرداند، هیچ رویدادی منتشر نمی‌شود —
+	// برای ربات‌های رایگان که فقط وقتی به کمپینِ اجاره‌ی فعالی وصل‌اند باید
+	// این کار را انجام بدهند. nil یعنی همیشه فعال (رفتار قبلیِ member-bot).
+	Gate func() bool
+
+	// CampaignID (اختیاری) برای attribution دقیق‌ترِ گزارش‌های fraud-engine
+	// وقتی این publisher برای یک ربات رایگانِ متصل به یک کمپینِ خاص است.
+	CampaignID func() string
 }
 
 func NewPublisher(nc *natsclient.Client, fraud *fraudclient.Client, log ports.Logger) *Publisher {
 	return &Publisher{nc: nc, fraud: fraud, log: log}
 }
 
-// Register handler های مربوط به عضویت را ثبت می‌کند.
+// Register handلر های مربوط به عضویت را مستقیم ثبت می‌کند — فقط برای
+// بات‌هایی که از قبل خودشان روی این سه event هندلر ندارند (مثلاً
+// member-bot). اگر bot شما از قبل روی یکی از این‌ها (مثلاً OnChatMember)
+// هندلر دارد، به‌جایش HandleChatMember/HandleUserJoined/HandleUserLeft را
+// از داخل همان هندلرِ موجودتان صدا بزنید (رجوع uploader-bot).
 func (p *Publisher) Register(b *tele.Bot) {
-	b.Handle(tele.OnChatMember, p.onChatMember)
-	b.Handle(tele.OnUserJoined, p.onUserJoined)
-	b.Handle(tele.OnUserLeft, p.onUserLeft)
+	b.Handle(tele.OnChatMember, p.HandleChatMember)
+	b.Handle(tele.OnUserJoined, p.HandleUserJoined)
+	b.Handle(tele.OnUserLeft, p.HandleUserLeft)
 }
 
-// onChatMember برای channel/group update های عضویت.
+func (p *Publisher) enabled() bool {
+	return p.Gate == nil || p.Gate()
+}
+
+// HandleChatMember برای channel/group update های عضویت.
 // این اصلی‌ترین handler است — وقتی bot ادمین کانال/گروه است.
-func (p *Publisher) onChatMember(c tele.Context) error {
+func (p *Publisher) HandleChatMember(c tele.Context) error {
+	if !p.enabled() {
+		return nil
+	}
 	update := c.ChatMember()
 	if update == nil {
 		return nil
@@ -82,18 +108,24 @@ func extractInviteHash(url string) string {
 	return ""
 }
 
-// onUserJoined برای group ها (ساده‌تر از ChatMember).
-// نکته: برخلاف onChatMember، این رویداد هیچ اطلاعات invite-link ندارد
+// HandleUserJoined برای group ها (ساده‌تر از ChatMember).
+// نکته: برخلاف HandleChatMember، این رویداد هیچ اطلاعات invite-link ندارد
 // (تلگرام آن را در new_chat_members نمی‌فرستد) — پس "organic" واقعاً
 // درست است، نه یک مقدار هاردکدشده‌ی جایگزین.
-func (p *Publisher) onUserJoined(c tele.Context) error {
+func (p *Publisher) HandleUserJoined(c tele.Context) error {
+	if !p.enabled() {
+		return nil
+	}
 	for _, user := range c.Message().UsersJoined {
 		p.publishJoin(user.ID, c.Chat().ID, user.Username, "organic", "")
 	}
 	return nil
 }
 
-func (p *Publisher) onUserLeft(c tele.Context) error {
+func (p *Publisher) HandleUserLeft(c tele.Context) error {
+	if !p.enabled() {
+		return nil
+	}
 	if c.Message().UserLeft == nil {
 		return nil
 	}
@@ -116,13 +148,14 @@ func (p *Publisher) publishJoin(telegramID, chatID int64, username, source, invi
 	// به همه مصرف‌کنندگان
 	p.nc.PublishCore("membership.joined", payload)
 
-	// مستقیم به fraud-engine (fire-and-forget).
-	// نکته: ReportJoin پارامتر چهارم را campaign_id می‌نامد ولی فعلاً
-	// تنها attribution که داریم invite_hash (گروه) است، نه campaign_id
-	// (تبلیغ ads-bot) — این دو مفهوم متفاوتند و فاز بعد باید campaign_id
-	// واقعی را هم به این مسیر متصل کند.
+	// مستقیم به fraud-engine (fire-and-forget) — campaign_id (اگر ست شده
+	// باشد) attribution دقیقِ کمپینِ اجاره‌ی مربوطه را ممکن می‌کند.
 	if p.fraud != nil {
-		p.fraud.ReportJoin(telegramID, chatID, source, inviteHash)
+		campaignID := ""
+		if p.CampaignID != nil {
+			campaignID = p.CampaignID()
+		}
+		p.fraud.ReportJoin(telegramID, chatID, source, campaignID)
 	}
 
 	p.log.Info("membership.joined published",
@@ -151,6 +184,9 @@ func (p *Publisher) publishLeave(telegramID, chatID int64) {
 // PublishActivity فعالیت یک کاربر در گروه را publish می‌کند.
 // از message handler صدا زده می‌شود.
 func (p *Publisher) PublishActivity(telegramID, chatID int64, messages, replies, reactions int) {
+	if !p.enabled() {
+		return
+	}
 	payload := map[string]any{
 		"telegram_id":  telegramID,
 		"community_id": chatID,

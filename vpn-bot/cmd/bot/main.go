@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/signal"
 	"syscall"
 	"time"
@@ -9,18 +10,20 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
+	"github.com/mrjvadi/creatorbot/shared-core/memberclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/marzban"
+	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/mongodb"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/nowpayments"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/zarinpal"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 
-	"github.com/mrjvadi/creatorbot/vpn-bot/internal/models"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/payment"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/scheduler"
 	"github.com/mrjvadi/creatorbot/vpn-bot/internal/store"
@@ -28,14 +31,19 @@ import (
 )
 
 type Config struct {
-	BotToken  string `mapstructure:"BOT_TOKEN"`
-	ChannelID int64  `mapstructure:"CHANNEL_ID"`
-	AdminID   int64  `mapstructure:"OWNER_ID"`
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
+	BotToken    string `mapstructure:"BOT_TOKEN"`
+	ChannelID   int64  `mapstructure:"CHANNEL_ID"`
+	AdminID     int64  `mapstructure:"OWNER_ID"`
 
-	PostgresDSN string `mapstructure:"MASTER_DSN"`
-	RedisAddr   string `mapstructure:"REDIS_ADDR"`
-	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
-	RedisDB     int    `mapstructure:"REDIS_DB"`
+	// این ربات هیچ Postgres ندارد؛ همه‌ی داده روی MongoDB است (دیتابیس
+	// اختصاصیِ نوع سرویس vpn-bot).
+	MongoURI  string `mapstructure:"MONGO_URI"`
+	MongoDB   string `mapstructure:"MONGO_DB"`
+	RedisAddr string `mapstructure:"REDIS_ADDR"`
+	RedisPass string `mapstructure:"REDIS_PASSWORD"`
+	RedisDB   int    `mapstructure:"REDIS_DB"`
 
 	PanelType string `mapstructure:"PANEL_TYPE"`
 	PanelURL  string `mapstructure:"PANEL_URL"`
@@ -68,21 +76,25 @@ func main() {
 	config.MustLoad(&cfg)
 	log := logger.MustNew(false)
 
-	db, err := postgres.New(postgres.Config{DSN: cfg.PostgresDSN})
-	if err != nil {
-		log.Fatal("db", ports.F("err", err))
-	}
-	db.Migrate(&models.User{}, &models.Panel{}, &models.Plan{}, &models.Subscription{},
-		&models.DiscountCode{}, &models.Payment{}, &models.Setting{})
+	// instanceID جدا می‌کند دیتای این deploy را از بقیه‌ی instanceهای vpn-bot که
+	// همگی روی همان دیتابیسِ مشترکِ Mongo (MONGO_DB=vpn_bot) نشسته‌اند — همان
+	// الگویی که uploader-bot با shared-core/docstore پیاده می‌کند (رجوع
+	// CHANGELOG). باید قبل از ساختِ store محاسبه شود چون به store.New پاس می‌شود.
+	botID := webhook.BotIDFromToken(cfg.BotToken)
+	instanceID := fmt.Sprintf("bot_%d", botID)
 
-	// یکتایی پرداخت‌های آنلاین: از فعال‌سازی چندباره‌ی اشتراک با کلیک تکراری روی
-	// «پرداخت کردم» جلوگیری می‌کند (dedup در ClaimOnlinePayment به این ایندکس تکیه دارد).
-	if err := db.Conn().Exec(
-		`CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_online_ref ` +
-			`ON payments (gateway, ref_code) ` +
-			`WHERE gateway IN ('zarinpal','nowpayments') AND ref_code <> ''`,
-	).Error; err != nil {
-		log.Fatal("payment index", ports.F("err", err))
+	mdb, err := mongodb.New(mongodb.Config{URI: cfg.MongoURI, Database: cfg.MongoDB})
+	if err != nil {
+		log.Fatal("mongodb", ports.F("err", err))
+	}
+	st := store.New(mdb.Database(), instanceID)
+	// یکتایی (instance_id,telegram_id)/(instance_id,code)/(instance_id,gateway,ref_code) —
+	// معادل AutoMigrate uniqueIndex + CREATE UNIQUE INDEX partial قبلیِ Postgres
+	// (dedup در ClaimOnlinePayment به این ایندکس تکیه دارد)، حالا با instance_id
+	// به‌عنوان کلیدِ پیشرو تا instanceهای مختلفِ vpn-bot که دیتابیسِ Mongo را با
+	// هم شریک‌اند دیتای هم را نبینند/رد نکنند.
+	if err := st.EnsureIndexes(context.Background()); err != nil {
+		log.Fatal("mongo indexes", ports.F("err", err))
 	}
 
 	cache, err := sharedredis.New(sharedredis.Config{
@@ -107,7 +119,6 @@ func main() {
 
 	// ── انتخاب حالت: polling (dev) یا webhook (production) ────
 	mode := webhook.ParseMode(cfg.BotMode)
-	botID := webhook.BotIDFromToken(cfg.BotToken)
 
 	// نکته: قبلاً nc فقط در حالت webhook ساخته می‌شد و بدون username/password
 	// (auth) — یعنی اگر NATS واقعاً auth الزامی داشت، این اتصال از اول رد
@@ -127,7 +138,7 @@ func main() {
 		}
 	}
 	if nc != nil {
-		log.AttachNATS(nc, "vpn-bot")
+		log.AttachNATS(nc, "vpn-bot", instanceID)
 	}
 
 	// ── بررسی لایسنس در startup — fail-closed ────────────────
@@ -150,6 +161,12 @@ func main() {
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
 	}
+	if err := botprofile.Sync(rawBot, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "VPN Bot"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
+	}
 	// در حالت webhook روی تلگرام SetWebhook می‌زنیم؛ در polling webhook قبلی حذف می‌شود
 	if err := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
 		Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
@@ -168,12 +185,25 @@ func main() {
 		log.Fatal("unknown PAYMENT_GATEWAY", ports.F("type", cfg.PaymentGateway))
 	}
 
-	st := store.New(db)
-	h := tgbot.NewHandler(rawBot, st, panel, gateway, cache, log, cfg.ChannelID, cfg.AdminID, cfg.EncryptKey)
-	tgbot.Register(rawBot, h)
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// ── وضعیتِ اجاره‌ی قفل (اگر این instance رایگان است) ─────────
+	// جایگزینِ چیزی که uploader-bot قبلاً با Postgres/bot_instances.lock_mode
+	// می‌خواند — vpn-bot هرگز چنین چیزی نداشت؛ حالا با همان مکانیزمِ NATS به
+	// ads-bot اضافه شد تا این نوع ربات هم بتواند رایگان/اجاره‌ای شود.
+	rentalStatus := &memberclient.RentalStatus{}
+	var joinPublisher *joinevents.Publisher
+	if nc != nil {
+		go memberclient.RunStatusLoop(ctx, nc, botID, rentalStatus, log)
+		joinPublisher = joinevents.NewPublisher(nc, nil, log)
+		joinPublisher.Gate = rentalStatus.IsInCampaign
+		joinPublisher.CampaignID = rentalStatus.CampaignID
+	}
+
+	h := tgbot.NewHandler(rawBot, st, panel, gateway, cache, log, cfg.ChannelID, cfg.AdminID, cfg.EncryptKey,
+		botID, nc, rentalStatus, joinPublisher)
+	tgbot.Register(rawBot, h)
 
 	if nc != nil {
 		go licenseclient.RunLicenseLoop(ctx, nc, botID, cfg.LicenseToken, cfg.ServerID, log)

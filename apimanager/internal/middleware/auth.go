@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"github.com/mrjvadi/creatorbot/shared-core/store"
 	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 )
 
@@ -26,6 +29,30 @@ func JWTAuth(secret string) gin.HandlerFunc {
 
 		c.Set("user_id", claims.UserID)
 		c.Set("role", claims.Role)
+		c.Next()
+	}
+}
+
+// UserState نقش و وضعیت مسدودی را در هر درخواست از منبع حقیقت DB تازه می‌کند.
+// به این ترتیب block/demotion منتظر انقضای access/refresh token نمی‌ماند.
+func UserState(st *store.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, err := uuid.Parse(c.GetString("user_id"))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "invalid user"})
+			return
+		}
+		u, err := st.FindUserByID(c.Request.Context(), uid)
+		if err != nil || u == nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "user not found"})
+			return
+		}
+		if u.IsBlocked {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"ok": false, "message": "user is blocked"})
+			return
+		}
+		c.Set("role", string(u.Role))
+		c.Set("current_user", u)
 		c.Next()
 	}
 }

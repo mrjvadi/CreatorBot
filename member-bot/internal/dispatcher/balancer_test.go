@@ -11,9 +11,9 @@ func TestSelectLeastLoaded_Basic(t *testing.T) {
 	b := &Balancer{}
 
 	bots := []models.CheckBot{
-		{Base: models.Base{ID: uuid.New()}, RateLimit: 20},
-		{Base: models.Base{ID: uuid.New()}, RateLimit: 20},
-		{Base: models.Base{ID: uuid.New()}, RateLimit: 20},
+		{ID: uuid.New(), RateLimit: 20},
+		{ID: uuid.New(), RateLimit: 20},
+		{ID: uuid.New(), RateLimit: 20},
 	}
 
 	loads := map[string]int{
@@ -35,9 +35,9 @@ func TestSelectLeastLoaded_NBotsSelected(t *testing.T) {
 	b := &Balancer{}
 
 	bots := []models.CheckBot{
-		{Base: models.Base{ID: uuid.New()}},
-		{Base: models.Base{ID: uuid.New()}},
-		{Base: models.Base{ID: uuid.New()}},
+		{ID: uuid.New()},
+		{ID: uuid.New()},
+		{ID: uuid.New()},
 	}
 	loads := map[string]int{
 		bots[0].ID.String(): 5,
@@ -56,7 +56,7 @@ func TestSelectLeastLoaded_MoreThanBots(t *testing.T) {
 	b := &Balancer{}
 
 	bots := []models.CheckBot{
-		{Base: models.Base{ID: uuid.New()}},
+		{ID: uuid.New()},
 	}
 	loads := map[string]int{bots[0].ID.String(): 0}
 

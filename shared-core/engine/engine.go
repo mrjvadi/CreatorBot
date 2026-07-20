@@ -23,7 +23,6 @@ import (
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/mongodb"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
-	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/postgres"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
@@ -34,14 +33,15 @@ type Config struct {
 	// از env توکن استخراج می‌شود — نیازی نیست دستی set شود
 	BotToken string
 
-	// DB — همه bot ها به همان PostgreSQL و MongoDB وصل می‌شوند
-	// bot_id برای filter استفاده می‌شود
-	PostgresDSN string
-	MongoURI    string
-	MongoDB     string
-	RedisAddr   string
-	RedisPass   string
-	RedisDB     int
+	// DB — همه bot ها به همان MongoDB وصل می‌شوند؛ bot_id/instance_id برای
+	// filter استفاده می‌شود. این ربات‌ها دیگر هیچ Postgres ندارند (رجوع
+	// CHANGELOG — حذفِ کاملِ PostgresDSN/InstanceInfo/LockMode-lookup که
+	// جایگزینش memberclient.RunStatusLoop روی NATS با ads-bot شد).
+	MongoURI  string
+	MongoDB   string
+	RedisAddr string
+	RedisPass string
+	RedisDB   int
 
 	// NATS — فقط برای heartbeat و events
 	NatsURL  string
@@ -67,7 +67,6 @@ type Engine struct {
 	InstanceID string // "bot_<BotID>"
 
 	// DB connections
-	DB    ports.DB
 	Mongo ports.DocumentStore
 	Cache ports.Cache
 
@@ -83,24 +82,7 @@ type Engine struct {
 	Config *configstore.Store
 
 	Log ports.Logger
-
-	// InstanceInfo اطلاعات این instance از جدول bot_instances (PlanID, LockMode).
-	// در Start() پر می‌شود. اگر هنوز خوانده نشده یا یافت نشد، nil است.
-	InstanceInfo *InstanceInfo
 }
-
-// InstanceInfo زیرمجموعه‌ی فیلدهای BotInstance که bot فرعی به آن نیاز دارد
-// تا بفهمد قفل کانالش رایگان است یا اجاره‌ای (بدون import مدل کامل botmanager).
-type InstanceInfo struct {
-	PlanID   string // uuid به‌صورت رشته، خالی = بدون پلن
-	LockMode string // "free" | "rented" | "none"
-}
-
-// IsFreeLock یعنی این instance بخشی از تبلیغ رایگان پلتفرم است.
-func (i *InstanceInfo) IsFreeLock() bool { return i != nil && i.LockMode == "free" }
-
-// IsRentedLock یعنی قفل این instance به یک کمپین اجاره‌ای وصل است.
-func (i *InstanceInfo) IsRentedLock() bool { return i != nil && i.LockMode == "rented" }
 
 // New یک engine جدید می‌سازد.
 // همه connection ها را برقرار می‌کند.
@@ -115,14 +97,6 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 	log.Info("engine starting",
 		ports.F("bot_id", botID),
 		ports.F("instance_id", instanceID))
-
-	// ── PostgreSQL ────────────────────────────────────────────
-	// bot مستقیماً به DB وصل می‌شود
-	// همه query ها باید WHERE bot_id = ? داشته باشند
-	db, err := postgres.New(postgres.Config{DSN: cfg.PostgresDSN})
-	if err != nil {
-		return nil, fmt.Errorf("engine: postgres: %w", err)
-	}
 
 	// ── MongoDB ───────────────────────────────────────────────
 	// instance_id = "bot_<botID>" به‌صورت خودکار به همه query ها اضافه می‌شود
@@ -158,7 +132,6 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 		cfg:        cfg,
 		BotID:      botID,
 		InstanceID: instanceID,
-		DB:         db,
 		Mongo:      ds,
 		Cache:      cache,
 		Settings:   settings,
@@ -190,9 +163,6 @@ func New(cfg Config, log ports.Logger) (*Engine, error) {
 
 // Start heartbeat را شروع می‌کند (اگه NATS وصل باشد).
 func (e *Engine) Start(ctx context.Context) {
-	// ── خواندن PlanID/LockMode این instance از bot_instances ──
-	e.loadInstanceInfo(ctx)
-
 	// ── بارگذاری config از MongoDB ────────────────────────────
 	if _, err := e.Config.Load(ctx); err != nil {
 		e.Log.Error("config load failed", ports.F("err", err))
@@ -235,37 +205,6 @@ func (e *Engine) Close(ctx context.Context) {
 }
 
 // heartbeatLoop وضعیت bot را به apimanager ارسال می‌کند.
-// loadInstanceInfo از جدول bot_instances، PlanID و LockMode این bot را
-// با BotID خودش پیدا می‌کند. عمداً raw query است (نه import مدل botmanager)
-// تا engine به shared-core/models وابسته نشود.
-func (e *Engine) loadInstanceInfo(ctx context.Context) {
-	if e.DB == nil {
-		return
-	}
-	var row struct {
-		PlanID   *string
-		LockMode string
-	}
-	err := e.DB.Conn().WithContext(ctx).
-		Table("bot_instances").
-		Select("plan_id, lock_mode").
-		Where("bot_id = ?", e.BotID).
-		Take(&row).Error
-	if err != nil {
-		e.Log.Warn("instance info not found — running without plan context",
-			ports.F("bot_id", e.BotID), ports.F("err", err))
-		return
-	}
-
-	info := &InstanceInfo{LockMode: row.LockMode}
-	if row.PlanID != nil {
-		info.PlanID = *row.PlanID
-	}
-	e.InstanceInfo = info
-	e.Log.Info("instance info loaded",
-		ports.F("bot_id", e.BotID), ports.F("lock_mode", info.LockMode))
-}
-
 func (e *Engine) heartbeatLoop(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

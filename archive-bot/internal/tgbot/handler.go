@@ -7,21 +7,39 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/archive-bot/internal/store"
+	"github.com/mrjvadi/creatorbot/shared-core/memberclient"
+	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
 type Handler struct {
 	bot         *tele.Bot
 	store       *store.Store
-	db          ports.DB
 	cache       ports.Cache
 	log         ports.Logger
 	ownerID     int64
+	botID       int64
 	botUsername string
+	nats        *natsclient.Client
+
+	// rentalStatus/joinPublisher فقط وقتی این instance رایگان به یک کمپینِ
+	// اجاره‌ی قفلِ فعال در ads-bot وصل است معنی دارند — nil یعنی راه‌اندازی
+	// نشده (مثلاً NATS در دسترس نبوده، رجوع main.go).
+	rentalStatus  *memberclient.RentalStatus
+	joinPublisher *joinevents.Publisher
 }
 
-func NewHandler(bot *tele.Bot, st *store.Store, db ports.DB, cache ports.Cache, log ports.Logger, ownerID int64, botUsername string) *Handler {
-	return &Handler{bot: bot, store: st, db: db, cache: cache, log: log, ownerID: ownerID, botUsername: botUsername}
+func NewHandler(
+	bot *tele.Bot, st *store.Store, cache ports.Cache, log ports.Logger,
+	ownerID int64, botUsername string, botID int64, nc *natsclient.Client,
+	rentalStatus *memberclient.RentalStatus, joinPublisher *joinevents.Publisher,
+) *Handler {
+	return &Handler{
+		bot: bot, store: st, cache: cache, log: log,
+		ownerID: ownerID, botUsername: botUsername, botID: botID, nats: nc,
+		rentalStatus: rentalStatus, joinPublisher: joinPublisher,
+	}
 }
 
 func Register(b *tele.Bot, h *Handler) {
@@ -38,6 +56,12 @@ func Register(b *tele.Bot, h *Handler) {
 	b.Handle(tele.OnAudio,    h.onMedia)
 	b.Handle(tele.OnPhoto,    h.onMedia)
 	b.Handle(tele.OnCallback, h.onCallback)
+	b.Handle(tele.OnMyChatMember, h.onMyChatMember)
+	if h.joinPublisher != nil {
+		b.Handle(tele.OnChatMember, h.joinPublisher.HandleChatMember)
+		b.Handle(tele.OnUserJoined, h.joinPublisher.HandleUserJoined)
+		b.Handle(tele.OnUserLeft, h.joinPublisher.HandleUserLeft)
+	}
 }
 
 func (h *Handler) isAdmin(c tele.Context) bool { return c.Sender().ID == h.ownerID }

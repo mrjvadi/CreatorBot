@@ -173,6 +173,7 @@ func (h *Admin) adminSysView(ctx context.Context, c tele.Context, edit bool) err
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuTemplates), "admin_sys_templates")),
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuSourceWorkers), "admin_sys_sourceworkers")),
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyMenuPromoCodes), "admin_sys_promo")),
+		kb.Row(kb.Data("💳 پرداخت‌ها", "admin_sys_payments"), kb.Data("🧾 ممیزی", "admin_sys_audit")),
 		kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBack), "back_main")),
 	)
 	msg := fmt.Sprintf(h.T(ctx, uid, i18n.KeyAdminSysInfo),

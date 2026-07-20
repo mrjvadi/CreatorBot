@@ -117,7 +117,16 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID uuid.UUID, amountNano
 		if err := db.Create(fromTx).Error; err != nil {
 			return err
 		}
-		return db.Create(toTx).Error
+		if err := db.Create(toTx).Error; err != nil {
+			return err
+		}
+		// دفترِ هش: یک debit برای فرستنده و یک credit برای گیرنده (زنجیرِ متوالی).
+		fromBalanceAfter := (from.TONBalance + from.Credit) - amountNano
+		if err := s.appendLedger(db, fromID, fromTx.ID, EntryDebit, amountNano, fromBalanceAfter, "", desc); err != nil {
+			return err
+		}
+		toBalanceAfter := (to.TONBalance + to.Credit) + amountNano
+		return s.appendLedger(db, toID, toTx.ID, EntryCredit, amountNano, toBalanceAfter, "", desc)
 	})
 	return fromTx, toTx, err
 }

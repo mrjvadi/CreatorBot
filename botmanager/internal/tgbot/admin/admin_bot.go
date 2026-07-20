@@ -50,15 +50,17 @@ func (h *Admin) AdminBotsList(ctx context.Context, c tele.Context) error {
 		case models.StatusRunning:
 			rows = append(rows, kb.Row(
 				kb.Data("⏹ "+inst.ContainerName, "admin_bot_stop:"+id),
+				kb.Data("🔄", "admin_bot_migrate:"+id),
 				kb.Data("🗑", "admin_bot_del:"+id),
 			))
 		case models.StatusStopped, models.StatusError:
 			rows = append(rows, kb.Row(
 				kb.Data("▶️ "+inst.ContainerName, "admin_bot_start:"+id),
+				kb.Data("🔄", "admin_bot_migrate:"+id),
 				kb.Data("🗑", "admin_bot_del:"+id),
 			))
 		default:
-			rows = append(rows, kb.Row(kb.Data("🗑 "+inst.ContainerName, "admin_bot_del:"+id)))
+			rows = append(rows, kb.Row(kb.Data("🔄 "+inst.ContainerName, "admin_bot_migrate:"+id), kb.Data("🗑", "admin_bot_del:"+id)))
 		}
 	}
 	rows = append(rows, kb.Row(kb.Data(h.Btn(ctx, uid, i18n.KeyBack), "back_main")))

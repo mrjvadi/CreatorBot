@@ -1,8 +1,10 @@
 // mychatmember.go — تشخیص ادمین‌شدن ربات در کانال خریدار (اجاره‌ی قفل).
 //
-// فقط برای instance هایی که LockMode=rented هستند معنی دارد (نگاه کنید به
-// فاز ۱: eng.InstanceInfo). وقتی خریدار این bot رایگان را در کانال خودش
-// ادمین می‌کند، باید به ads-bot اطلاع دهیم تا قفل‌کردن برای آن تبلیغ شروع شود.
+// فقط برای instance هایی معنی دارد که RentalStatus.IsInCampaign() باشد —
+// یعنی الان به یک کمپینِ اجاره‌ی قفلِ فعال در ads-bot وصل‌اند (رجوع
+// core.App.RentalStatus، پرشده توسط memberclient.RunStatusLoop در main.go).
+// وقتی خریدار این bot رایگان را در کانال خودش ادمین می‌کند، باید به ads-bot
+// اطلاع دهیم تا قفل‌کردن برای آن تبلیغ شروع شود.
 package tgbot
 
 import (
@@ -16,7 +18,7 @@ import (
 
 func (h *Handler) onMyChatMember(c tele.Context) error {
 	// فقط برای instance های اجاره‌ای این رویداد معنی دارد.
-	if h.Eng == nil || h.Eng.InstanceInfo == nil || !h.Eng.InstanceInfo.IsRentedLock() {
+	if h.RentalStatus == nil || !h.RentalStatus.IsInCampaign() {
 		return nil
 	}
 

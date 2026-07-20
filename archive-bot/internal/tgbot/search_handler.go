@@ -7,7 +7,6 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 
-	"github.com/mrjvadi/creatorbot/archive-bot/internal/search"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 )
 
@@ -19,8 +18,7 @@ func (h *Handler) doSearch(ctx context.Context, c tele.Context, query string) er
 		return c.Send("حداقل ۲ کاراکتر وارد کنید.")
 	}
 
-	normalized := search.Normalize(query)
-	files, err := search.Search(ctx, h.db.Conn(), normalized, maxResults)
+	files, err := h.store.Search(ctx, query, maxResults)
 	if err != nil {
 		h.log.Error("doSearch", ports.F("err", err))
 		return c.Send("❌ خطا در جستجو.")
@@ -64,8 +62,7 @@ func (h *Handler) onInlineQuery(c tele.Context) error {
 		return c.Answer(&tele.QueryResponse{Results: tele.Results{}})
 	}
 
-	normalized := search.Normalize(query)
-	files, err := search.Search(ctx, h.db.Conn(), normalized, 10)
+	files, err := h.store.Search(ctx, query, 10)
 	if err != nil || len(files) == 0 {
 		return c.Answer(&tele.QueryResponse{Results: tele.Results{}})
 	}

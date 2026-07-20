@@ -1,35 +1,62 @@
-# تست — CreatorBot V3
+# وضعیت تست CreatorBot V3
 
-آخرین به‌روزرسانی: ۲۰۲۶-۰۷-۱۴. راهنمای اجرا در `E2E_RUNBOOK.md`.
+آخرین بازبینی: ۲۰۲۶-۰۷-۱۵.
 
-## ابزارهای تست E2E (بدون تلگرام)
+## فرمان مرجع
+
+    ./scripts/test-all.sh
+
+این فرمان همه‌ی moduleهای دارای go.mod را پیدا و go test ./... را در هر module اجرا می‌کند. CI همچنین go vet ./... را برای هر module و baseline بدهی gofmt را بررسی می‌کند.
+
+## معنی سبز بودن CI
+
+CI فعلی compile و تست‌های موجود را تأیید می‌کند؛ پوشش کامل محصول را ثابت نمی‌کند. moduleهای source، uploader، apimanager، ads، community، image، license و log هنوز تست کامل production path ندارند.
+
+## تست‌های موجود
+
+- botmanager: helper ویزارد؛ مسیرهای parity همچنان نیازمند integration test زنده NATS هستند.
+- apimanager: تست helperهای credential/lifecycle اضافه شد؛ handlerهای DB/NATS هنوز integration test ندارند.
+- botpay: یک فایل store/model، بدون concurrency مالی.
+- revenue: محاسبات/helper، بدون DB claim race.
+- agentmanager: Docker/env policy، بدون queue delivery/ack.
+- fraud: فرمول‌های scorer، بدون processor/NATS/Mongo.
+- member: balancer dispatcher.
+- admanager: parse/schedule مدل.
+- shared: VPN adapters، configstore و rotation.
+- shared-core: store helper؛ baseline اکنون build می‌شود.
+- license-service: allowlist هویت سرویس برای callerهای مجاز، کلید نادرست و caller ناشناخته تست می‌شود؛ issue/revoke زنده NATS پوشش ندارد.
+- webhook: فقط rate limiter.
+
+## simulationهای tests/integration
+
+فایل‌های botmanager/member/uploader/vpn در tests/integration مدل، store و handler مستقل خودشان را تعریف می‌کنند و production packageها را import نمی‌کنند. این‌ها specification simulation هستند، نه integration test کد فعلی. سبز ماندنشان تغییر wiring، auth یا schema production را تضمین نمی‌کند.
+
+## E2E خارج از CI
+
+tests/e2e/e2e_test.go خارج از هر go.mod است و توسط scripts/test-all.sh یا CI کشف نمی‌شود. همچنین botpay HTTP health/balance قدیمی را انتظار دارد، درحالی‌که API مالی فعلی NATS request/reply است. تا بازنویسی و module مستقل، این suite مرجع معتبر نیست.
+
+## ابزارهای دستی
 
 ### tools/e2e-provision
-زنجیره‌ی ساخت ربات: `pay.credit/balance/deduct` → `license.issue` → `DeployCommand` →
-انتظار `agent.<serverID>.result`. تأییدشده ۲۰۲۶-۰۷-۱۰.
-پیش‌نیاز: botpay، license-service، image-registry، agentmanager زنده + image `uploader:dev`.
 
-### ads-bot/tools/e2e-lockrental (جدید ۲۰۲۶-۰۷-۱۴)
-کل چرخه‌ی اجاره‌ی قفل با متدهای واقعی `ads-bot/internal/store` + botpay واقعی:
-seed → approve (کسر بودجه) → join (رزرو، pending) → idempotency → fraud (reversed) →
-settlement (settle_at→گذشته → pay.credit → settled) → completion (done + آزادسازی slot).
-- داخل ماژول ads-bot (قانون `internal/`)، زیر `tools/` نه `cmd/` (تا run.sh دست‌نخورده).
-- دو کاربر تست: member1 (مسیر settlement)، member2 (مسیر fraud).
-- `-emit-nats` علاوه بر مسیر مستقیم، رویدادها را روی core NATS هم منتشر می‌کند.
-- `-cleanup` (پیش‌فرض true) داده‌های تست را پاک می‌کند.
-- پیش‌نیاز: NATS + **botpay زنده** + Postgres `adsbot`(5434) + `SERVICE_HMAC_SECRET`.
+pay credit/balance/deduct → license issue → deploy publish → انتظار agent result. نیازمند NATS، botpay، license، image-registry، agentmanager و image local واقعی است.
 
-## تست‌های integration (mock telegram)
-`tests/integration/` (ماژول جدا) با `framework_test.go`/`mock.go`:
-`member_bot_test.go`, `botmanager_test.go`, `uploader_bot_test.go`, `vpn_bot_test.go`؛
-و `tests/e2e/e2e_test.go`. ads-bot/lock-rental را پوشش نمی‌دهند.
+### ads-bot/tools/e2e-lockrental
 
-## مسیر A — پنل تلگرام (فقط دستی)
-خرید پلن از ربات botmanager → provision → container واقعی. نیاز به:
-Server + BotTemplate + Plan در DB (از پنل ادمین، نه SQL) + سرویس‌های زنده. رجوع
-`E2E_RUNBOOK.md` بخش تست ۳.
+store واقعی ads و botpay واقعی را برای reserve، duplicate join، fraud reversal، settlement و completion اجرا می‌کند. handler/subscriber production را end-to-end assert نمی‌کند و unit test محسوب نمی‌شود.
 
-## وضعیت اجرای زنده روی این ماشین (۲۰۲۶-۰۷-۱۴)
-زیرساخت داده بالا (pg 5432/5434، nats 4222، redis 6379/6381، mongo 27017) ولی سرویس‌های go
-خاموش و local-bot-api (`141.95.210.17:8081`) در دسترس نیست → botpay startup را کامل نمی‌کند
-→ اجرای زنده‌ی e2e-provision و e2e-lockrental موکول به bot API قابل‌دسترس. هر دو `go build` سبز.
+## اولویت تست بعدی
+
+1. PostgreSQL concurrency: credit idempotency، earning claim، slot allocation.
+2. contract test مشترک producer/consumer برای earning.created.
+3. crash/retry بین payout legها و terminal state community/revenue.
+4. source HMAC، freshness، replay و دو tenant هم‌نام cache.
+5. deploy unauthorized/replay/policy و queue saturation.
+6. Telegram webhook secret header و registration lifecycle.
+7. license expiry/revoke/clone و image admission/tar validation.
+8. provisioning/refund یکسان برای botmanager و apimanager.
+9. انتقال E2E واقعی به module و job جدا با service containers.
+
+## production proof
+
+اجرای live Telegram، Docker و دیتابیس production در این بازبینی انجام نشد. قابلیت‌هایی مثل source MTProto، webhook واقعی، providerهای VPN و settlement مالی تا زمان اجرای fixture واقعی باید implemented/wired تلقی شوند، نه prod-proven.

@@ -280,15 +280,37 @@ func (h *User) InstanceAction(ctx context.Context, c tele.Context, instIDStr, ac
 		return c.Edit(h.T(ctx, uid, i18n.KeyInstanceNoAccess))
 	}
 
-	// publish command به apimanager از طریق NATS
-	subject := fmt.Sprintf("instance.%s", action)
-	if h.NC != nil {
-		_ = h.NC.PublishCore(subject, map[string]any{
-			"instance_id":    inst.ID,
-			"container_name": inst.ContainerName,
-			"server_id":      inst.ServerID,
-			"action":         action,
-		})
+	containerID := inst.ContainerID
+	if containerID == "" {
+		containerID = inst.ContainerName
+	}
+	var actionErr error
+	switch action {
+	case "start":
+		actionErr = h.Docker.Start(ctx, inst.ServerID.String(), containerID)
+	case "stop":
+		actionErr = h.Docker.Stop(ctx, inst.ServerID.String(), containerID)
+	case "restart":
+		actionErr = h.Docker.Restart(ctx, inst.ServerID.String(), containerID)
+	case "delete":
+		actionErr = h.Docker.Remove(ctx, inst.ServerID.String(), containerID)
+	default:
+		actionErr = fmt.Errorf("unsupported instance action %q", action)
+	}
+	if actionErr != nil {
+		h.Log.Error("instance action publish failed", ports.F("instance", inst.ID), ports.F("action", action), ports.F("err", actionErr))
+		return c.Edit(h.T(ctx, uid, i18n.KeyBotActionFailed))
+	}
+	if action == "delete" {
+		if err := h.Store.DeleteInstance(ctx, inst.ID); err != nil {
+			return c.Edit(h.T(ctx, uid, i18n.KeyError))
+		}
+	} else {
+		status := models.StatusPending
+		if action == "stop" {
+			status = models.StatusStopped
+		}
+		_ = h.Store.UpdateInstanceStatus(ctx, inst.ID, status)
 	}
 
 	labelKeys := map[string]i18n.Key{

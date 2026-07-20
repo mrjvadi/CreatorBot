@@ -23,7 +23,7 @@ import (
 )
 
 type Config struct {
-	Port        int    `mapstructure:"PORT"`
+	Port              int    `mapstructure:"PORT"`
 	InternalKey       string `mapstructure:"INTERNAL_KEY"`
 	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
 
@@ -48,6 +48,9 @@ func main() {
 	}
 	if cfg.InternalKey == "" {
 		log.Fatal("INTERNAL_KEY is required", ports.F("hint", "set INTERNAL_KEY in .env"))
+	}
+	if cfg.ServiceHMACSecret == "" {
+		log.Fatal("SERVICE_HMAC_SECRET is required for gateway control messages")
 	}
 
 	// ── NATS ─────────────────────────────────────────────
@@ -121,11 +124,18 @@ func main() {
 
 	nc.Subscribe("gateway.unregister", func(data []byte) {
 		var req struct {
-			Token string `json:"token"`
+			Token      string `json:"token"`
+			ServiceID  string `json:"service_id"`
+			ServiceKey string `json:"service_key"`
 		}
-		if err := unmarshalJSON(data, &req); err == nil && req.Token != "" {
-			reg.Unregister(req.Token)
+		if err := unmarshalJSON(data, &req); err != nil || req.Token == "" {
+			return
 		}
+		if !auth.ValidateServiceKey(cfg.ServiceHMACSecret, req.ServiceID, req.ServiceKey) {
+			log.Warn("gateway.unregister: invalid service key — ignoring", ports.F("service_id", req.ServiceID))
+			return
+		}
+		reg.Unregister(req.Token)
 	})
 
 	// ── HTTP Server ───────────────────────────────────────

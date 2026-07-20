@@ -6,6 +6,8 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
+	"github.com/mrjvadi/creatorbot/shared-core/memberclient"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/store"
 )
@@ -25,6 +27,16 @@ type App struct {
 	// Mongo — مثلاً BotToken یک قفل نوع «ربات» (ForceJoinChannel.BotToken)،
 	// که قبلاً به‌صورت متن‌خام ذخیره می‌شد (رجوع کنید به گزارش امنیتی).
 	EncryptKey string
+
+	// RentalStatus وضعیتِ «آیا این instance (اگر رایگان است) الان به یک
+	// کمپینِ اجاره‌ی قفلِ فعال در ads-bot وصل است» — nil یعنی این چک اصلاً
+	// راه‌اندازی نشده (مثلاً NATS در دسترس نبوده).
+	RentalStatus *memberclient.RentalStatus
+
+	// JoinPublisher وقتی RentalStatus.IsInCampaign() باشد، عضویت‌های واقعیِ
+	// کانالِ خریدار را به membership.joined/left منتشر می‌کند (برای پاداشِ
+	// per-join در ads-bot). nil یعنی راه‌اندازی نشده.
+	JoinPublisher *joinevents.Publisher
 }
 
 // LogErr خطای عملیات‌هایی که در هندلرها معمولاً «best effort» صدا زده می‌شوند

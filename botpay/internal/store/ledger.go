@@ -1,166 +1,48 @@
 // Package store — ledger.go
-// پیاده‌سازی Double-Entry Ledger برای botpay.
-// قانون طلایی: مجموع همه entry ها همیشه صفر است.
+// دفترِ هش‌زنجیره‌ایِ append-only برای botpay.
+//
+// هر حرکتِ موجودی (واریز، پرداخت، اعتبار، برداشت، انتقال) دقیقاً یک یا دو
+// LedgerEntry تولید می‌کند که به بلوکِ قبلی زنجیر می‌شود (chain.go). این کار
+// درونِ همان transactionِ عملیات و با appendLedger انجام می‌شود تا اتمیک بماند و
+// هرگز موجودی بدونِ بلوکِ متناظر تغییر نکند.
+//
+// invariant per-wallet:  Σcredit − Σdebit == ton_balance + credit  (مانده‌ی realized)
 package store
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// RecordTransfer یک انتقال دوطرفه ثبت می‌کند.
-// همیشه به صورت atomic: debit از fromWallet + credit به toWallet.
-func (s *Store) RecordTransfer(ctx context.Context,
-	fromWalletID, toWalletID uuid.UUID,
-	amountNano int64, txID uuid.UUID, ref, note string,
-) (*TransferPair, error) {
-
-	if amountNano <= 0 {
-		return nil, fmt.Errorf("amount must be positive, got %d", amountNano)
-	}
-	if fromWalletID == toWalletID {
-		return nil, fmt.Errorf("cannot transfer to same wallet")
-	}
-
-	var pair TransferPair
-
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// ── موجودی‌های فعلی ────────────────────────────────
-		var fromWallet, toWallet Wallet
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			First(&fromWallet, "id = ?", fromWalletID).Error; err != nil {
-			return fmt.Errorf("from wallet: %w", err)
-		}
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			First(&toWallet, "id = ?", toWalletID).Error; err != nil {
-			return fmt.Errorf("to wallet: %w", err)
-		}
-
-		// ── بررسی موجودی کافی ─────────────────────────────
-		if fromWallet.TONBalance < amountNano {
-			return fmt.Errorf("insufficient balance: have %d, need %d",
-				fromWallet.TONBalance, amountNano)
-		}
-
-		now := time.Now()
-
-		// ── Debit از fromWallet ────────────────────────────
-		pair.Debit = LedgerEntry{
-			ID:            uuid.New(),
-			CreatedAt:     now,
-			TransactionID: txID,
-			WalletID:      fromWalletID,
-			Type:          EntryDebit,
-			AmountNano:    amountNano,
-			BalanceAfter:  fromWallet.TONBalance - amountNano,
-			Ref:           ref,
-			Note:          note,
-		}
-
-		// ── Credit به toWallet ─────────────────────────────
-		pair.Credit = LedgerEntry{
-			ID:            uuid.New(),
-			CreatedAt:     now,
-			TransactionID: txID,
-			WalletID:      toWalletID,
-			Type:          EntryCredit,
-			AmountNano:    amountNano,
-			BalanceAfter:  toWallet.TONBalance + amountNano,
-			Ref:           ref,
-			Note:          note,
-		}
-
-		// ── زنجیره‌ی هش: آخرین بلوک را با قفل بگیر ─────────
-		prevSeq, prevHash, cerr := s.lastChainEntryTx(tx)
-		if cerr != nil {
-			return fmt.Errorf("chain tip: %w", cerr)
-		}
-		// debit به انتهای زنجیره، credit به debit وصل می‌شود
-		linkEntry(&pair.Debit, prevSeq, prevHash)
-		linkEntry(&pair.Credit, pair.Debit.Seq, pair.Debit.Hash)
-
-		// ── ذخیره هر دو entry ─────────────────────────────
-		if err := tx.Create(&pair.Debit).Error; err != nil {
-			return fmt.Errorf("create debit: %w", err)
-		}
-		if err := tx.Create(&pair.Credit).Error; err != nil {
-			return fmt.Errorf("create credit: %w", err)
-		}
-
-		// ── آپدیت موجودی‌ها ────────────────────────────────
-		if err := tx.Model(&Wallet{}).Where("id = ?", fromWalletID).
-			Update("ton_balance", fromWallet.TONBalance-amountNano).Error; err != nil {
-			return fmt.Errorf("update from balance: %w", err)
-		}
-		if err := tx.Model(&Wallet{}).Where("id = ?", toWalletID).
-			Update("ton_balance", toWallet.TONBalance+amountNano).Error; err != nil {
-			return fmt.Errorf("update to balance: %w", err)
-		}
-
-		return nil
-	})
-
+// appendLedger یک بلوکِ هش‌زنجیره‌ای برای یک حرکتِ موجودی درج می‌کند. باید درونِ
+// همان db.Transactionِ عملیات فراخوانی شود. amountNano همیشه مثبت است؛ جهت با
+// etype (debit/credit) مشخص می‌شود. balanceAfter = مجموعِ realizedِ (ton_balance +
+// credit) کیف پول پس از این حرکت.
+func (s *Store) appendLedger(db *gorm.DB, walletID, txID uuid.UUID, etype EntryType, amountNano, balanceAfter int64, ref, note string) error {
+	prevSeq, prevHash, err := s.lastChainEntryTx(db)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	return &pair, nil
-}
-
-// RecordDeposit واریز از blockchain ثبت می‌کند.
-// به wallet پلتفرم credit می‌زند.
-func (s *Store) RecordDeposit(ctx context.Context,
-	walletID uuid.UUID, amountNano int64,
-	txID uuid.UUID, txHash, fromAddr string,
-) (*LedgerEntry, error) {
-
-	var entry LedgerEntry
-
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var w Wallet
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			First(&w, "id = ?", walletID).Error; err != nil {
-			return err
-		}
-
-		entry = LedgerEntry{
-			ID:            uuid.New(),
-			CreatedAt:     time.Now(),
-			TransactionID: txID,
-			WalletID:      walletID,
-			Type:          EntryCredit,
-			AmountNano:    amountNano,
-			BalanceAfter:  w.TONBalance + amountNano,
-			Ref:           txHash,
-			Note:          "deposit from " + fromAddr,
-		}
-
-		// زنجیره‌ی هش
-		prevSeq, prevHash, cerr := s.lastChainEntryTx(tx)
-		if cerr != nil {
-			return fmt.Errorf("chain tip: %w", cerr)
-		}
-		linkEntry(&entry, prevSeq, prevHash)
-
-		if err := tx.Create(&entry).Error; err != nil {
-			return err
-		}
-
-		return tx.Model(&Wallet{}).Where("id = ?", walletID).
-			Update("ton_balance", w.TONBalance+amountNano).Error
-	})
-
-	return &entry, err
+	e := &LedgerEntry{
+		ID:            uuid.New(),
+		CreatedAt:     time.Now(),
+		TransactionID: txID,
+		WalletID:      walletID,
+		Type:          etype,
+		AmountNano:    amountNano,
+		BalanceAfter:  balanceAfter,
+		Ref:           ref,
+		Note:          note,
+	}
+	linkEntry(e, prevSeq, prevHash)
+	return db.Create(e).Error
 }
 
 // GetLedgerEntries تاریخچه entries یک wallet.
-func (s *Store) GetLedgerEntries(ctx context.Context,
-	walletID uuid.UUID, limit int,
-) ([]LedgerEntry, error) {
+func (s *Store) GetLedgerEntries(ctx context.Context, walletID uuid.UUID, limit int) ([]LedgerEntry, error) {
 	var entries []LedgerEntry
 	err := s.db.WithContext(ctx).
 		Where("wallet_id = ?", walletID).
@@ -170,15 +52,15 @@ func (s *Store) GetLedgerEntries(ctx context.Context,
 	return entries, err
 }
 
-// VerifyLedgerBalance یکپارچگی ledger را بررسی می‌کند.
-// مجموع credit - debit باید برابر موجودی فعلی باشد.
+// VerifyLedgerBalance یکپارچگی دفتر را برای یک کیف پول بررسی می‌کند:
+// مجموع creditها منهای debitها باید برابرِ مانده‌ی realized (ton_balance + credit)
+// باشد. اگر برابر نباشد، یعنی یا بلوکی جا افتاده یا موجودی خارج از این مسیر
+// دستکاری شده است.
 func (s *Store) VerifyLedgerBalance(ctx context.Context, walletID uuid.UUID) (bool, error) {
 	var wallet Wallet
-	if err := s.db.WithContext(ctx).
-		First(&wallet, "id = ?", walletID).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&wallet, "id = ?", walletID).Error; err != nil {
 		return false, err
 	}
-
 	var creditSum, debitSum int64
 	s.db.WithContext(ctx).Model(&LedgerEntry{}).
 		Where("wallet_id = ? AND type = ?", walletID, EntryCredit).
@@ -187,6 +69,5 @@ func (s *Store) VerifyLedgerBalance(ctx context.Context, walletID uuid.UUID) (bo
 		Where("wallet_id = ? AND type = ?", walletID, EntryDebit).
 		Select("COALESCE(SUM(amount_nano), 0)").Scan(&debitSum)
 
-	calculated := creditSum - debitSum
-	return calculated == wallet.TONBalance, nil
+	return creditSum-debitSum == wallet.TONBalance+wallet.Credit, nil
 }

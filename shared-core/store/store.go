@@ -535,6 +535,19 @@ func (s *Store) CreateSubscription(ctx context.Context, sub *models.Subscription
 	return s.db.Conn().WithContext(ctx).Create(sub).Error
 }
 
+// ActivateSubscription تعویض پلن را اتمیک می‌کند: اشتراک‌های فعال قبلی همان
+// کاربر غیرفعال و رکورد جدید در همان transaction ساخته می‌شود.
+func (s *Store) ActivateSubscription(ctx context.Context, sub *models.Subscription) error {
+	return s.db.Conn().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Subscription{}).
+			Where("user_id = ? AND is_active = ?", sub.UserID, true).
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
+		return tx.Create(sub).Error
+	})
+}
+
 func (s *Store) GetActiveSubscription(ctx context.Context, userID uuid.UUID) (*models.Subscription, error) {
 	var subs []models.Subscription
 	if err := s.db.Conn().WithContext(ctx).

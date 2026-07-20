@@ -19,8 +19,8 @@ type Responder struct {
 	log ports.Logger
 
 	// serviceHMACSecret همان راز مشترکی است که botpay هم برای احراز
-	// service_key استفاده می‌کند — فقط agentmanager/botmanager (که این راز
-	// را دارند) مجاز به license.issue/license.revoke هستند.
+	// service_key استفاده می‌کند — فقط کنترل‌پلین‌های مجاز (agentmanager،
+	// botmanager و apimanager) اجازه license.issue/license.revoke دارند.
 	serviceHMACSecret string
 }
 
@@ -33,7 +33,7 @@ func (r *Responder) authorizeService(serviceID, serviceKey string) bool {
 		return false // fail-closed
 	}
 	switch serviceID {
-	case "agentmanager", "botmanager":
+	case "agentmanager", "botmanager", "apimanager":
 		return auth.ValidateServiceKey(r.serviceHMACSecret, serviceID, serviceKey)
 	default:
 		return false

@@ -11,7 +11,21 @@ import (
 	"github.com/mrjvadi/creatorbot/botpay/internal/wallet"
 )
 
-// onStart صفحه‌ی خوش‌آمد و موجودی کاربر.
+// render یک نمای inline را نمایش می‌دهد: در پاسخ به callback با Edit (جای‌گزینیِ
+// پیام)، وگرنه با Send (پیام تازه). همیشه HTML.
+func (h *Handler) render(c tele.Context, edit bool, text string, kb *tele.ReplyMarkup) error {
+	if edit {
+		if err := c.Edit(text, tele.ModeHTML, kb); err == nil {
+			return nil
+		}
+		// اگر Edit ممکن نبود (مثلاً پیام قدیمی)، پیام تازه بفرست.
+	}
+	return c.Send(text, tele.ModeHTML, kb)
+}
+
+// ── Home ──
+
+// onStart صفحه‌ی خوش‌آمد + کیبورد اصلی reply.
 func (h *Handler) onStart(c tele.Context) error {
 	ctx := context.Background()
 	lang := h.langOf(ctx, c)
@@ -21,160 +35,158 @@ func (h *Handler) onStart(c tele.Context) error {
 		return c.Send(i18n.T(lang, i18n.KErrGeneric))
 	}
 	return c.Send(
-		i18n.T(lang, i18n.KStart, c.Sender().FirstName, w.BalanceTON(), w.CreditTON(), w.TotalTON()),
-		tele.ModeHTML, kbMain(lang),
+		i18n.T(lang, i18n.KStart, c.Sender().FirstName,
+			fmtTON(w.BalanceTON()), fmtTON(w.CreditTON()), fmtTON(w.TotalTON())),
+		tele.ModeHTML, h.mainKB(c, lang),
 	)
 }
 
-// onWallet نمایش جزئیات کیف پول و آدرس واریز.
-func (h *Handler) onWallet(c tele.Context) error {
+// ── Wallet ──
+
+func (h *Handler) onWallet(c tele.Context) error { return h.viewWallet(c, false) }
+
+func (h *Handler) viewWallet(c tele.Context, edit bool) error {
 	ctx := context.Background()
 	lang := h.langOf(ctx, c)
-
 	w, err := h.wallet.GetOrCreate(ctx, c.Sender().ID)
 	if err != nil {
-		return c.Send(i18n.T(lang, i18n.KErrGeneric), kbMain(lang))
+		return c.Send(i18n.T(lang, i18n.KErrGeneric), h.mainKB(c, lang))
 	}
-
-	frozen := ""
-	if w.Frozen > 0 {
-		frozen = i18n.T(lang, i18n.KWalletFrozen, wallet.NanoToTON(w.Frozen))
-	}
-
-	return c.Send(
-		i18n.T(lang, i18n.KWallet, w.BalanceTON(), w.CreditTON(), w.TotalTON(), frozen, w.TONAddress, w.PayHandle),
-		tele.ModeHTML, kbMain(lang),
-	)
+	text := i18n.T(lang, i18n.KWallet,
+		fmtTON(w.BalanceTON()), fmtTON(w.CreditTON()), fmtTON(w.TotalTON()),
+		frozenLine(lang, w.Frozen), w.TONAddress, w.PayHandle)
+	return h.render(c, edit, text, kbWallet(lang))
 }
 
-// onDeposit ساخت فاکتور واریز و نمایش دستورالعمل.
-func (h *Handler) onDeposit(c tele.Context) error {
+// ── Deposit ──
+
+func (h *Handler) onDeposit(c tele.Context) error { return h.viewDeposit(c, false) }
+
+func (h *Handler) viewDeposit(c tele.Context, edit bool) error {
 	ctx := context.Background()
 	lang := h.langOf(ctx, c)
-
-	code, payURL, err := h.wallet.DepositInstructions(ctx, c.Sender().ID, 0, "manual", "direct")
-	if err != nil {
-		return c.Send(i18n.T(lang, i18n.KDepositErr), kbMain(lang))
-	}
-
-	return c.Send(
-		i18n.T(lang, i18n.KDepositBody, code),
-		tele.ModeHTML, kbDeposit(lang, payURL, code),
-	)
+	return h.render(c, edit, i18n.T(lang, i18n.KDepositMenu), kbDepositMenu(lang))
 }
 
-// onWithdraw شروع گفتگوی برداشت.
+// makeInvoice یک فاکتور واریز با مبلغ مشخص (nano، ۰ = هر مبلغ) می‌سازد و نمایش می‌دهد.
+func (h *Handler) makeInvoice(c tele.Context, amountNano int64, edit bool) error {
+	ctx := context.Background()
+	lang := h.langOf(ctx, c)
+	code, payURL, err := h.wallet.DepositInstructions(ctx, c.Sender().ID, amountNano, "manual", "direct")
+	if err != nil {
+		return c.Send(i18n.T(lang, i18n.KDepositErr), h.mainKB(c, lang))
+	}
+	text := i18n.T(lang, i18n.KDepositBody, h.wallet.MasterAddress(), code)
+	return h.render(c, edit, text, kbDepositInvoice(lang, payURL, code))
+}
+
+// onCheckDeposit وضعیت یک invoice واریز را بررسی می‌کند (callback).
+func (h *Handler) onCheckDeposit(ctx context.Context, c tele.Context, code string) error {
+	lang := h.langOf(ctx, c)
+	if code == "" {
+		return nil
+	}
+	inv, _ := h.st.FindInvoiceByCode(ctx, code)
+	if inv == nil {
+		return c.Edit(i18n.T(lang, i18n.KCheckPending), tele.ModeHTML)
+	}
+	if inv.Status == store.InvoicePaid {
+		w, err := h.wallet.GetOrCreate(ctx, c.Sender().ID)
+		newBalance := wallet.NanoToTON(inv.Amount)
+		if err == nil && w != nil {
+			newBalance = w.TotalTON()
+		}
+		return c.Edit(
+			i18n.T(lang, i18n.KCheckConfirmed, fmtNano(inv.Amount), fmtTON(newBalance)),
+			tele.ModeHTML,
+		)
+	}
+	return c.Edit(i18n.T(lang, i18n.KCheckUnconfirmed), tele.ModeHTML)
+}
+
+// ── Withdraw (شروع گفتگو) ──
+
 func (h *Handler) onWithdraw(c tele.Context) error {
 	ctx := context.Background()
 	lang := h.langOf(ctx, c)
-
 	w, err := h.wallet.GetOrCreate(ctx, c.Sender().ID)
 	if err != nil {
-		return c.Send(i18n.T(lang, i18n.KErrGeneric), kbMain(lang))
+		return c.Send(i18n.T(lang, i18n.KErrGeneric), h.mainKB(c, lang))
 	}
-
 	minTON := wallet.NanoToTON(wallet.MinWithdrawNano)
 	feeTON := wallet.NanoToTON(wallet.NetworkFeeNano)
-
 	if w.TotalTON() < minTON+feeTON {
-		return c.Send(i18n.T(lang, i18n.KWithdrawInsufficient, minTON, feeTON), tele.ModeHTML, kbMain(lang))
+		return c.Send(i18n.T(lang, i18n.KWithdrawInsufficient, fmtTON(minTON), fmtTON(feeTON)), tele.ModeHTML, h.mainKB(c, lang))
 	}
-
 	h.states.set(c.Sender().ID, convState{kind: kindWithdraw, step: "addr"})
 	return c.Send(
-		i18n.T(lang, i18n.KWithdrawAskAddr, w.TotalTON(), feeTON),
+		i18n.T(lang, i18n.KWithdrawAskAddr, fmtTON(w.TotalTON()), fmtTON(feeTON)),
 		tele.ModeHTML, kbCancelOnly(lang),
 	)
 }
 
-// onHistory نمایش ۱۵ تراکنش اخیر.
-func (h *Handler) onHistory(c tele.Context) error {
+// ── Transfer (شروع گفتگو) ──
+
+func (h *Handler) onTransfer(c tele.Context) error {
 	ctx := context.Background()
 	lang := h.langOf(ctx, c)
-
 	w, err := h.wallet.GetOrCreate(ctx, c.Sender().ID)
 	if err != nil {
-		return c.Send(i18n.T(lang, i18n.KErrGeneric), kbMain(lang))
+		return c.Send(i18n.T(lang, i18n.KErrGeneric), h.mainKB(c, lang))
 	}
+	if w.TotalTON() <= 0 {
+		return c.Send(i18n.T(lang, i18n.KTransferInsufficient), h.mainKB(c, lang))
+	}
+	h.states.set(c.Sender().ID, convState{kind: kindTransfer, step: "recipient"})
+	return c.Send(i18n.T(lang, i18n.KTransferAskID), tele.ModeHTML, kbCancelOnly(lang))
+}
 
-	txs, err := h.st.ListTransactions(ctx, w.ID, 15)
+// ── History (صفحه‌بندی‌شده) ──
+
+func (h *Handler) onHistoryCmd(c tele.Context) error { return h.viewHistory(c, 0, false) }
+
+func (h *Handler) viewHistory(c tele.Context, page int, edit bool) error {
+	ctx := context.Background()
+	lang := h.langOf(ctx, c)
+	w, err := h.wallet.GetOrCreate(ctx, c.Sender().ID)
+	if err != nil {
+		return c.Send(i18n.T(lang, i18n.KErrGeneric), h.mainKB(c, lang))
+	}
+	// حداکثر ۲۰۰ تراکنش اخیر را می‌گیریم و در حافظه صفحه‌بندی می‌کنیم.
+	txs, err := h.st.ListTransactions(ctx, w.ID, 200)
 	if err != nil || len(txs) == 0 {
-		return c.Send(i18n.T(lang, i18n.KHistoryEmpty), kbMain(lang))
+		return h.render(c, edit, i18n.T(lang, i18n.KHistoryEmpty), kbWallet(lang))
+	}
+	totalPages := (len(txs) + historyPageSize - 1) / historyPageSize
+	if page < 0 {
+		page = 0
+	}
+	if page >= totalPages {
+		page = totalPages - 1
+	}
+	start := page * historyPageSize
+	end := start + historyPageSize
+	if end > len(txs) {
+		end = len(txs)
 	}
 
 	var b strings.Builder
 	b.WriteString(i18n.T(lang, i18n.KHistoryTitle))
-	for _, tx := range txs {
-		icon, labelKey := txMeta(tx.Type)
-		amt := wallet.NanoToTON(tx.Amount)
-		sign := "+"
-		if amt < 0 {
-			sign = ""
-			amt = -amt
-		}
-		status := ""
-		if tx.Status == store.TxPending {
-			status = " ⏳"
-		}
-		desc := tx.Description
-		if desc == "" {
-			desc = i18n.T(lang, labelKey)
-		}
-		desc = truncate(desc, 25)
+	b.WriteString("\n<i>")
+	b.WriteString(i18n.T(lang, i18n.KHistoryPager, page+1, totalPages))
+	b.WriteString("</i>\n")
+	for _, tx := range txs[start:end] {
 		b.WriteString("\n")
-		b.WriteString(i18n.T(lang, i18n.KHistoryLine,
-			icon, sign, amt, status, tx.CreatedAt.Format("01/02 15:04"), desc))
+		b.WriteString(txLine(lang, tx))
+		b.WriteString("\n")
 	}
-
-	return c.Send(b.String(), tele.ModeHTML, kbMain(lang))
+	return h.render(c, edit, b.String(), kbHistory(lang, page, totalPages))
 }
 
-// onHelp راهنمای ربات.
+// ── Help ──
+
 func (h *Handler) onHelp(c tele.Context) error {
 	ctx := context.Background()
 	lang := h.langOf(ctx, c)
-	return c.Send(i18n.T(lang, i18n.KHelp), tele.ModeHTML, kbMain(lang))
-}
-
-// onTransfer شروع گفتگوی انتقال داخلی.
-func (h *Handler) onTransfer(c tele.Context) error {
-	ctx := context.Background()
-	lang := h.langOf(ctx, c)
-
-	w, err := h.wallet.GetOrCreate(ctx, c.Sender().ID)
-	if err != nil {
-		return c.Send(i18n.T(lang, i18n.KErrGeneric), kbMain(lang))
-	}
-	if w.TotalTON() <= 0 {
-		return c.Send(i18n.T(lang, i18n.KTransferInsufficient), kbMain(lang))
-	}
-
-	h.states.set(c.Sender().ID, convState{kind: kindTransfer, step: "to_id"})
-	return c.Send(i18n.T(lang, i18n.KTransferAskID), tele.ModeHTML, kbCancelOnly(lang))
-}
-
-// txMeta آیکن و کلید برچسب نوع تراکنش را برمی‌گرداند.
-func txMeta(t store.TxType) (icon, labelKey string) {
-	switch t {
-	case store.TxDeposit:
-		return "📥", i18n.KTxDeposit
-	case store.TxWithdraw:
-		return "📤", i18n.KTxWithdraw
-	case store.TxCreditAdd:
-		return "🎁", i18n.KTxCreditAdd
-	case store.TxPayment:
-		return "💸", i18n.KTxPayment
-	case store.TxRefund:
-		return "↩️", i18n.KTxRefund
-	}
-	return "💰", i18n.KTxPayment
-}
-
-// truncate رشته را به حداکثر n کاراکتر (با درنظرگرفتن rune) کوتاه می‌کند.
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "..."
+	return c.Send(i18n.T(lang, i18n.KHelp), tele.ModeHTML, h.mainKB(c, lang))
 }

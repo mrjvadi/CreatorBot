@@ -4,6 +4,7 @@ package licensing
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -26,13 +27,30 @@ type Service struct {
 	// SERVICE_HMAC_SECRET پلتفرم تا نشتِ هرکدام باعثِ جعلِ لایسنس نشود.
 	signingSecret string
 	tokenTTL      time.Duration
+
+	// testSecret اگر خالی نباشد، یک لایسنسِ تستیِ سراسری را فعال می‌کند: هر
+	// instance که دقیقاً همین رشته را به‌عنوان LICENSE_TOKEN بفرستد، بدون
+	// نیاز به رکورد License واقعی (برای هر BotID دلخواه) تأیید می‌شود. برای
+	// اجرای دستیِ ربات‌ها جهت تست، بدون طیِ چرخه‌ی خرید/صدور. پیش‌فرض خالی
+	// (غیرفعال) — fail-closed مثل بقیه‌ی این سرویس.
+	testSecret string
 }
 
-func New(st *store.Store, nc *natsclient.Client, log ports.Logger, signingSecret string, tokenTTL time.Duration) *Service {
+func New(st *store.Store, nc *natsclient.Client, log ports.Logger, signingSecret, testSecret string, tokenTTL time.Duration) *Service {
 	if tokenTTL <= 0 {
 		tokenTTL = 24 * time.Hour * 365 * 10 // عملاً «بدون انقضا»؛ ابطال واقعی با license.revoke
 	}
-	return &Service{store: st, nc: nc, log: log, signingSecret: signingSecret, tokenTTL: tokenTTL}
+	return &Service{store: st, nc: nc, log: log, signingSecret: signingSecret, testSecret: testSecret, tokenTTL: tokenTTL}
+}
+
+// isTestToken گزارش می‌دهد token دقیقاً برابر راز لایسنسِ تستیِ پیکربندی‌شده
+// است یا نه. مقایسه با subtle.ConstantTimeCompare تا زمان‌سنجیِ مقایسه، خودِ
+// راز را لو ندهد. secret یا token خالی همیشه false (fail-closed پیش‌فرض).
+func isTestToken(secret, token string) bool {
+	if secret == "" || token == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
 }
 
 func hashToken(token string) string {
@@ -103,6 +121,15 @@ func (s *Service) Issue(ctx context.Context, req protocol.LicenseIssueRequest) (
 // باطل نمی‌شود، فقط پرچم می‌خورد و رویداد license.clone_detected منتشر
 // می‌شود تا botmanager بتواند به ادمین/مالک اطلاع دهد).
 func (s *Service) Verify(ctx context.Context, req protocol.LicenseVerifyRequest) (bool, string, bool, error) {
+	// لایسنسِ تستیِ سراسری — هیچ ارتباطی به رکوردِ License یا BotID خاصی
+	// ندارد؛ عمداً قبل از هر کوئری DB بررسی می‌شود. هر بار مصرف لاگ می‌شود
+	// چون این یک دورزدنِ کنترل‌شده‌ی حفاظتِ ضدِ کپی است، نه یک لایسنسِ واقعی.
+	if isTestToken(s.testSecret, req.Token) {
+		s.log.Warn("license verify: TEST license token used — clone protection bypassed for this check-in",
+			ports.F("bot_id", req.BotID), ports.F("server_id", req.ServerID))
+		return true, "active", false, nil
+	}
+
 	lic, err := s.store.FindByBotID(ctx, req.BotID)
 	if err != nil {
 		return false, "", false, err

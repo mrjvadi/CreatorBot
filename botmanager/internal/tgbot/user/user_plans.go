@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/mrjvadi/creatorbot/botmanager/internal/tgbot/i18n"
@@ -213,7 +214,7 @@ func (h *User) ActivateFreePlanInline(ctx context.Context, c tele.Context, u *mo
 		UserID: u.ID, PlanID: plan.ID,
 		StartedAt: time.Now(), ExpiresAt: expiresAt, IsActive: true,
 	}
-	if err := h.Store.CreateSubscription(ctx, sub); err != nil {
+	if err := h.Store.ActivateSubscription(ctx, sub); err != nil {
 		return c.Edit(h.T(ctx, uid, i18n.KeyError))
 	}
 
@@ -254,8 +255,8 @@ func (h *User) ExecutePlanPurchase(ctx context.Context, c tele.Context, planID s
 	}
 
 	// کسر از botpay
-	_, err := h.Pay.Deduct(ctx, u.TelegramID, plan.Price, plan.ID.String(),
-		h.T(ctx, uid, i18n.KeyPlanPurchaseDesc, plan.Name))
+	attemptID := uuid.NewString()
+	_, err := h.Pay.DeductForService(ctx, u.TelegramID, plan.Price, plan.ID.String(), attemptID)
 	if err != nil {
 		if natspayclient.IsInsufficientBalance(err) {
 			kb := &tele.ReplyMarkup{}
@@ -276,19 +277,26 @@ func (h *User) ExecutePlanPurchase(ctx context.Context, c tele.Context, planID s
 		UserID: u.ID, PlanID: plan.ID,
 		StartedAt: time.Now(), ExpiresAt: expiresAt, IsActive: true,
 	}
-	if err := h.Store.CreateSubscription(ctx, newSub); err != nil {
+	if err := h.Store.ActivateSubscription(ctx, newSub); err != nil {
 		// پول از کاربر کسر شده ولی اشتراک فعال نشد — این حالت را هرگز به‌عنوان
 		// موفقیت نشان نمی‌دهیم. تلاش می‌کنیم مبلغ را فوراً برگردانیم؛ حتی اگر
 		// خودِ refund هم شکست بخورد، حداقل لاگِ بحرانی برای پیگیریِ دستی ثبت
 		// می‌شود (به‌جای گم‌شدنِ کامل خطا پشتِ یک "_ =").
 		h.Log.Error("executePlanPurchase: subscription create failed after deduct — refunding",
 			ports.F("err", err), ports.F("user", u.TelegramID), ports.F("plan", plan.Name))
-		if refundErr := h.Pay.RefundService(ctx, u.TelegramID, plan.Price, plan.ID.String()+":sub_create_failed"); refundErr != nil {
+		if refundErr := h.Pay.RefundService(ctx, u.TelegramID, plan.Price, plan.ID.String()+":"+attemptID+":sub_create_failed"); refundErr != nil {
 			h.Log.Error("executePlanPurchase: refund after failed subscription ALSO failed — needs manual reconciliation",
 				ports.F("refundErr", refundErr), ports.F("user", u.TelegramID), ports.F("plan", plan.Name))
 		}
 		metrics.IncPlanPurchase(plan.Name, "failed")
 		return c.Edit(h.T(ctx, uid, i18n.KeyPurchaseActivationFailed))
+	}
+	now := time.Now()
+	if err := h.Store.CreatePayment(ctx, &models.Payment{
+		UserID: u.ID, PlanID: &plan.ID, Amount: plan.Price, Currency: "TON",
+		Status: models.PaymentDone, ConfirmedAt: &now, InvoiceID: "plan:" + attemptID,
+	}); err != nil {
+		h.Log.Warn("plan payment history failed", ports.F("err", err), ports.F("user", u.ID))
 	}
 
 	// ── reset quota cache ─────────────────────────────────

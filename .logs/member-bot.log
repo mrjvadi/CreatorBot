@@ -1,49 +1,129 @@
-2026-06-23T19:51:08.976+0330	[34mINFO[0m	logger/logger.go:48	bot mode: polling (long poll)
-2026-06-23T19:51:09.725+0330	[34mINFO[0m	logger/logger.go:48	member-bot started
-2026-06-23T19:51:09.725+0330	[34mINFO[0m	logger/logger.go:48	lock api listening	{"port": 8091}
-2026-06-23T19:51:09.726+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: loaded bots	{"count": 0}
-2026-06-23T19:56:09.749+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:01:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:06:09.732+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:11:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:16:09.734+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:21:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:26:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:31:09.732+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:36:09.744+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:41:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:46:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:51:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T20:56:09.730+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:01:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:06:09.734+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:11:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:16:09.745+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:21:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:26:09.740+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:31:09.733+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:36:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:41:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:46:09.730+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:51:09.733+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T21:56:09.739+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:01:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:06:09.735+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:11:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:16:09.734+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:21:09.735+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:26:09.734+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:31:09.735+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:36:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:41:09.735+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:46:09.734+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:51:09.727+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T22:56:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:01:09.729+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:06:09.731+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:11:09.732+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:16:09.731+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:21:09.735+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:26:09.728+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:31:09.730+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
-2026-06-23T23:36:09.732+0330	[34mINFO[0m	logger/logger.go:48	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:08:25.339+0330	[34mINFO[0m	logger/logger.go:88	bot mode: polling (long poll)
+2026-07-20T07:08:26.015+0330	[34mINFO[0m	logger/logger.go:88	member-bot started
+2026-07-20T07:08:26.015+0330	[33mWARN[0m	logger/logger.go:91	LICENSE_TOKEN not set — skipping license check-in	{"bot_id": 8301520400}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Warn
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:91
+github.com/mrjvadi/creatorbot/shared-core/licenseclient.RunLicenseLoop
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared-core/licenseclient/client.go:104
+2026-07-20T07:08:26.015+0330	[34mINFO[0m	logger/logger.go:88	lock api listening	{"port": 8091}
+2026-07-20T07:08:26.016+0330	[31mFATAL[0m	logger/logger.go:104	lock api	{"err": "listen tcp :8091: bind: address already in use"}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Fatal
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:104
+main.main.func1
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/member-bot/cmd/bot/main.go:156
+exit status 1
+2026-07-20T07:14:58.947+0330	[34mINFO[0m	logger/logger.go:94	bot mode: polling (long poll)
+2026-07-20T07:14:59.545+0330	[34mINFO[0m	logger/logger.go:94	member-bot started
+2026-07-20T07:14:59.545+0330	[33mWARN[0m	logger/logger.go:97	LICENSE_TOKEN not set — skipping license check-in	{"bot_id": 8301520400}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Warn
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:97
+github.com/mrjvadi/creatorbot/shared-core/licenseclient.RunLicenseLoop
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared-core/licenseclient/client.go:104
+2026-07-20T07:14:59.545+0330	[34mINFO[0m	logger/logger.go:94	lock api listening	{"port": 8091}
+2026-07-20T07:14:59.546+0330	[31mFATAL[0m	logger/logger.go:110	lock api	{"err": "listen tcp :8091: bind: address already in use"}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Fatal
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:110
+main.main.func1
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/member-bot/cmd/bot/main.go:156
+exit status 1
+2026-07-20T07:20:13.435+0330	[34mINFO[0m	logger/logger.go:94	bot mode: polling (long poll)
+2026-07-20T07:20:14.123+0330	[34mINFO[0m	logger/logger.go:94	member-bot started
+2026-07-20T07:20:14.123+0330	[33mWARN[0m	logger/logger.go:97	LICENSE_TOKEN not set — skipping license check-in	{"bot_id": 8301520400}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Warn
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:97
+github.com/mrjvadi/creatorbot/shared-core/licenseclient.RunLicenseLoop
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared-core/licenseclient/client.go:104
+2026-07-20T07:20:14.123+0330	[34mINFO[0m	logger/logger.go:94	lock api listening	{"port": 8091}
+2026-07-20T07:20:14.125+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: loaded bots	{"count": 0}
+2026-07-20T07:25:14.127+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:30:14.126+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:35:14.127+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:40:14.126+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:45:14.126+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:50:14.126+0330	[34mINFO[0m	logger/logger.go:94	dispatcher: sync done	{"bots": 0}
+2026-07-20T07:50:34.929+0330	[34mINFO[0m	logger/logger.go:103	bot mode: polling (long poll)
+2026-07-20T07:50:35.444+0330	[34mINFO[0m	logger/logger.go:103	member-bot started
+2026-07-20T07:50:35.444+0330	[33mWARN[0m	logger/logger.go:106	LICENSE_TOKEN not set — skipping license check-in	{"bot_id": 8301520400}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Warn
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:106
+github.com/mrjvadi/creatorbot/shared-core/licenseclient.RunLicenseLoop
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared-core/licenseclient/client.go:104
+2026-07-20T07:50:35.444+0330	[34mINFO[0m	logger/logger.go:103	lock api listening	{"port": 8091}
+2026-07-20T07:50:35.445+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: loaded bots	{"count": 0}
+2026-07-20T07:55:35.447+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:00:35.448+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:05:35.448+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:10:35.446+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:15:35.451+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:18:33.376+0330	[34mINFO[0m	logger/logger.go:103	bot mode: polling (long poll)
+2026-07-20T08:18:36.602+0330	[34mINFO[0m	logger/logger.go:103	member-bot started
+2026-07-20T08:18:36.602+0330	[33mWARN[0m	logger/logger.go:106	LICENSE_TOKEN not set — skipping license check-in	{"bot_id": 8301520400}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Warn
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:106
+github.com/mrjvadi/creatorbot/shared-core/licenseclient.RunLicenseLoop
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared-core/licenseclient/client.go:104
+2026-07-20T08:18:36.602+0330	[34mINFO[0m	logger/logger.go:103	lock api listening	{"port": 8091}
+2026-07-20T08:18:36.604+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: loaded bots	{"count": 0}
+2026-07-20T08:23:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:28:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:33:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:38:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:43:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:48:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:53:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T08:58:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:03:36.607+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:08:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:13:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:18:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:23:36.607+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:28:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:33:36.608+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:38:36.607+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:43:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:48:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:53:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T09:58:36.607+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:03:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:08:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:13:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:18:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:23:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:28:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:33:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:38:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:43:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:48:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:53:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T10:58:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:03:36.607+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:08:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:13:36.607+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:18:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:23:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:28:36.606+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:33:36.605+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:36:56.580+0330	[34mINFO[0m	logger/logger.go:103	bot mode: polling (long poll)
+2026-07-20T11:37:00.052+0330	[34mINFO[0m	logger/logger.go:103	member-bot started
+2026-07-20T11:37:00.052+0330	[33mWARN[0m	logger/logger.go:106	LICENSE_TOKEN not set — skipping license check-in	{"bot_id": 8301520400}
+github.com/mrjvadi/creatorbot/shared/pkg/logger.(*ZapLogger).Warn
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared/pkg/logger/logger.go:106
+github.com/mrjvadi/creatorbot/shared-core/licenseclient.RunLicenseLoop
+	/home/javad/Desktop/my projct/git/home/claude/CreatorBotV3/shared-core/licenseclient/client.go:104
+2026-07-20T11:37:00.052+0330	[34mINFO[0m	logger/logger.go:103	lock api listening	{"port": 8091}
+2026-07-20T11:37:00.054+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: loaded bots	{"count": 0}
+2026-07-20T11:42:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:47:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:52:00.062+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T11:57:00.055+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:02:00.063+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:07:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:12:00.060+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:17:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:22:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:27:00.062+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:32:00.057+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:37:00.055+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:42:00.408+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:47:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}
+2026-07-20T12:52:00.056+0330	[34mINFO[0m	logger/logger.go:103	dispatcher: sync done	{"bots": 0}

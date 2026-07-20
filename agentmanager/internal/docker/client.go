@@ -336,6 +336,22 @@ func (c *Client) Stop(ctx context.Context, containerID string) (string, error) {
 	return "stopped", nil
 }
 
+// Start یک container متوقف‌شده را شروع می‌کند — فقط اگر توسط agentmanager ساخته شده باشد.
+func (c *Client) Start(ctx context.Context, containerID string) (string, error) {
+	managed, err := c.verifyManaged(ctx, containerID)
+	if err != nil {
+		return "", fmt.Errorf("inspect %q: %w", containerID, err)
+	}
+	if !managed {
+		c.log.Warn("refused to start unmanaged/unknown container", ports.F("container_id", containerID))
+		return "", fmt.Errorf("container %q is not managed by this agentmanager — refusing to start", containerID)
+	}
+	if err := c.cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
+		return "", fmt.Errorf("start %q: %w", containerID, err)
+	}
+	return "started", nil
+}
+
 // Remove یک container را حذف می‌کند (force — حتی اگه در حال اجرا باشد) —
 // فقط اگر توسط خود agentmanager ساخته شده باشد.
 func (c *Client) Remove(ctx context.Context, containerID string) (string, error) {

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import axios from "axios";
-import { CreditCard, Check, Wallet, Copy, RefreshCw } from "lucide-react";
+import { CreditCard, Check, Wallet, Copy, RefreshCw, Ticket } from "lucide-react";
 import { api, apiErrorMessage, unwrap } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +43,7 @@ export default function Plans() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [topupOpen, setTopupOpen] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["plans"],
@@ -77,6 +78,16 @@ export default function Plans() {
       toast.error(apiErrorMessage(err, t("plans.buyFailed")));
     },
   });
+  const promoMutation = useMutation({
+    mutationFn: (code: string) => api.post("/promo-codes/redeem", { code }),
+    onSuccess: () => {
+      toast.success(t("plans.promoSuccess"));
+      setPromoCode("");
+      queryClient.invalidateQueries({ queryKey: ["wallet-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, t("plans.promoFailed"))),
+  });
 
   return (
     <div className="space-y-6">
@@ -105,6 +116,26 @@ export default function Plans() {
           </Button>
         </Card>
       </div>
+
+      <Card className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex flex-1 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+            <Ticket className="h-5 w-5" />
+          </span>
+          <div className="flex-1">
+            <Input
+              label={t("plans.promoLabel")}
+              value={promoCode}
+              dir="ltr"
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              placeholder="WELCOME10"
+            />
+          </div>
+        </div>
+        <Button disabled={!promoCode.trim()} loading={promoMutation.isPending} onClick={() => promoMutation.mutate(promoCode.trim())}>
+          {t("plans.promoSubmit")}
+        </Button>
+      </Card>
 
       {isLoading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

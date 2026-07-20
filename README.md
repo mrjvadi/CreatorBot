@@ -1,117 +1,104 @@
 # CreatorBot V3
 
-پلتفرم SaaS برای ساخت و مدیریت ربات‌های تلگرام — کاملاً self-service.
+پلتفرم PaaS برای ساختِ ربات‌های تلگرام بدون کدنویسی — شبیهِ Shopify (ساختِ فروشگاه) +
+Stripe (کیف‌پولِ داخلی) + Google Ads (تبلیغات)، همه برای دنیای ربات‌های تلگرام با واحدِ پولِ TON.
 
-## معماری
+سه لایه:
+- **فروش/ساخت** — کاربر ربات خودش را از فروشگاهِ پلتفرم می‌خرد و می‌سازد.
+- **محصول** — خودِ ربات‌های ساخته‌شده (آپلودر فایل، VPN، آرشیو، قفلِ عضویت).
+- **رشد/درآمد** — تبلیغات، اجاره‌ی قفلِ کانال روی ربات‌های رایگانِ پلتفرم، تقسیمِ درآمد.
 
-```
-Telegram
-   │ webhook
-   ▼
-webhook-gateway (:8090)
-   │
-   ├── botmanager     ← ربات اصلی فروش
-   ├── botpay (:8087) ← کیف پول TON
-   └── bot engines    ← ربات‌های کاربران
-         │
-   apimanager (:8080)
-         │ NATS JetStream
-         │
-   agentmanager → Docker
-         │
-   ┌─────┼──────────────┐
-   │     │              │
-fraud  revenue  community-service
-(:8092) (:8088)  (:8093)
-```
+مستندِ کاملِ معماری/دیتامدل/جریان‌های پول در **[CLAUDE.md](CLAUDE.md)** است — این فایل فقط یک
+نقطه‌ی شروعِ سریع است. تاریخچه‌ی هر تغییر در **[CHANGELOG.md](CHANGELOG.md)**.
 
-## سرویس‌ها
+## اصلِ معماری
+
+هیچ سرویسی مستقیم به دیتابیسِ سرویسِ دیگر کوئری نمی‌زند — ارتباط فقط با **NATS** است:
+Request/Reply برای عملیاتِ فوری (مخصوصاً همه‌ی چیزهای پولی، روی `pay.*`)، و Publish/Subscribe
+برای رویدادها. جزئیاتِ کاملِ subject ها در CLAUDE.md بخشِ ۵.
+
+## سرویس‌های مرکزی (همیشه روشن)
 
 | سرویس | پورت | توضیح |
 |-------|------|-------|
-| botmanager | - | ربات اصلی — فروش و مدیریت |
-| apimanager | 8080 | REST API + JWT auth |
-| botpay | 8087 | کیف پول TON |
-| agentmanager | - | Docker orchestration |
-| webhook-gateway | 8090 | دریافت webhook تلگرام |
-| revenue-service | 8088 | تقسیم درآمد |
-| community-service | 8093 | مدیریت کامیونیتی |
-| fraud-engine | 8092 | تشخیص تقلب |
+| botmanager | - | رباتِ اصلیِ فروش؛ پنلِ کاربر/ادمینِ کامل |
+| apimanager | 8080 | دروازه‌ی HTTP (JWT، lifecycle، wallet/plan) |
+| botpay | 8087، metrics 9091 | کیف‌پولِ مرکزیِ TON؛ API مالی روی `pay.*` NATS است، نه REST |
+| agentmanager | - | Docker orchestration؛ روی هر سرور |
+| webhook-gateway | 8090 | دریافتِ webhookِ تلگرام (اگر polling نباشد) |
+| revenue-service | 8088 | قوانینِ کمیسیون و واریزِ نهایی |
+| community-service | 8093 | تقسیمِ درآمدِ بینِ گروه‌ها با لینکِ دعوتِ قابل‌ردیابی |
+| fraud-engine | 8092 | امتیازِ کیفیتِ کاربر/گروه، تشخیصِ تقلب |
+| license-service | NATS فقط، metrics 9097 | صدور/بررسی/ابطالِ لایسنسِ هر instance (ضدِکپی) |
+| image-registry | 8100 | مدیریتِ ایمیج‌های Docker مجاز برای agentmanager |
+| log-collector | 8099 | جمع‌آوریِ متمرکزِ لاگ (Mongo) + هشدار/داشبوردِ وضعیت در تلگرام |
 
-## نوع‌های ربات پشتیبانی‌شده
+## ربات‌های اجاره‌ای/تبلیغات
 
-- 🌐 **VPN** — Marzban، MarzNeshin، Hiddify، 3x-ui
-- 📤 **Uploader** — آپلود و مدیریت فایل
-- 🔒 **Member** — قفل ممبرشیپ کانال/گروه
-- 📦 **Archive** — آرشیو فایل با جستجو
+| سرویس | توضیح |
+|-------|-------|
+| ads-bot | تبلیغاتِ CPJ کلاسیک + اجاره‌ی قفلِ کانال روی ربات‌های رایگانِ پلتفرم |
+| dbmigrate | CLI متمرکزِ migration ورژن‌دار برای هر سرویسِ Postgres‌دار (نه یک سرویسِ همیشه‌روشن) |
+| source-service | فوروارد MTProto از کانالِ منبع (gotd/td) — پیاده‌شده، هنوز E2E با اکانتِ واقعی تست نشده |
 
-## راه‌اندازی سریع
+## ربات‌های محصول (deploy داینامیک، نه در docker-compose)
+
+این‌ها به‌صورتِ container جدا توسطِ `agentmanager` هنگامِ خریدِ کاربر ساخته می‌شوند — همه
+می‌توانند هم‌زمان چند instance (برای چند مشتری) داشته باشند:
+
+- 📤 **Uploader Bot** — فروشِ فایل با کدِ دریافت (۲۸ قابلیت: قفلِ کانال، رمز، آلبوم، اشتراک، ...)
+- 🌐 **VPN Bot** — فروشِ اشتراکِ VPN (Marzban فعال؛ Marzneshin/Hiddify/XUI آماده ولی سیم‌کشی‌نشده)
+- 📦 **Archive Bot** — آرشیوِ فایل با جستجوی فارسیِ فازی
+- 🔒 **Member Bot** — زیرساختِ داخلیِ چکِ عضویتِ کانال (نه یک محصولِ مستقیم برای مشتری)
+- 📱 **AdManager Bot** — پست‌گذارِ تبلیغاتیِ تک‌مالکیتی؛ رجوع
+  [admanager-bot/README.md](admanager-bot/README.md)
+
+## راه‌اندازیِ سریع
 
 ```bash
-# ۱. کپی env
+# ۱. کپیِ env ریشه (فقط چند متغیرِ زیرساختِ مشترک — رمزهای هر سرویس در .env خودش است)
 cp .env.example .env
-# ویرایش .env با مقادیر واقعی
+# مقادیر را با رمزهای واقعی پر کنید
 
-# ۲. راه‌اندازی services
+# ۲. راه‌اندازیِ سرویس‌های مرکزی
 docker compose up -d
 
 # ۳. migration
-make install-migrate
-make migrate-up
+cd dbmigrate && POSTGRES_DSN="..." go run ./cmd up -service all && cd ..
 
-# ۴. بررسی وضعیت
+# ۴. بررسیِ وضعیت
 docker compose ps
 curl http://localhost:8080/health
 ```
 
-## Kubernetes
+برای تست/توسعه‌ی محلیِ بدونِ داکر (اجرای مستقیمِ همه‌ی سرویس‌های Go با `go run`):
 
 ```bash
-# ویرایش secrets
-vim deploy/k8s/base/secret.yaml
-
-# deploy
-kubectl apply -k deploy/k8s/
-
-# بررسی
-kubectl get pods -n creatorbot
+./run.sh          # شروع؛ لاگِ هر سرویس در .logs/<نام>.log
+./run.sh stop      # توقف
 ```
 
 ## تست
 
 ```bash
-# unit tests
-go test ./...
-
-# integration tests (نیاز به service های واقعی)
-E2E=true go test ./tests/e2e/...
-
-# VPN adapter tests
-go test ./shared/pkg/adapters/...
+./scripts/test-all.sh        # تستِ همه‌ی moduleهای Go کشف‌شده
 ```
 
-## متریک‌ها
+## متریک‌ها و مانیتورینگ
 
-- Prometheus: `http://localhost:9090/metrics` (هر سرویس)
+- Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000`
-- Loki logs: از طریق Grafana
+- Loki (لاگِ زیرساخت): از طریقِ Grafana
+- داشبوردِ زنده‌ی وضعیتِ سرویس‌ها: پیامِ خودکارِ ادیت‌شونده در تلگرام (log-collector؛ رجوع
+  CHANGELOG.md بخشِ ۲۰۲۶-۰۷-۲۰)
 
-## قوانین معماری
+## قوانینِ معماری
 
-1. bot ها هرگز `apimanager` را صدا نمی‌زنند — مستقیم به DB وصل می‌شوند
-2. `instance_id = bot_<BotID>` از توکن تلگرام
-3. fraud-engine از NATS request/reply
-4. همه event ها از NATS JetStream
-5. هر تراکنش مالی double-entry ledger دارد
+1. هیچ سرویسی مستقیم به DB سرویسِ دیگر وصل نمی‌شود — فقط از طریقِ NATS.
+2. `instance_id = "bot_" + botID` (مشتق از توکنِ تلگرام) — جداسازیِ tenant روی هر document/کوئری.
+3. عملیاتِ پولی همیشه Request/Reply روی `pay.*` هستند؛ رویدادها Publish/Subscribe.
+4. هر تراکنشِ مالی یک زنجیره‌ی دفترِ هش‌شده (append-only ledger) دارد.
+5. سرویس‌های مرکزی هرکدام دیتابیسِ Postgres/Mongo اختصاصیِ خودشان را دارند (نه یک DB مشترک).
 
-## NATS Events
-
-| Event | Publisher | Subscriber |
-|-------|-----------|------------|
-| `service.creation.*` | botmanager | agentmanager |
-| `agent.*.deploy` | apimanager | agentmanager |
-| `plan.upgraded` | botmanager | همه سرویس‌ها |
-| `wallet.deposit` | botpay | revenue-service |
-| `campaign.revenue.generated` | ads-bot | community-service |
-| `config.updated` | botmanager | همه سرویس‌ها |
-| `fraud.*.score.*` | fraud-engine | botmanager |
+جزئیاتِ کاملِ هر قانون، مدلِ دادهٔ هر سرویس، و نقشه‌ی کاملِ subject های NATS در
+**[CLAUDE.md](CLAUDE.md)**.

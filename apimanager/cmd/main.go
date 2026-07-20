@@ -13,6 +13,7 @@ import (
 	"github.com/mrjvadi/creatorbot/apimanager/internal/middleware"
 	"github.com/mrjvadi/creatorbot/shared-core/agentlistener"
 	sharedocker "github.com/mrjvadi/creatorbot/shared-core/docker"
+	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
 	"github.com/mrjvadi/creatorbot/shared-core/models"
 	"github.com/mrjvadi/creatorbot/shared-core/natspayclient"
 	"github.com/mrjvadi/creatorbot/shared-core/store"
@@ -80,16 +81,21 @@ func main() {
 	log.AttachNATS(nc, "apimanager")
 
 	// ── Docker Manager (NATS-based) ────────────────────────
-	dockerManager := sharedocker.NewManager(nc)
+	// امضاشده: دستورهای deploy با HMAC امضا می‌شوند تا agentmanager تأیید کند.
+	dockerManager := sharedocker.NewSignedManager(nc, "apimanager", cfg.ServiceHMACSecret)
 
 	// ── Pay client (فقط برای عملیات ادمین مثل افزودن اعتبار دستی) ─────
 	// اگر SERVICE_HMAC_SECRET تنظیم نشده، به‌جای panic/رفتار نامشخص، nil می‌ماند و
 	// Handler خودش fail-closed می‌شود (رجوع به AddUserCredit).
 	var payClient *natspayclient.Client
+	var licenseClient *licenseclient.Client
 	if cfg.ServiceHMACSecret != "" {
 		payClient = natspayclient.New(nc, nil, natspayclient.Config{
 			ServiceID:  "apimanager",
 			ServiceKey: auth.ComputeServiceKey(cfg.ServiceHMACSecret, "apimanager"),
+		})
+		licenseClient = licenseclient.New(nc, licenseclient.Config{
+			ServiceID: "apimanager", ServiceKey: auth.ComputeServiceKey(cfg.ServiceHMACSecret, "apimanager"),
 		})
 	} else {
 		log.Warn("SERVICE_HMAC_SECRET not set — admin manual-credit endpoint disabled")
@@ -100,7 +106,7 @@ func main() {
 		st, dockerManager, nc, log,
 		cfg.AccessSecret, cfg.RefreshSecret,
 		cfg.EncryptionKey, cfg.AgentAPIKey,
-		cfg.BotToken, payClient,
+		cfg.BotToken, payClient, licenseClient,
 		cfg.ImageRegistryURL, cfg.ImageRegistryAdminKey,
 	)
 
@@ -134,13 +140,14 @@ func main() {
 	limiter := middleware.NewSimpleLimiter(60)
 	v1.Use(middleware.RateLimit(limiter, 60))
 
-	user := v1.Group("", middleware.JWTAuth(cfg.AccessSecret))
+	user := v1.Group("", middleware.JWTAuth(cfg.AccessSecret), middleware.UserState(st))
 	user.GET("/me", h.Me)
 	user.GET("/instances", h.ListInstances)
 	user.POST("/instances", h.CreateInstance)
 	user.POST("/instances/:id/start", h.StartInstance)
 	user.POST("/instances/:id/stop", h.StopInstance)
 	user.POST("/instances/:id/restart", h.RestartInstance)
+	user.POST("/instances/:id/renew", h.RenewInstance)
 	user.DELETE("/instances/:id", h.DeleteInstance)
 	user.GET("/instances/:id/logs", h.GetInstanceLogs)
 	user.GET("/instances/:id/settings", h.GetInstanceSettings)
@@ -160,10 +167,13 @@ func main() {
 	user.GET("/service-types", h.ListServiceTypes)
 	user.GET("/templates", h.ListTemplatesByType)
 	user.GET("/payments", h.ListMyPayments)
+	user.POST("/promo-codes/redeem", h.RedeemPromoCode)
+	user.GET("/audit-logs", h.ListMyAuditLogs)
 
 	// Admin (JWT + Admin role)
 	admin := v1.Group("/admin",
 		middleware.JWTAuth(cfg.AccessSecret),
+		middleware.UserState(st),
 		middleware.RequireRole("admin", "owner"))
 	admin.GET("/stats", h.AdminStats)
 	admin.GET("/instances", h.ListAllInstancesAdmin)
@@ -206,6 +216,12 @@ func main() {
 	admin.POST("/image-callers", h.CreateRegistryCaller)
 	admin.PATCH("/image-callers/:id", h.UpdateRegistryCaller)
 	admin.DELETE("/image-callers/:id", h.DeleteRegistryCaller)
+	admin.GET("/audit-logs", h.ListAdminAuditLogs)
+	admin.GET("/source-workers", h.ListSourceWorkers)
+	admin.POST("/source-workers", h.CreateSourceWorker)
+	admin.PATCH("/source-workers/:id", h.SetSourceWorkerActive)
+	admin.DELETE("/source-workers/:id", h.DeleteSourceWorker)
+	admin.POST("/broadcasts", h.BroadcastText)
 
 	// ── Start server ───────────────────────────────────────
 	addr := ":" + cfg.Port

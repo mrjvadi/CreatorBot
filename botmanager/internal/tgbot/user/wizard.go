@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -27,8 +28,9 @@ const (
 	wkTag         = "service_tag"
 	wkPlanID      = "plan_id"
 	wkBotToken    = "bot_token"
-	wkCfgIdx      = "cfg_idx"    // ایندکس فیلد جاری ConfigSchema
-	wkCfgValues   = "cfg_values" // JSON map مقادیر پرشده توسط کاربر
+	wkCfgIdx      = "cfg_idx"     // ایندکس فیلد جاری ConfigSchema
+	wkCfgValues   = "cfg_values"  // JSON map مقادیر پرشده توسط کاربر
+	wkPayAttempt  = "pay_attempt" // UUID پایدار یک تلاش خرید برای deduction/refund idempotent
 )
 
 // testTag تگِ مخصوص تست؛ از کاربران عادی مخفی است و فقط ادمین می‌تواند
@@ -359,7 +361,13 @@ func (h *User) WizardPay(ctx context.Context, c tele.Context) error {
 		return c.Edit(h.T(ctx, uid, i18n.KeyError))
 	}
 
-	invoiceCode, err := h.Pay.DeductForService(ctx, u.TelegramID, plan.Price, planID)
+	attemptID := data[wkPayAttempt]
+	if attemptID == "" {
+		attemptID = uuid.NewString()
+		st.Data[wkPayAttempt] = attemptID
+		h.SetState(ctx, uid, st)
+	}
+	invoiceCode, err := h.Pay.DeductForService(ctx, u.TelegramID, plan.Price, planID, attemptID)
 	if err != nil {
 		return c.Edit(h.T(ctx, uid, i18n.KeyWizardLowBalance), tele.ModeHTML)
 	}
@@ -441,12 +449,17 @@ func (h *User) Provision(
 			lockMode = models.LockModeFree
 		}
 	}
+	encryptedToken, err := auth.Encrypt(token, h.EncryptKey)
+	if err != nil {
+		h.RefundOnFailure(ctx, u, plan, invoiceCode)
+		return c.Send(h.T(ctx, uid, i18n.KeyWizardCreateError))
+	}
 
 	instance := &models.BotInstance{
 		OwnerID:       u.ID,
 		TemplateID:    tmpl.ID,
 		ServerID:      server.ID,
-		BotToken:      token,
+		BotToken:      encryptedToken,
 		ContainerName: containerName,
 		BotID:         botID,
 		DBSchema:      fmt.Sprintf("inst_%d", botID),
@@ -506,16 +519,22 @@ func (h *User) Provision(
 		}
 	}
 
+	serviceName := strings.TrimSpace(tmpl.Name)
+	if serviceName == "" {
+		serviceName = serviceType
+	}
 	envVars := map[string]string{
 		"BOT_TOKEN":      token,
 		"INSTANCE_ID":    "bot_" + fmt.Sprint(botID),
 		"OWNER_TELEGRAM": fmt.Sprint(u.TelegramID),
 		// ربات‌های محصول (uploader-bot و ...) مالک را از OWNER_ID می‌خوانند.
-		"OWNER_ID":      fmt.Sprint(u.TelegramID),
-		"PLAN_ID":       planIDStr,
-		"JWT_TOKEN":     jwtToken,
-		"LICENSE_TOKEN": licenseToken,
-		"SERVER_ID":     server.ID.String(),
+		"OWNER_ID":         fmt.Sprint(u.TelegramID),
+		"PLAN_ID":          planIDStr,
+		"JWT_TOKEN":        jwtToken,
+		"LICENSE_TOKEN":    licenseToken,
+		"SERVER_ID":        server.ID.String(),
+		"APP_ENV":          "production",
+		"BOT_SERVICE_NAME": serviceName,
 	}
 	// مقادیر ConfigSchema که کاربر شخصی‌سازی کرده — با overlay (برنده‌ی تعارض)
 	for k, v := range extraEnv {
@@ -535,7 +554,7 @@ func (h *User) Provision(
 		return c.Send(h.T(ctx, uid, i18n.KeyWizardDeployError))
 	}
 
-	if err := h.NC.Publish(ctx, protocol.DeploySubject(server.ID.String()), cmd); err != nil {
+	if err := h.Docker.Send(ctx, server.ID.String(), cmd); err != nil {
 		h.Log.Error("deploy failed", ports.F("err", err))
 		h.RefundOnFailure(ctx, u, plan, invoiceCode)
 		_ = h.Store.UpdateInstanceStatus(ctx, instance.ID.String(), "failed")

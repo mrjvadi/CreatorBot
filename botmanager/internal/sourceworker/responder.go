@@ -36,7 +36,7 @@ func Register(nc *natsclient.Client, st *store.Store, cfg Config, log ports.Logg
 	if err := nc.Respond(protocol.SubjSourceWorkerRegister, handleRegister(st, cfg, log)); err != nil {
 		return err
 	}
-	if err := nc.Subscribe(protocol.SubjSourceWorkerHeartbeat, handleHeartbeat(st, log)); err != nil {
+	if err := nc.Subscribe(protocol.SubjSourceWorkerHeartbeat, handleHeartbeat(st, cfg, log)); err != nil {
 		return err
 	}
 	if err := nc.Respond(protocol.SubjSourceWorkerUpdate, handleUpdate(cfg, log)); err != nil {
@@ -100,13 +100,19 @@ func handleRegister(st *store.Store, cfg Config, log ports.Logger) func([]byte) 
 }
 
 // handleHeartbeat فقط lastSeen/status را به‌روزرسانی می‌کند — fire-and-forget.
-func handleHeartbeat(st *store.Store, log ports.Logger) func([]byte) {
+func handleHeartbeat(st *store.Store, cfg Config, log ports.Logger) func([]byte) {
 	return func(data []byte) {
 		var hb protocol.SourceWorkerHeartbeat
 		if err := json.Unmarshal(data, &hb); err != nil {
 			return
 		}
-		if hb.WorkerID == "" {
+		if hb.WorkerID == "" || !auth.ValidateServiceKey(cfg.ServiceHMACSecret, hb.ServiceID, hb.ServiceKey) {
+			log.Warn("source worker heartbeat unauthorized")
+			return
+		}
+		now := time.Now().Unix()
+		if hb.Timestamp <= 0 || hb.Timestamp < now-120 || hb.Timestamp > now+30 {
+			log.Warn("source worker heartbeat stale", ports.F("worker_id", hb.WorkerID))
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

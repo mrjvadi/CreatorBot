@@ -18,6 +18,35 @@ import (
 // انجام می‌شود تا حجم پیام روی NATS زیاد نشود.
 const SubjLogEvents = "logs.events"
 
+// SubjHeartbeat — هر سرویسی که AttachNATS صدا بزند، خودکار و بدون هیچ کدِ
+// اضافه‌ای، هر heartbeatInterval یک‌بار روی این subject یک پیامِ حضور
+// منتشر می‌کند. log-collector از این برای ساختِ داشبوردِ وضعیتِ زنده‌ی
+// سرویس‌ها استفاده می‌کند (رجوع log-collector/internal/status).
+const SubjHeartbeat = "service.heartbeat"
+
+// heartbeatInterval فاصله‌ی انتشارِ heartbeat. مصرف‌کننده (log-collector)
+// اگر بیش از ~۳ برابرِ این فاصله از یک سرویس چیزی نشنود، آن را down فرض می‌کند.
+const heartbeatInterval = 20 * time.Second
+
+// HeartbeatEvent ساختار پیامِ حضورِ دوره‌ای هر سرویس. StartedAt زمانِ ساختِ
+// همین logger (نزدیک‌ترین لحظه به شروعِ واقعیِ پروسه) است — نه زمانِ اولین
+// heartbeatی که log-collector دیده — تا اگر خودِ log-collector ری‌استارت
+// شود، آپ‌تایمِ نمایش‌داده‌شده باز هم درست بماند (چون هر heartbeat خودش
+// StartedAt واقعی را حمل می‌کند، نه چیزی که log-collector محلی حساب کند).
+//
+// InstanceID اختیاری است — سرویس‌های تک‌نسخه‌ای (botmanager, botpay, ...)
+// آن را خالی می‌گذارند. ربات‌های محصولِ چندنسخه‌ای (uploader-bot, vpn-bot,
+// archive-bot, member-bot) که هر کدام می‌توانند هم‌زمان چند instance برای
+// چند مشتری داشته باشند، آن را با شناسه‌ی همان instance (مثلاً "bot_12345")
+// پر می‌کنند تا log-collector بتواند «۴ از ۵ instance بالا» را جدا از هم
+// بشمارد، نه این‌که چند instance زیرِ یک کلیدِ Service با هم تداخل کنند.
+type HeartbeatEvent struct {
+	Service    string `json:"service"`
+	Timestamp  int64  `json:"ts"`
+	StartedAt  int64  `json:"started_at"`
+	InstanceID string `json:"instance_id,omitempty"`
+}
+
 // LogEvent ساختار پیامی که برای هر لاگ Warn/Error/Fatal روی NATS می‌رود.
 type LogEvent struct {
 	Service   string         `json:"service"`
@@ -36,6 +65,8 @@ type ZapLogger struct {
 	// نباید چیزی را block یا panic کند — لاگ‌گیری نباید خودش خطرِ سرویس شود).
 	nc          *natsclient.Client
 	serviceName string
+	instanceID  string
+	startedAt   time.Time
 }
 
 var _ ports.Logger = (*ZapLogger)(nil)
@@ -56,7 +87,7 @@ func New(production bool) (*ZapLogger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ZapLogger{z: z}, nil
+	return &ZapLogger{z: z, startedAt: time.Now()}, nil
 }
 
 // MustNew panics if logger creation fails.
@@ -89,16 +120,51 @@ func (l *ZapLogger) Fatal(msg string, fields ...ports.Field) {
 }
 
 func (l *ZapLogger) With(fields ...ports.Field) ports.Logger {
-	return &ZapLogger{z: l.z.With(toZap(fields)...), nc: l.nc, serviceName: l.serviceName}
+	return &ZapLogger{z: l.z.With(toZap(fields)...), nc: l.nc, serviceName: l.serviceName, instanceID: l.instanceID, startedAt: l.startedAt}
 }
 
 // AttachNATS یک sink اختیاری به NATS وصل می‌کند — از این لحظه به بعد، هر
 // Warn/Error/Fatal علاوه بر خروجی محلی (stdout/فایل)، روی SubjLogEvents هم
 // منتشر می‌شود تا سرویس log-collector آن را جمع کند. صدا زدن این متد کاملاً
 // اختیاری است؛ بدون آن، رفتار لاگر دقیقاً مثل قبل (فقط محلی) باقی می‌ماند.
-func (l *ZapLogger) AttachNATS(nc *natsclient.Client, serviceName string) {
+//
+// instanceID اختیاری (variadic تا امضای قبلی نشکند) — فقط برای ربات‌های
+// محصولِ چندنسخه‌ای لازم است، رجوع کامنتِ HeartbeatEvent.InstanceID.
+func (l *ZapLogger) AttachNATS(nc *natsclient.Client, serviceName string, instanceID ...string) {
 	l.nc = nc
 	l.serviceName = serviceName
+	if len(instanceID) > 0 {
+		l.instanceID = instanceID[0]
+	}
+	go l.heartbeatLoop()
+}
+
+// heartbeatLoop یک goroutine در پس‌زمینه که تا پایانِ عمرِ پروسه هر
+// heartbeatInterval یک‌بار حضورِ این سرویس را منتشر می‌کند — کاملاً
+// best-effort و panic-safe، دقیقاً مثلِ publish. نیازی به Stop/context ندارد
+// چون با خروجِ خودِ پروسه تمام می‌شود، و اختیاری‌بودنِ AttachNATS یعنی
+// سرویس‌هایی که آن را صدا نمی‌زنند هیچ goroutine اضافه‌ای ندارند.
+func (l *ZapLogger) heartbeatLoop() {
+	defer func() { _ = recover() }()
+	l.publishHeartbeat()
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		l.publishHeartbeat()
+	}
+}
+
+func (l *ZapLogger) publishHeartbeat() {
+	if l.nc == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	_ = l.nc.PublishCore(SubjHeartbeat, HeartbeatEvent{
+		Service:    l.serviceName,
+		Timestamp:  time.Now().Unix(),
+		StartedAt:  l.startedAt.Unix(),
+		InstanceID: l.instanceID,
+	})
 }
 
 // publish تلاش می‌کند لاگ را روی NATS منتشر کند — کاملاً best-effort:

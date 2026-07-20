@@ -97,6 +97,9 @@ type Transaction struct {
 	TxHash      string `gorm:"index"` // on-chain tx hash — partial unique در migration
 	FromAddress string // آدرس فرستنده
 	ToAddress   string // آدرس گیرنده
+	// TxLT/TxUtime داده‌ی خام on-chain برای واریزهای TON (۰ برای تراکنش‌های داخلی).
+	TxLT    int64 `gorm:"index"` // logical time تراکنش TON
+	TxUtime int64 // unix time تراکنش TON
 
 	// Internal
 	// ServiceID سرویسی که این پرداخت برای آن بوده (مثلاً botmanager)

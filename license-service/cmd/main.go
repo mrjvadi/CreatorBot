@@ -26,13 +26,20 @@ type Config struct {
 	NatsPass string `mapstructure:"NATS_PASSWORD"`
 
 	// ServiceHMACSecret همان راز مشترک با botpay — برای احراز اینکه فقط
-	// agentmanager/botmanager مجاز به صدور/ابطال لایسنس‌اند.
+	// agentmanager/botmanager/apimanager مجاز به صدور/ابطال لایسنس‌اند.
 	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
 
 	// LicenseSigningSecret راز مجزا برای امضای JWT توکن لایسنس — عمداً از
 	// SERVICE_HMAC_SECRET/ENCRYPTION_KEY جدا نگه داشته می‌شود تا نشتِ یکی
 	// باعثِ جعلِ لایسنس نشود.
 	LicenseSigningSecret string `mapstructure:"LICENSE_SIGNING_SECRET"`
+
+	// TestLicenseSecret اگر تنظیم شود، یک لایسنسِ تستیِ سراسری فعال می‌کند:
+	// هر instance که این مقدار را در LICENSE_TOKEN بفرستد، بدون نیاز به
+	// رکورد License واقعی تأیید می‌شود (برای اجرای دستیِ ربات‌ها جهت تست).
+	// پیش‌فرض خالی = غیرفعال. رجوع SECURITY.md پیش از فعال‌سازی در محیطی که
+	// مشتری واقعی هم دارد.
+	TestLicenseSecret string `mapstructure:"TEST_LICENSE_SECRET"`
 
 	MetricsPort string `mapstructure:"METRICS_PORT"`
 }
@@ -47,6 +54,11 @@ func main() {
 	}
 	if cfg.LicenseSigningSecret == "" {
 		log.Fatal("LICENSE_SIGNING_SECRET is required")
+	}
+	if cfg.TestLicenseSecret != "" {
+		log.Warn("TEST_LICENSE_SECRET is set — any instance presenting this token in LICENSE_TOKEN " +
+			"bypasses per-instance license verification (clone protection). Only enable this where " +
+			"you accept that risk; never reuse a value that has also been used elsewhere.")
 	}
 
 	// ── PostgreSQL — جدول‌های این سرویس مستقل، بدون کوئری متقاطع ────
@@ -72,7 +84,7 @@ func main() {
 	defer nc.Close()
 	log.AttachNATS(nc, "license-service")
 
-	svc := licensing.New(st, nc, log, cfg.LicenseSigningSecret, 0)
+	svc := licensing.New(st, nc, log, cfg.LicenseSigningSecret, cfg.TestLicenseSecret, 0)
 	resp := responder.New(nc, svc, log, cfg.ServiceHMACSecret)
 	if err := resp.Start(); err != nil {
 		log.Fatal("responder start failed", ports.F("err", err))

@@ -20,9 +20,12 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/source-service/internal/store"
 	"github.com/mrjvadi/creatorbot/source-service/internal/task"
@@ -32,16 +35,40 @@ import (
 // Bus binds NATS subjects to store/cache operations (files.go) and to this
 // worker's task registry.
 type Bus struct {
-	nc       *natsclient.Client
-	cache    ports.Cache
-	store    *store.Store
-	log      ports.Logger
-	tasks    *task.Registry
-	workerID string
+	nc         *natsclient.Client
+	cache      ports.Cache
+	store      *store.Store
+	log        ports.Logger
+	tasks      *task.Registry
+	workerID   string
+	hmacSecret string
 }
 
-func New(nc *natsclient.Client, cache ports.Cache, st *store.Store, log ports.Logger, tasks *task.Registry, workerID string) *Bus {
-	return &Bus{nc: nc, cache: cache, store: st, log: log, tasks: tasks, workerID: workerID}
+func New(nc *natsclient.Client, cache ports.Cache, st *store.Store, log ports.Logger, tasks *task.Registry, workerID, hmacSecret string) *Bus {
+	return &Bus{nc: nc, cache: cache, store: st, log: log, tasks: tasks, workerID: workerID, hmacSecret: hmacSecret}
+}
+
+const requestAuthWindow = 5 * time.Minute
+
+func (b *Bus) authorize(ctx context.Context, serviceID, serviceKey, tenantID string, issuedAt int64, nonce string) error {
+	if b.hmacSecret == "" || !auth.ValidateServiceKey(b.hmacSecret, serviceID, serviceKey) {
+		return fmt.Errorf("unauthorized")
+	}
+	if tenantID == "" || nonce == "" {
+		return fmt.Errorf("tenant_id and nonce are required")
+	}
+	issued := time.Unix(issuedAt, 0)
+	if issuedAt <= 0 || time.Since(issued) > requestAuthWindow || time.Until(issued) > 30*time.Second {
+		return fmt.Errorf("request expired")
+	}
+	ok, err := b.cache.SetNX(ctx, "source:nonce:"+serviceID+":"+nonce, "1", requestAuthWindow)
+	if err != nil {
+		return fmt.Errorf("nonce store unavailable")
+	}
+	if !ok {
+		return fmt.Errorf("replayed request")
+	}
+	return nil
 }
 
 // Start registers every subject handler — file registry, targeted worker
@@ -85,6 +112,13 @@ func (b *Bus) Start(ctx context.Context) error {
 // no-op passthrough of those already-marshaled bytes.
 func (b *Bus) dispatchTask(ctx context.Context) func(data []byte) (any, error) {
 	return func(data []byte) (any, error) {
+		var env task.Envelope
+		if err := json.Unmarshal(data, &env); err != nil {
+			return task.Result{OK: false, Error: "invalid task envelope"}, nil
+		}
+		if err := b.authorize(ctx, env.ServiceID, env.ServiceKey, env.TenantID, env.IssuedAt, env.Nonce); err != nil {
+			return task.Result{ID: env.ID, Type: env.Type, OK: false, Error: err.Error()}, nil
+		}
 		result, _ := b.tasks.Dispatch(ctx, data)
 		return json.RawMessage(result), nil
 	}

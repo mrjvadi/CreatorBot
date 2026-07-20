@@ -19,6 +19,7 @@ import (
 	"github.com/mrjvadi/creatorbot/botpay/internal/wallet"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	sharedredis "github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/metrics"
@@ -26,8 +27,11 @@ import (
 )
 
 type Config struct {
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
+	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
 	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
 
 	NatsURL  string `mapstructure:"NATS_URL"`
@@ -152,13 +156,22 @@ func main() {
 	}
 
 	// ── Telegram Bot ──────────────────────────────────────
-	rawBot, err := tele.NewBot(tele.Settings{
+	settings := tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: 10},
-		URL:    "http://141.95.210.17:8081",
-	})
+	}
+	if cfg.LocalBotAPI != "" {
+		settings.URL = cfg.LocalBotAPI
+	}
+	rawBot, err := tele.NewBot(settings)
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
+	}
+	if err := botprofile.Sync(rawBot, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "BotPay"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
 	}
 	h := tgbot.New(walletSvc, st, cfg.OwnerID, cfg.DefaultLang, log)
 	tgbot.Register(rawBot, h)

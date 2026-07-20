@@ -7,27 +7,29 @@ type convKind int
 
 const (
 	kindNone convKind = iota
-	kindWithdraw
-	kindTransfer
-	kindAdminApprove // ادمین: دریافت txhash برای تأیید برداشت
-	kindAdminReject  // ادمین: دریافت دلیل رد برداشت
-	kindAdminCredit  // ادمین: افزودن اعتبار (شناسه → مبلغ)
+	kindWithdraw       // برداشت: addr → amount → confirm(callback)
+	kindTransfer       // انتقال: recipient → amount → confirm(callback)
+	kindDepositCustom  // واریز با مبلغ دلخواه (تک‌مرحله)
+	kindAdminApprove   // ادمین: دریافت txhash برای تأیید برداشت
+	kindAdminReject    // ادمین: دریافت دلیل رد برداشت
+	kindAdminCredit    // ادمین: افزودن اعتبار (userID → amount → confirm)
+	kindAdminLookup    // ادمین: جستجوی کاربر (تک‌مرحله)
 )
 
 // convState وضعیت یک گفتگوی چندمرحله‌ای را نگه می‌دارد.
 type convState struct {
-	kind convKind
-	step string
-	addr string // برداشت: آدرس مقصد
-	toID int64  // انتقال/اعتبار: شناسه گیرنده
-	arg  string // ادمین: شناسه‌ی برداشت (UUID) برای تأیید/رد
+	kind       convKind
+	step       string
+	addr       string // برداشت: آدرس مقصد
+	toID       int64  // انتقال/اعتبار: آیدی عددی گیرنده
+	recipient  string // انتقال: نمایشِ گیرنده (handle یا id) برای پیام تأیید
+	amountNano int64  // مبلغِ در انتظارِ تأیید (برداشت/انتقال/اعتبار)
+	arg        string // ادمین: شناسه‌ی برداشت (UUID) برای تأیید/رد
 }
 
 // stateStore نگه‌دارنده‌ی thread-safe وضعیت گفتگوها بر اساس شناسه‌ی کاربر.
-//
 // از مقدار (نه اشاره‌گر) استفاده می‌کند تا هیچ ساختار قابل‌تغییری بین goroutineها
-// به اشتراک گذاشته نشود؛ این هم crash ناشی از دسترسی همزمان به map را رفع می‌کند
-// و هم race روی فیلدهای وضعیت را.
+// به اشتراک گذاشته نشود.
 type stateStore struct {
 	mu sync.Mutex
 	m  map[int64]convState

@@ -14,7 +14,7 @@ import (
 // PayClient interface برای ارتباط با botpay.
 type PayClient interface {
 	Deduct(ctx context.Context, telegramID int64, amountTON float64, ref, desc string) (string, error)
-	AddCredit(ctx context.Context, telegramID int64, amountTON float64, desc string) (string, error)
+	AddCredit(ctx context.Context, telegramID int64, amountTON float64, ref, desc string) (string, error)
 }
 
 // Engine پردازش و تقسیم درآمد.
@@ -75,15 +75,21 @@ func (e *Engine) ProcessEarning(ctx context.Context, earning *store.Earning) err
 		ports.F("owner_nano", ownerNano),
 		ports.F("platform_nano", platformNano))
 
-	// ── ۳. mark processing ───────────────────────────────────
-	e.store.MarkProcessing(ctx, earning.ID)
+	// ── ۳. claim اتمیک؛ فقط برنده اجازه‌ی payout دارد ─────────
+	claimed, err := e.store.MarkProcessing(ctx, earning.ID)
+	if err != nil {
+		return fmt.Errorf("claim earning: %w", err)
+	}
+	if !claimed {
+		return nil
+	}
 
 	// ── ۴. پرداخت به صاحب ────────────────────────────────────
 	var ownerTxID string
 	if ownerNano > 0 && earning.OwnerTelegramID != 0 {
 		ownerTON := float64(ownerNano) / 1e9
 		desc := fmt.Sprintf("درآمد %s — %s", earning.Type, earning.Description)
-		txID, err := e.pay.AddCredit(ctx, earning.OwnerTelegramID, ownerTON, desc)
+		txID, err := e.pay.AddCredit(ctx, earning.OwnerTelegramID, ownerTON, "earning:"+earning.ID.String()+":owner", desc)
 		if err != nil {
 			e.store.MarkFailed(ctx, earning.ID, "owner payment failed: "+err.Error())
 			return fmt.Errorf("owner payment: %w", err)
@@ -102,7 +108,7 @@ func (e *Engine) ProcessEarning(ctx context.Context, earning *store.Earning) err
 		if platformWallet != nil {
 			platformTON := float64(platformNano) / 1e9
 			desc := fmt.Sprintf("platform commission — %s", earning.Type)
-			txID, err := e.pay.AddCredit(ctx, platformWallet.TelegramID, platformTON, desc)
+			txID, err := e.pay.AddCredit(ctx, platformWallet.TelegramID, platformTON, "earning:"+earning.ID.String()+":platform", desc)
 			if err != nil {
 				// platform payment fail = soft error (owner قبلاً پرداخت شده)
 				e.log.Error("platform payment failed",
@@ -213,7 +219,7 @@ func (e *Engine) ProcessGroupRevenue(ctx context.Context, earning *store.Earning
 	// پرداخت به owner
 	if ownerNano > 0 && earning.OwnerTelegramID != 0 {
 		e.pay.AddCredit(ctx, earning.OwnerTelegramID,
-			float64(ownerNano)/1e9, "درآمد گروه — سهم owner")
+			float64(ownerNano)/1e9, "earning:"+earning.ID.String()+":group-owner", "درآمد گروه — سهم owner")
 	}
 
 	// ارسال member pool به community-service
@@ -228,7 +234,7 @@ func (e *Engine) ProcessGroupRevenue(ctx context.Context, earning *store.Earning
 	// پرداخت به platform
 	if platformNano > 0 && e.platformTelegramID != 0 {
 		e.pay.AddCredit(ctx, e.platformTelegramID,
-			float64(platformNano)/1e9, "کمیسیون پلتفرم")
+			float64(platformNano)/1e9, "earning:"+earning.ID.String()+":group-platform", "کمیسیون پلتفرم")
 	}
 
 	return e.store.MarkDone(ctx, earning.ID, "", "", 0, 0)

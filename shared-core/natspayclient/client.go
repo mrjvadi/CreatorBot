@@ -255,10 +255,13 @@ func (c *Client) SubscribeWalletUpdates() error {
 	})
 }
 
-func (c *Client) DeductForService(ctx context.Context, telegramID int64, amountTON float64, planID string) (string, error) {
-	reason := "plan:" + planID
-	meta := fmt.Sprintf(`{"plan_id":%q}`, planID)
-	_, err := c.DeductWithMeta(ctx, telegramID, amountTON, reason, reason, planID, meta)
+func (c *Client) DeductForService(ctx context.Context, telegramID int64, amountTON float64, planID, attemptID string) (string, error) {
+	if attemptID == "" {
+		return "", fmt.Errorf("pay: attempt_id is required")
+	}
+	reason := "plan:" + planID + ":attempt:" + attemptID
+	meta := fmt.Sprintf(`{"plan_id":%q,"attempt_id":%q}`, planID, attemptID)
+	_, err := c.DeductWithMeta(ctx, telegramID, amountTON, reason, reason, reason, meta)
 	if err != nil {
 		return "", err
 	}

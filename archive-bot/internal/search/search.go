@@ -1,22 +1,25 @@
-// Package search provides Persian text normalization and pg_trgm fuzzy search helpers.
+// Package search نرمال‌سازی متن فارسی/عربی + جستجوی فازیِ n-gram (معادلِ
+// app-side برای pg_trgm که در MongoDB خودِ‌سرور معادل ندارد — بدون Atlas
+// Search self-hosted، هیچ trigram/fuzzy واقعی‌ای موجود نیست).
+//
+// الگوریتم: هر متن (هنگام نوشتن و هنگام جستجو) به مجموعه‌ی trigramهای
+// کاراکتری تبدیل می‌شود (دقیقاً الگوریتمِ خودِ pg_trgm: رشته با یک space
+// پیش/پس padding می‌شود، سپس تمام زیررشته‌های ۳کاراکتریِ متوالی گرفته
+// می‌شوند). امتیازِ شباهت هم دقیقاً همان فرمولِ pg_trgm.similarity() است:
+// Jaccard = |A∩B| / |A∪B| روی مجموعه‌ی trigramها.
 package search
 
 import (
-	"context"
 	"strings"
 	"unicode"
-
-	"gorm.io/gorm"
-
-	"github.com/mrjvadi/creatorbot/archive-bot/internal/models"
 )
 
-// Normalize normalizes a Persian/Arabic query string for consistent matching:
-//   - Arabic ي  → Persian ی
-//   - Arabic ك  → Persian ک
-//   - Remove diacritics (harakat U+064B–U+065F)
-//   - Remove zero-width non-joiner (U+200C)
-//   - Collapse extra whitespace
+// Normalize متنِ فارسی/عربی را برای تطبیقِ یکدست نرمال می‌کند:
+//   - عربی ي  → فارسی ی
+//   - عربی ك  → فارسی ک
+//   - حذف اعراب (harakat U+064B–U+065F)
+//   - حذف نیم‌فاصله (ZWNJ، U+200C)
+//   - فشرده‌سازی فاصله‌های اضافی
 func Normalize(s string) string {
 	var sb strings.Builder
 	for _, r := range s {
@@ -25,7 +28,7 @@ func Normalize(s string) string {
 			sb.WriteRune('ی')
 		case 'ك':
 			sb.WriteRune('ک')
-		case '\u200C': // ZWNJ — skip
+		case '‌': // ZWNJ — skip
 		default:
 			if r >= 0x064B && r <= 0x065F { // diacritics
 				continue
@@ -39,46 +42,49 @@ func Normalize(s string) string {
 	return strings.Join(strings.Fields(sb.String()), " ")
 }
 
-// Search performs a pg_trgm similarity search across title, tags, and description.
-// Results are ordered by similarity score (best match first).
-//
-// Requires the pg_trgm extension and the GIN index created by db.Migrate().
-// To swap to a different search backend: replace this function with one that
-// queries Elasticsearch, Meilisearch, etc. — the handler only calls this function.
-func Search(ctx context.Context, db *gorm.DB, query string, limit int) ([]models.File, error) {
-	normalized := Normalize(strings.TrimSpace(query))
+// Trigrams مجموعه‌ی یکتای trigramهای کاراکتریِ یک متنِ نرمال‌شده را می‌سازد —
+// معادلِ دقیقِ الگوریتمِ pg_trgm (padding با یک space هر طرف، پنجره‌ی
+// لغزنده‌ی ۳کاراکتری). رشته‌ی کوتاه‌تر از یک trigram، آرایه‌ی خالی می‌دهد.
+func Trigrams(normalized string) []string {
 	if normalized == "" {
-		return nil, nil
+		return nil
 	}
-
-	var files []models.File
-	col := "title || ' ' || tags || ' ' || description"
-	err := db.WithContext(ctx).
-		Preload("Category").
-		Where("similarity("+col+", ?) > 0.1", normalized).
-		Order(gorm.Expr("similarity("+col+", ?) DESC", normalized)).
-		Limit(limit).
-		Find(&files).Error
-
-	return files, err
+	padded := " " + normalized + " "
+	r := []rune(padded)
+	if len(r) < 3 {
+		return nil
+	}
+	seen := make(map[string]bool, len(r))
+	out := make([]string, 0, len(r))
+	for i := 0; i+3 <= len(r); i++ {
+		tg := string(r[i : i+3])
+		if !seen[tg] {
+			seen[tg] = true
+			out = append(out, tg)
+		}
+	}
+	return out
 }
 
-// RelatedFiles returns files from the same category as the given file,
-// falling back to files sharing any tag.
-func RelatedFiles(ctx context.Context, db *gorm.DB, file models.File, limit int) ([]models.File, error) {
-	var files []models.File
-
-	q := db.WithContext(ctx).
-		Where("id != ?", file.ID).
-		Limit(limit)
-
-	if file.CategoryID != nil {
-		q = q.Where("category_id = ?", file.CategoryID)
-	} else if file.Tags != "" {
-		// Match on any shared tag
-		firstTag := strings.Split(file.Tags, ",")[0]
-		q = q.Where("tags LIKE ?", "%"+strings.TrimSpace(firstTag)+"%")
+// Similarity امتیازِ شباهتِ Jaccard بین دو مجموعه‌ی trigram را برمی‌گرداند —
+// همان فرمولِ pg_trgm.similarity(): |A∩B| / |A∪B|، بینِ ۰ و ۱.
+func Similarity(a, b []string) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
 	}
-
-	return files, q.Find(&files).Error
+	setB := make(map[string]bool, len(b))
+	for _, tg := range b {
+		setB[tg] = true
+	}
+	inter := 0
+	for _, tg := range a {
+		if setB[tg] {
+			inter++
+		}
+	}
+	union := len(a) + len(b) - inter
+	if union == 0 {
+		return 0
+	}
+	return float64(inter) / float64(union)
 }

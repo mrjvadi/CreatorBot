@@ -1,52 +1,47 @@
+// Package models مدل‌های دامنه‌ی archive-bot را تعریف می‌کند — value objectهای
+// خالص Go بدون وابستگی به هیچ درایوری. شکل/نام فیلدها با نسخه‌ی قبلیِ Postgres
+// یکی نگه داشته شده تا کد لایه‌ی tgbot بدون تغییرِ زیاد کار کند.
+//
+// Setting حذف شد — با grep کاملِ کدبیس تأیید شد هیچ‌جا خوانده/نوشته نمی‌شد.
+// File.Category (نسخه‌ی embedded از Preload قبلی) هم حذف شد — فقط CategoryID
+// در کل کدِ handler خوانده می‌شود، هرگز خودِ Category تودرتو.
 package models
 
 import (
 	"time"
+
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
-type Base struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt `gorm:"index"`
-}
-
-func (b *Base) BeforeCreate(_ *gorm.DB) error {
-	if b.ID == uuid.Nil { b.ID = uuid.New() }
-	return nil
-}
-
+// User کاربرِ ربات.
 type User struct {
-	Base
-	TelegramID int64  `gorm:"uniqueIndex;not null"`
+	ID         uuid.UUID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	TelegramID int64
 	Username   string
 	FirstName  string
-	IsBlocked  bool `gorm:"default:false"`
+	IsBlocked  bool
 }
 
+// Category دسته‌بندیِ فایل‌ها.
 type Category struct {
-	Base
-	Name  string `gorm:"not null;uniqueIndex"`
-	Files []File
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Name      string
 }
 
-// File is a single archived item with fuzzy-searchable metadata.
-// pg_trgm GIN index is created manually in db.Migrate() for the combined column.
+// File یک فایلِ آرشیوشده با متادیتای قابل‌جستجوی فازی.
 type File struct {
-	Base
-	FileID      string     `gorm:"not null"`     // Telegram file_id
-	FileType    string     `gorm:"not null"`     // document | video | audio | photo ...
-	Title       string     `gorm:"not null"`
-	Tags        string     // comma-separated, e.g. "golang,backend,tutorial"
+	ID          uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	FileID      string // Telegram file_id
+	FileType    string // document | video | audio | photo ...
+	Title       string
+	Tags        string // comma-separated
 	Description string
-	CategoryID  *uuid.UUID `gorm:"type:uuid;index"`
-	Category    *Category  `gorm:"foreignKey:CategoryID"`
+	CategoryID  *uuid.UUID
 	UploaderID  int64
-}
-
-type Setting struct {
-	Key   string `gorm:"primaryKey"`
-	Value string
 }

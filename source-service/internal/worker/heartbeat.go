@@ -29,9 +29,8 @@ func (i *Identity) StartHeartbeat(ctx context.Context, nc *natsclient.Client, lo
 				return
 			case <-t.C:
 				hb := protocol.SourceWorkerHeartbeat{
-					WorkerID:      i.ID,
-					Status:        "ok",
-					UptimeSeconds: int(time.Since(start).Seconds()),
+					ServiceID: i.ServiceID, ServiceKey: i.ServiceKey, WorkerID: i.ID,
+					Status: "ok", UptimeSeconds: int(time.Since(start).Seconds()), Timestamp: time.Now().Unix(),
 				}
 				if err := nc.PublishCore(HeartbeatSubject(i.ID), hb); err != nil {
 					log.Error("heartbeat publish", ports.F("err", err))

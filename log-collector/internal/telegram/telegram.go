@@ -82,8 +82,23 @@ func (n *Notifier) CreateTopic(ctx context.Context, name string) (int, error) {
 
 // SendToTopic یک پیام متنی به یک topic مشخص می‌فرستد.
 func (n *Notifier) SendToTopic(ctx context.Context, threadID int, text string) error {
+	_, err := n.sendToTopic(ctx, threadID, text)
+	return err
+}
+
+// SendToTopicGetID دقیقاً مثل SendToTopic ولی message_id پیامِ ارسال‌شده را
+// هم برمی‌گرداند — برای پیام‌هایی که بعداً قرار است با EditMessage جای‌گزین
+// شوند (مثل داشبوردِ وضعیتِ سرویس‌ها) لازم است.
+func (n *Notifier) SendToTopicGetID(ctx context.Context, threadID int, text string) (int, error) {
+	return n.sendToTopic(ctx, threadID, text)
+}
+
+func (n *Notifier) sendToTopic(ctx context.Context, threadID int, text string) (int, error) {
 	var resp struct {
-		OK          bool   `json:"ok"`
+		OK     bool `json:"ok"`
+		Result struct {
+			MessageID int `json:"message_id"`
+		} `json:"result"`
 		Description string `json:"description"`
 	}
 	body := map[string]any{
@@ -95,10 +110,34 @@ func (n *Notifier) SendToTopic(ctx context.Context, threadID int, text string) e
 		body["message_thread_id"] = threadID
 	}
 	if err := n.call(ctx, "sendMessage", body, &resp); err != nil {
+		return 0, err
+	}
+	if !resp.OK {
+		return 0, fmt.Errorf("sendMessage failed: %s", resp.Description)
+	}
+	return resp.Result.MessageID, nil
+}
+
+// EditMessage متنِ یک پیامِ از قبل ارسال‌شده را جای‌گزین می‌کند (برای
+// داشبوردهایی که به‌جای فرستادنِ پیامِ جدید، همان یک پیام را آپدیت می‌کنند).
+// اگر پیام دیگر وجود نداشته باشد (مثلاً کاربر آن را پاک کرده)، خطا برمی‌گرداند
+// تا caller بتواند با فرستادنِ پیامِ تازه جبران کند.
+func (n *Notifier) EditMessage(ctx context.Context, messageID int, text string) error {
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	body := map[string]any{
+		"chat_id":    n.chatID,
+		"message_id": messageID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+	if err := n.call(ctx, "editMessageText", body, &resp); err != nil {
 		return err
 	}
 	if !resp.OK {
-		return fmt.Errorf("sendMessage failed: %s", resp.Description)
+		return fmt.Errorf("editMessageText failed: %s", resp.Description)
 	}
 	return nil
 }

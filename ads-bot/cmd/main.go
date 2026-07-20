@@ -20,6 +20,7 @@ import (
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/redis"
 	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
 	"github.com/mrjvadi/creatorbot/shared/pkg/fraudclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
@@ -27,8 +28,11 @@ import (
 )
 
 type Config struct {
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
+	LocalBotAPI string `mapstructure:"LOCAL_BOT_API"`
 	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
@@ -81,13 +85,22 @@ func main() {
 	log.AttachNATS(nc, "ads-bot")
 
 	// ── Telegram Bot ───────────────────────────────────────
-	b, err := tele.NewBot(tele.Settings{
+	settings := tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
-		URL:    "http://141.95.210.17:8081",
-	})
+	}
+	if cfg.LocalBotAPI != "" {
+		settings.URL = cfg.LocalBotAPI
+	}
+	b, err := tele.NewBot(settings)
 	if err != nil {
 		log.Fatal("bot", ports.F("err", err))
+	}
+	if err := botprofile.Sync(b, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "Ads Bot"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
 	}
 	log.Info("bot connected", ports.F("username", b.Me.Username))
 
@@ -179,6 +192,20 @@ func main() {
 			}
 			log.Info("channel admin confirmed", ports.F("bot_id", req.BotID))
 			return protocol.ConfirmChannelAdminResponse{Success: true}, nil
+		})
+
+		// ── responder: bot فرعیِ رایگان می‌پرسد «الان به کمپینی وصل‌ام؟» ──
+		_ = nc.Respond(protocol.SubjBotStatusCheck, func(data []byte) (any, error) {
+			var req protocol.BotStatusRequest
+			if err := json.Unmarshal(data, &req); err != nil {
+				return protocol.BotStatusResponse{Error: "bad request"}, nil
+			}
+			inCampaign, campaignID, err := h.GetBotStatus(context.Background(), req.BotID)
+			if err != nil {
+				log.Error("get bot status failed", ports.F("err", err), ports.F("bot_id", req.BotID))
+				return protocol.BotStatusResponse{Error: err.Error()}, nil
+			}
+			return protocol.BotStatusResponse{InCampaign: inCampaign, CampaignID: campaignID}, nil
 		})
 	}
 

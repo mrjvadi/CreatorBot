@@ -27,6 +27,10 @@ type Config struct {
 	NatsPass     string `mapstructure:"NATS_PASSWORD"`
 	HeartbeatSec int    `mapstructure:"HEARTBEAT_INTERVAL_SEC"`
 
+	// ServiceHMACSecret کلید مشترک پلتفرم برای تأیید اصالت دستورهای deploy
+	// (باید با مقدار botmanager/apimanager یکسان باشد). خالی = fail-closed.
+	ServiceHMACSecret string `mapstructure:"SERVICE_HMAC_SECRET"`
+
 	// ── تنظیمات امنیتی/منابع پیش‌فرض container ها ──
 	// ImageRegistryURL آدرس سرویس مرکزی image-registry — جایگزین whitelist
 	// محلیِ قدیمی (ALLOWED_IMAGES) که این‌جا بود. خالی‌بودنش یعنی هیچ image
@@ -68,6 +72,9 @@ func main() {
 
 	if cfg.ServerID == "" {
 		log.Fatal("SERVER_ID is required")
+	}
+	if cfg.ServiceHMACSecret == "" {
+		log.Fatal("SERVICE_HMAC_SECRET is required — deploy commands cannot be authenticated without it")
 	}
 	if cfg.HeartbeatSec == 0 {
 		cfg.HeartbeatSec = 5
@@ -142,10 +149,11 @@ func main() {
 	log.Info("jetstream streams ready")
 
 	// ── Deploy Worker Pool ────────────────────────────────────────
+	verifier := queue.NewVerifier(cfg.ServiceHMACSecret)
 	worker := queue.New(cfg.ServerID, nc, func(ctx context.Context, cmd protocol.DeployCommand) error {
 		_, err := handleCommand(ctx, nc, cfg.ServerID, cmd, dockerClient, log)
 		return err
-	}, log)
+	}, log, verifier)
 	go worker.Start(ctx)
 	log.Info("deploy worker started",
 		ports.F("subject", protocol.DeploySubject(cfg.ServerID)),
@@ -200,6 +208,8 @@ func handleCommand(
 	switch cmd.Type {
 	case protocol.MsgDeploy:
 		out, execErr = dockerClient.Deploy(ctx, cmd)
+	case protocol.MsgStart:
+		out, execErr = dockerClient.Start(ctx, cmd.ContainerID)
 	case protocol.MsgStop:
 		out, execErr = dockerClient.Stop(ctx, cmd.ContainerID)
 	case protocol.MsgRemove:

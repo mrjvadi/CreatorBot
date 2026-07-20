@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -11,14 +12,19 @@ import (
 
 	"github.com/mrjvadi/creatorbot/shared-core/engine"
 	"github.com/mrjvadi/creatorbot/shared-core/licenseclient"
+	"github.com/mrjvadi/creatorbot/shared-core/memberclient"
 	"github.com/mrjvadi/creatorbot/shared/pkg/adapters/webhook"
+	"github.com/mrjvadi/creatorbot/shared/pkg/botprofile"
 	"github.com/mrjvadi/creatorbot/shared/pkg/config"
+	"github.com/mrjvadi/creatorbot/shared/pkg/joinevents"
 	"github.com/mrjvadi/creatorbot/shared/pkg/logger"
 	"github.com/mrjvadi/creatorbot/shared/pkg/ports"
 	"github.com/mrjvadi/creatorbot/uploader-bot/internal/tgbot"
 )
 
 type Config struct {
+	AppEnv      string `mapstructure:"APP_ENV"`
+	ServiceName string `mapstructure:"BOT_SERVICE_NAME"`
 	BotToken    string `mapstructure:"BOT_TOKEN"`
 	OwnerID     int64  `mapstructure:"OWNER_ID"`
 	ChannelID   int64  `mapstructure:"CHANNEL_ID"`
@@ -27,9 +33,9 @@ type Config struct {
 	// EncryptKey برای رمزنگاری BotToken قفل‌های نوع «ربات» قبل از ذخیره در Mongo.
 	EncryptKey string `mapstructure:"ENCRYPTION_KEY"`
 
-	// DB — مستقیم، بدون واسط
-	PostgresDSN string `mapstructure:"POSTGRES_DSN"`
-	MongoURI    string `mapstructure:"MONGO_URI"`
+	// DB — مستقیم، بدون واسط. این ربات هیچ داده‌ای در Postgres ندارد؛ همه‌چیز
+	// روی MongoDB است (رجوع internal/models/models.go).
+	MongoURI string `mapstructure:"MONGO_URI"`
 	MongoDB     string `mapstructure:"MONGO_DB"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
@@ -58,7 +64,6 @@ func main() {
 	// ── Engine — همه DB connections و business logic ───────────
 	eng, err := engine.New(engine.Config{
 		BotToken:     cfg.BotToken,
-		PostgresDSN:  cfg.PostgresDSN,
 		MongoURI:     cfg.MongoURI,
 		MongoDB:      cfg.MongoDB,
 		RedisAddr:    cfg.RedisAddr,
@@ -75,7 +80,7 @@ func main() {
 		log.Fatal("engine init failed", ports.F("err", err))
 	}
 	if eng.Nats != nil {
-		log.AttachNATS(eng.Nats, "uploader-bot")
+		log.AttachNATS(eng.Nats, "uploader-bot", fmt.Sprintf("bot_%d", eng.BotID))
 	}
 
 	// ── بررسی لایسنس در startup — fail-closed ────────────────
@@ -118,6 +123,12 @@ func main() {
 	if err != nil {
 		log.Fatal("bot init failed", ports.F("err", err))
 	}
+	if err := botprofile.Sync(rawBot, botprofile.Config{
+		Environment: cfg.AppEnv,
+		ServiceName: botprofile.ServiceName(cfg.ServiceName, "Uploader Bot"),
+	}); err != nil {
+		log.Warn("production bot profile sync failed", ports.F("err", err))
+	}
 	if err == nil {
 		if e := webhook.Setup(context.Background(), rawBot, webhook.PollerConfig{
 			Mode: mode, Token: cfg.BotToken, GatewayURL: cfg.GatewayURL,
@@ -133,19 +144,35 @@ func main() {
 	if cfg.EncryptKey == "" {
 		log.Warn("ENCRYPTION_KEY not set — bot-lock tokens cannot be saved until configured")
 	}
+
+	// ── Graceful shutdown context (زودتر ساخته می‌شود چون RunStatusLoop زیر به آن نیاز دارد) ──
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// ── وضعیتِ اجاره‌ی قفل (اگر این instance رایگان است) ─────────
+	// جایگزینِ کوئریِ مستقیمِ Postgres/bot_instances.lock_mode قبلی که با
+	// قطعِ کاملِ Postgres از این ربات از کار افتاده بود — حالا ads-bot
+	// (مالکِ واقعیِ FreeBotSlot/LockRentalCampaign) روی NATS پاسخ می‌دهد.
+	rentalStatus := &memberclient.RentalStatus{}
+	var joinPublisher *joinevents.Publisher
+	if eng.Nats != nil {
+		go memberclient.RunStatusLoop(ctx, eng.Nats, eng.BotID, rentalStatus, log)
+		joinPublisher = joinevents.NewPublisher(eng.Nats, nil, log)
+		joinPublisher.Gate = rentalStatus.IsInCampaign
+		joinPublisher.CampaignID = rentalStatus.CampaignID
+	}
+
 	h := tgbot.NewHandler(tgbot.Deps{
-		Engine:     eng,
-		Bot:        rawBot,
-		OwnerID:    cfg.OwnerID,
-		ChannelID:  cfg.ChannelID,
-		EncryptKey: cfg.EncryptKey,
+		Engine:        eng,
+		Bot:           rawBot,
+		OwnerID:       cfg.OwnerID,
+		ChannelID:     cfg.ChannelID,
+		EncryptKey:    cfg.EncryptKey,
+		RentalStatus:  rentalStatus,
+		JoinPublisher: joinPublisher,
 	})
 	tgbot.Register(rawBot, h)
 	h.EnsureDefaults(context.Background()) // ست‌کردن تنظیمات پیش‌فرض
-
-	// ── Graceful shutdown ─────────────────────────────────────
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	eng.Start(ctx) // heartbeat شروع می‌شود
 

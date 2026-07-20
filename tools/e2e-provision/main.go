@@ -131,6 +131,12 @@ func main() {
 			"SERVER_ID":      *serverID,
 		},
 	}
+	// امضای envelope مثل botmanager تا agentmanagerِ به‌روز دستور را بپذیرد.
+	cmd.ServerID = *serverID
+	cmd.ServiceID = "botmanager"
+	cmd.IssuedAt = time.Now().Unix()
+	cmd.Nonce = fmt.Sprintf("e2e-%d", time.Now().UnixNano())
+	cmd.ServiceKey = auth.ComputeServiceKey(*hmacSecret, "botmanager")
 	if err := nc.Publish(ctx, protocol.DeploySubject(*serverID), cmd); err != nil {
 		fatal("publish deploy", err)
 	}

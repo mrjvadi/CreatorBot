@@ -5,11 +5,15 @@ package docker
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/mrjvadi/creatorbot/shared-core/protocol"
 	natsclient "github.com/mrjvadi/creatorbot/shared/pkg/adapters/nats"
+	"github.com/mrjvadi/creatorbot/shared/pkg/auth"
 )
 
 // CommandType — برای backward compat
@@ -31,11 +35,59 @@ type Command = protocol.DeployCommand
 // Manager دستورات Docker را از طریق NATS به agentmanager ارسال می‌کند.
 type Manager struct {
 	nc *natsclient.Client
+	// serviceID/hmacSecret برای امضای envelope دستورها استفاده می‌شوند تا
+	// agentmanager اصالت آن‌ها را تأیید کند. اگر hmacSecret خالی باشد (Manager
+	// ساخته‌شده با NewManager) دستور بدون امضا می‌رود و یک agentmanager به‌روز
+	// آن را رد می‌کند.
+	serviceID  string
+	hmacSecret string
 }
 
-// NewManager یک Manager جدید می‌سازد.
+// NewManager یک Manager بدون امضا می‌سازد (backward compat). دستورهای آن توسط
+// agentmanagerِ به‌روز رد می‌شوند؛ فقط جایی استفاده شود که SERVICE_HMAC_SECRET
+// در دسترس نیست.
 func NewManager(nc *natsclient.Client) *Manager {
 	return &Manager{nc: nc}
+}
+
+// NewSignedManager یک Manager می‌سازد که هر دستور را با HMAC امضا می‌کند.
+// serviceID باید هویت مجازِ فرستنده باشد (مثلاً "botmanager" یا "apimanager")
+// و hmacSecret همان SERVICE_HMAC_SECRET مشترک پلتفرم.
+func NewSignedManager(nc *natsclient.Client, serviceID, hmacSecret string) *Manager {
+	return &Manager{nc: nc, serviceID: serviceID, hmacSecret: hmacSecret}
+}
+
+// sign فیلدهای envelope auth را روی دستور پیش از publish پر می‌کند. اگر
+// hmacSecret خالی باشد، دست‌نخورده می‌ماند (Manager بدون امضا).
+func (m *Manager) sign(cmd *protocol.DeployCommand) {
+	if m.hmacSecret == "" {
+		return
+	}
+	cmd.ServiceID = m.serviceID
+	cmd.IssuedAt = time.Now().Unix()
+	cmd.Nonce = genNonce()
+	cmd.ServiceKey = auth.ComputeServiceKey(m.hmacSecret, m.serviceID)
+}
+
+// genNonce یک nonce تصادفی ۱۶ بایتی (hex) می‌سازد.
+func genNonce() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// Send یک DeployCommandِ از پیش‌ساخته را امضا و به سرور هدف ارسال می‌کند —
+// برای publisher هایی که خودشان دستور را می‌سازند (مثل wizard خرید/تست
+// سرویس) به‌جای دور زدن Manager با یک nc.Publish خام. Type دست‌نخورده می‌ماند
+// (deploy یا start/stop/...). این تنها راهِ درست publish کردن deploy است تا
+// همه‌ی دستورها امضا شوند.
+func (m *Manager) Send(ctx context.Context, serverID string, cmd protocol.DeployCommand) error {
+	if m.nc == nil {
+		return fmt.Errorf("NATS not configured")
+	}
+	cmd.ServerID = serverID
+	m.sign(&cmd)
+	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), cmd)
 }
 
 // Deploy دستور deploy را به agentmanager ارسال می‌کند.
@@ -45,6 +97,7 @@ func (m *Manager) Deploy(ctx context.Context, serverID string, cmd protocol.Depl
 	}
 	cmd.Type = protocol.MsgDeploy
 	cmd.ServerID = serverID
+	m.sign(&cmd)
 	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), cmd)
 }
 
@@ -53,11 +106,13 @@ func (m *Manager) Stop(ctx context.Context, serverID, containerID string) error 
 	if m.nc == nil {
 		return fmt.Errorf("NATS not configured")
 	}
-	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), protocol.DeployCommand{
+	cmd := protocol.DeployCommand{
 		Type:        protocol.MsgStop,
 		ServerID:    serverID,
 		ContainerID: containerID,
-	})
+	}
+	m.sign(&cmd)
+	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), cmd)
 }
 
 // Start دستور start را ارسال می‌کند.
@@ -65,11 +120,27 @@ func (m *Manager) Start(ctx context.Context, serverID, containerID string) error
 	if m.nc == nil {
 		return fmt.Errorf("NATS not configured")
 	}
-	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), protocol.DeployCommand{
+	cmd := protocol.DeployCommand{
 		Type:        protocol.MsgStart,
 		ServerID:    serverID,
 		ContainerID: containerID,
-	})
+	}
+	m.sign(&cmd)
+	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), cmd)
+}
+
+// Restart دستور restart را ارسال می‌کند.
+func (m *Manager) Restart(ctx context.Context, serverID, containerID string) error {
+	if m.nc == nil {
+		return fmt.Errorf("NATS not configured")
+	}
+	cmd := protocol.DeployCommand{
+		Type:        protocol.MsgRestart,
+		ServerID:    serverID,
+		ContainerID: containerID,
+	}
+	m.sign(&cmd)
+	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), cmd)
 }
 
 // Remove دستور remove را ارسال می‌کند.
@@ -77,11 +148,13 @@ func (m *Manager) Remove(ctx context.Context, serverID, containerID string) erro
 	if m.nc == nil {
 		return fmt.Errorf("NATS not configured")
 	}
-	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), protocol.DeployCommand{
+	cmd := protocol.DeployCommand{
 		Type:        protocol.MsgRemove,
 		ServerID:    serverID,
 		ContainerID: containerID,
-	})
+	}
+	m.sign(&cmd)
+	return m.nc.Publish(ctx, protocol.DeploySubject(serverID), cmd)
 }
 
 // ServerChannel — برای backward compat

@@ -14,7 +14,6 @@ import (
 )
 
 type Dispatcher struct {
-	db         ports.DB
 	st         *store.Store
 	cache      ports.Cache
 	log        ports.Logger
@@ -23,9 +22,9 @@ type Dispatcher struct {
 	balancer   *Balancer
 }
 
-func New(db ports.DB, st *store.Store, cache ports.Cache, log ports.Logger, encryptKey string) *Dispatcher {
+func New(st *store.Store, cache ports.Cache, log ports.Logger, encryptKey string) *Dispatcher {
 	return &Dispatcher{
-		db: db, st: st, cache: cache,
+		st: st, cache: cache,
 		log: log, encryptKey: encryptKey,
 		balancer: NewBalancer(st, cache, log),
 	}
@@ -36,7 +35,7 @@ func (d *Dispatcher) Start(ctx context.Context) error {
 		return err
 	}
 
-	bots, err := d.loadBots()
+	bots, err := d.loadBots(ctx)
 	if err != nil {
 		return err
 	}
@@ -79,10 +78,8 @@ func (d *Dispatcher) AddBot(ctx context.Context, bot models.CheckBot) error {
 	return nil
 }
 
-func (d *Dispatcher) loadBots() ([]models.CheckBot, error) {
-	var bots []models.CheckBot
-	err := d.db.Conn().Preload("Memberships").Where("is_active = true").Find(&bots).Error
-	return bots, err
+func (d *Dispatcher) loadBots(ctx context.Context) ([]models.CheckBot, error) {
+	return d.st.FindActiveBots(ctx)
 }
 
 func (d *Dispatcher) buildWorkers(bots []models.CheckBot) ([]*worker.BotWorker, error) {
@@ -142,7 +139,7 @@ func (d *Dispatcher) syncLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			bots, err := d.loadBots()
+			bots, err := d.loadBots(ctx)
 			if err != nil {
 				d.log.Error("syncLoop: loadBots failed", ports.F("err", err))
 				continue

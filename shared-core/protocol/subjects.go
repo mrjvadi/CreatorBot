@@ -89,6 +89,16 @@ type DeployCommand struct {
 	// Settings تنظیمات اختیاری امنیت/منابع برای override پیش‌فرض‌های agentmanager.
 	// nil یعنی «از پیش‌فرض‌های سرور استفاده کن».
 	Settings *DeploySettings `json:"settings,omitempty"`
+
+	// ── envelope auth ──
+	// این چهار فیلد به agentmanager اجازه می‌دهند اصالت، تازگی و یک‌بارمصرف‌بودن
+	// دستور deploy را تأیید کند (همان الگوی source-service/internal/bus.authorize).
+	// اختیاری‌اند تا پیام‌های قدیمی همچنان unmarshal شوند؛ ولی نبودشان در
+	// agentmanager منجر به رد شدن دستور می‌شود.
+	ServiceID  string `json:"service_id,omitempty"`  // هویت سرویس فرستنده (مثلاً "botmanager")
+	ServiceKey string `json:"service_key,omitempty"` // ComputeServiceKey(SERVICE_HMAC_SECRET, ServiceID)
+	IssuedAt   int64  `json:"issued_at,omitempty"`   // unix seconds؛ برای پنجره‌ی تازگی
+	Nonce      string `json:"nonce,omitempty"`       // یکتا به‌ازای هر دستور؛ برای جلوگیری از replay
 }
 
 // DeploySettings تنظیمات اختیاری امنیتی و محدودیت منابع برای هر container است.
@@ -361,6 +371,7 @@ const (
 type DeductResponse struct {
 	Success    bool      `json:"success"`
 	NewBalance float64   `json:"new_balance"`
+	TxID       string    `json:"tx_id,omitempty"`
 	Error      string    `json:"error,omitempty"`
 	Code       ErrorCode `json:"code,omitempty"`
 }
@@ -431,6 +442,28 @@ type ConfirmChannelAdminRequest struct {
 type ConfirmChannelAdminResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
+}
+
+// SubjBotStatusCheck — bot فرعیِ رایگان (uploader/vpn/archive) هنگام start و
+// به‌صورت دوره‌ای می‌پرسد «آیا الان به یک کمپینِ اجاره‌ی قفلِ فعال در ads-bot
+// وصل‌ام؟». این جایگزینِ کوئریِ مستقیمِ Postgres/bot_instances.lock_mode
+// قبلیِ uploader-bot شد که با قطعِ کاملِ Postgres از ربات‌های محصول از کار
+// افتاده بود — ads-bot (مالکِ واقعیِ FreeBotSlot/LockRentalCampaign) پاسخ
+// می‌دهد، نه botmanager.
+const SubjBotStatusCheck = "ads.bot_status_check"
+
+// BotStatusRequest درخواستِ وضعیت با BotID تلگرامیِ خودِ bot.
+type BotStatusRequest struct {
+	BotID int64 `json:"bot_id"`
+}
+
+// BotStatusResponse پاسخِ وضعیت. CampaignID (اگر InCampaign=true) برای
+// attribution دقیقِ گزارش‌های fraud-engine به همان کمپینِ مشخص استفاده
+// می‌شود (رجوع fraudclient.ReportJoin).
+type BotStatusResponse struct {
+	InCampaign bool   `json:"in_campaign"`
+	CampaignID string `json:"campaign_id,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // ══════════════════════════════════════════════════════════════

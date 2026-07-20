@@ -23,7 +23,16 @@ const (
 // EventFileRegistered is published after a file is registered.
 const EventFileRegistered = "source.files.registered"
 
+type RequestAuth struct {
+	ServiceID  string `json:"service_id"`
+	ServiceKey string `json:"service_key"`
+	TenantID   string `json:"tenant_id"`
+	IssuedAt   int64  `json:"issued_at"`
+	Nonce      string `json:"nonce"`
+}
+
 type RegisterRequest struct {
+	RequestAuth
 	MessageID int    `json:"message_id"`
 	FileType  string `json:"file_type"`
 	FileName  string `json:"file_name"`
@@ -33,6 +42,7 @@ type RegisterRequest struct {
 }
 
 type GetRequest struct {
+	RequestAuth
 	UUID uuid.UUID `json:"uuid"`
 	// BotTokenHash is optional. When set, the reply also includes the
 	// file_id this bot previously cached for the file, if any.
@@ -40,6 +50,7 @@ type GetRequest struct {
 }
 
 type CacheRequest struct {
+	RequestAuth
 	UUID         uuid.UUID `json:"uuid"`
 	BotTokenHash string    `json:"bot_token_hash"`
 	FileID       string    `json:"file_id"`
@@ -58,8 +69,12 @@ func (b *Bus) handleRegister(ctx context.Context, data []byte) (any, error) {
 	if err := json.Unmarshal(data, &req); err != nil {
 		return errEnvelope(err), nil
 	}
+	if err := b.authorize(ctx, req.ServiceID, req.ServiceKey, req.TenantID, req.IssuedAt, req.Nonce); err != nil {
+		return errEnvelope(err), nil
+	}
 
 	f := &models.ArchiveFile{
+		TenantID:  req.TenantID,
 		MessageID: req.MessageID,
 		FileType:  req.FileType,
 		FileName:  req.FileName,
@@ -83,8 +98,11 @@ func (b *Bus) handleGet(ctx context.Context, data []byte) (any, error) {
 	if err := json.Unmarshal(data, &req); err != nil {
 		return errEnvelope(err), nil
 	}
+	if err := b.authorize(ctx, req.ServiceID, req.ServiceKey, req.TenantID, req.IssuedAt, req.Nonce); err != nil {
+		return errEnvelope(err), nil
+	}
 
-	f, err := b.store.GetArchiveFile(ctx, req.UUID)
+	f, err := b.store.GetArchiveFile(ctx, req.TenantID, req.UUID)
 	if err != nil {
 		return errEnvelope(err), nil
 	}
@@ -95,7 +113,7 @@ func (b *Bus) handleGet(ctx context.Context, data []byte) (any, error) {
 		key := cacheKeyFor(req.UUID, req.BotTokenHash)
 		if fileID, err := b.cache.Get(ctx, key); err == nil && fileID != "" {
 			resp.CachedFileID = fileID
-		} else if c, err := b.store.GetBotFileCache(ctx, req.UUID, req.BotTokenHash); err == nil {
+		} else if c, err := b.store.GetBotFileCache(ctx, req.TenantID, req.UUID, req.BotTokenHash); err == nil {
 			resp.CachedFileID = c.FileID
 			if setErr := b.cache.Set(ctx, key, c.FileID, 24*time.Hour); setErr != nil {
 				b.log.Error("cache set", ports.F("err", setErr))
@@ -111,8 +129,15 @@ func (b *Bus) handleCache(ctx context.Context, data []byte) (any, error) {
 	if err := json.Unmarshal(data, &req); err != nil {
 		return errEnvelope(err), nil
 	}
+	if err := b.authorize(ctx, req.ServiceID, req.ServiceKey, req.TenantID, req.IssuedAt, req.Nonce); err != nil {
+		return errEnvelope(err), nil
+	}
 
+	if _, err := b.store.GetArchiveFile(ctx, req.TenantID, req.UUID); err != nil {
+		return errEnvelope(err), nil
+	}
 	c := &models.BotFileCache{
+		TenantID:      req.TenantID,
 		ArchiveFileID: req.UUID,
 		BotTokenHash:  req.BotTokenHash,
 		FileID:        req.FileID,

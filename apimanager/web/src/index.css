@@ -12,6 +12,33 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased dark:bg-ink-950 dark:text-slate-100;
 }
 
+/* فوکوس قابل‌دیدن برای کاربران کیبورد، بدون ایجاد حلقه هنگام کلیک با ماوس. */
+:where(a, button, input, select, textarea, [tabindex]:not(main)):focus-visible {
+  @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-slate-50 dark:ring-violet-400 dark:ring-offset-ink-950;
+}
+
+.skip-link {
+  @apply fixed start-4 top-3 z-[100] -translate-y-20 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white shadow-lg transition-transform;
+}
+.skip-link:focus {
+  @apply translate-y-0;
+}
+
+.mobile-bottom-nav {
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+}
+
+.user-mobile-content {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .user-mobile-content {
+    padding-bottom: 0;
+  }
+}
+
 /* پس‌زمینه‌ی گرادیانی ثابت پشتِ کل اپ در حالت تیره — الهام از رفرنس دارک دشبورد:
    یک درخشش بنفش بالای صفحه که به سیاه محو می‌شود، ثابت (fixed) تا با اسکرول تکرار نشود. */
 .app-dark-glow {
@@ -72,6 +99,17 @@ body {
 }
 .animate-fade-in {
   animation: fade-in 0.15s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* کارت شیشه‌ای — واحدِ بصریِ اصلیِ طراحی تازه (رجوع به رفرنس دارک دشبورد):
